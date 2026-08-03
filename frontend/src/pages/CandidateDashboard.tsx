@@ -918,7 +918,7 @@ export const CandidateDashboard: React.FC = () => {
       {/* Application Modal */}
       {selectedJobForApply && (
         <JobApplicationModal
-          isOpen={selectedJobForApply !== null}
+          isOpen={!!selectedJobForApply}
           job={selectedJobForApply}
           onClose={() => setSelectedJobForApply(null)}
           onSuccess={() => {
@@ -931,6 +931,7 @@ export const CandidateDashboard: React.FC = () => {
       {/* Specs Viewer Modal */}
       {selectedJobForView && (
         <JobDetailsModal
+          isOpen={!!selectedJobForView}
           job={selectedJobForView}
           onClose={() => setSelectedJobForView(null)}
         />
