@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Navbar } from '../components/layout/Navbar';
 import { Sidebar } from '../components/layout/Sidebar';
 import { CandidateHeroStoryIllustration } from '../components/illustrations/Illustrations';
-import { 
-  Video, FileText, Briefcase, Award, ArrowUpRight, CheckCircle2, Clock, Eye, 
-  Building, MapPin, DollarSign, Send, Tag, Gift, Check, X, TrendingUp, Sparkles, 
+import {
+  Video, FileText, Briefcase, Award, ArrowUpRight, CheckCircle2, Clock, Eye,
+  Building, MapPin, DollarSign, Send, Tag, Gift, Check, X, TrendingUp, Sparkles,
   Target, BarChart3, Activity, ShieldCheck, Star, Percent, Flame, Zap, Bookmark, UserCheck
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar 
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar
 } from 'recharts';
 import api from '../services/api';
 import { JobApplicationModal } from '../components/candidate/JobApplicationModal';
@@ -152,7 +152,7 @@ export const CandidateDashboard: React.FC = () => {
         <Navbar />
 
         <main className="p-6 lg:p-10 max-w-7xl mx-auto w-full space-y-8">
-          
+
           {/* Upcoming Live Interview Banner (Auto-Removed when Completed) */}
           {schedules.filter(s => s.status === 'Scheduled' || s.status === 'Upcoming').map((sched) => (
             <div key={sched.id} className="bg-gradient-to-r from-emerald-900 via-brand-primary to-sb-800 rounded-4xl p-6 text-white shadow-floating border border-emerald-400/30 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -189,7 +189,7 @@ export const CandidateDashboard: React.FC = () => {
           {/* Hero Header Banner */}
           <div className="bg-gradient-to-r from-brand-primary via-sb-800 to-brand-ink rounded-5xl p-8 lg:p-12 text-white relative overflow-hidden shadow-floating">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-              
+
               <div className="lg:col-span-7 space-y-4">
                 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-brand-accent/20 border border-brand-accent/30 text-brand-accent text-xs font-extrabold">
                   <Award className="w-4 h-4" />
@@ -249,13 +249,12 @@ export const CandidateDashboard: React.FC = () => {
                 return (
                   <div
                     key={stg.key}
-                    className={`p-4 rounded-2xl border transition-all ${
-                      isActive
+                    className={`p-4 rounded-2xl border transition-all ${isActive
                         ? 'bg-brand-primary text-white border-brand-primary shadow-soft ring-2 ring-brand-primary/30'
                         : isPassed
-                        ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                        : 'bg-cream-100 text-slate-400 border-stoneBorder'
-                    }`}
+                          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                          : 'bg-cream-100 text-slate-400 border-stoneBorder'
+                      }`}
                   >
                     <p className="text-[10px] font-black uppercase tracking-wider">Step {idx + 1}</p>
                     <h4 className={`text-xs font-extrabold mt-1 ${isActive ? 'text-white' : isPassed ? 'text-emerald-800' : 'text-brand-ink'}`}>
@@ -554,7 +553,7 @@ export const CandidateDashboard: React.FC = () => {
 
           {/* Real-Time Analytics Section (Charts) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
+
             {/* Chart 1: ATS Match & Interview Performance Trend */}
             <div className="card-luxury p-6 flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
@@ -571,8 +570,8 @@ export const CandidateDashboard: React.FC = () => {
                     <AreaChart data={metrics.charts.ats_trend}>
                       <defs>
                         <linearGradient id="colorAts" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#059669" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#059669" stopOpacity={0.0}/>
+                          <stop offset="5%" stopColor="#059669" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#059669" stopOpacity={0.0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
@@ -627,36 +626,32 @@ export const CandidateDashboard: React.FC = () => {
             <div className="flex bg-cream-200 p-1.5 rounded-3xl mb-6 max-w-xl border border-stoneBorder">
               <button
                 onClick={() => setActiveTab('overview')}
-                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${
-                  activeTab === 'overview' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
-                }`}
+                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${activeTab === 'overview' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
+                  }`}
               >
                 Overview
               </button>
 
               <button
                 onClick={() => setActiveTab('jobs')}
-                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${
-                  activeTab === 'jobs' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
-                }`}
+                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${activeTab === 'jobs' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
+                  }`}
               >
                 Job Portal ({jobs.length})
               </button>
 
               <button
                 onClick={() => setActiveTab('applications')}
-                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${
-                  activeTab === 'applications' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
-                }`}
+                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${activeTab === 'applications' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
+                  }`}
               >
                 Applications ({myApplications.length})
               </button>
 
               <button
                 onClick={() => setActiveTab('offers')}
-                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${
-                  activeTab === 'offers' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
-                }`}
+                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all ${activeTab === 'offers' ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink'
+                  }`}
               >
                 Offers ({offers.length})
               </button>
@@ -665,7 +660,7 @@ export const CandidateDashboard: React.FC = () => {
             {/* TAB 1: OVERVIEW */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
-                
+
                 {/* Recent AI Mock Sessions */}
                 <div className="card-luxury p-6">
                   <h3 className="text-base font-extrabold text-brand-ink mb-4">Recent Interview Sessions</h3>
@@ -698,7 +693,7 @@ export const CandidateDashboard: React.FC = () => {
                               </p>
                             </div>
                           </div>
-                          
+
                           <div className="flex items-center gap-4">
                             {item.overall_score && (
                               <span className="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-700 text-xs font-extrabold">
@@ -837,9 +832,8 @@ export const CandidateDashboard: React.FC = () => {
                             <td className="py-4 text-slate-500">{app.applied_at ? new Date(app.applied_at).toLocaleDateString() : 'Recent'}</td>
                             <td className="py-4">
                               {app.ats_score ? (
-                                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold ${
-                                  app.ats_score >= 80 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                                }`}>
+                                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold ${app.ats_score >= 80 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                  }`}>
                                   {app.ats_score}% Match
                                 </span>
                               ) : (
@@ -924,12 +918,10 @@ export const CandidateDashboard: React.FC = () => {
       {/* Application Modal */}
       {selectedJobForApply && (
         <JobApplicationModal
-          job={selectedJobForApply}
-          onClose={() => setSelectedJobForApply(null)}
-          onSuccess={() => {
-            setSelectedJobForApply(null);
-            fetchCandidateData();
-          }}
+          isOpen={isJobModalOpen}
+          job={selectedJob}
+          onClose={handleCloseJobModal}
+          onSuccess={handleApplySuccess}
         />
       )}
 
