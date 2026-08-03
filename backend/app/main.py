@@ -28,52 +28,63 @@ async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         from sqlalchemy import text
-        await conn.execute(text("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Registered';"))
-        await conn.execute(text("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS recruiter_notes TEXT;"))
-        await conn.execute(text("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rating FLOAT DEFAULT 0.0;"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS work_mode VARCHAR(50) DEFAULT 'Remote';"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS education_required VARCHAR(255);"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS requirements TEXT;"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS perks TEXT;"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS selection_process TEXT;"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS recruiter_contact VARCHAR(100);"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS recruiter_email VARCHAR(255);"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS recruiter_phone VARCHAR(50);"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS interview_rounds JSON;"))
-        await conn.execute(text("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS hiring_timeline VARCHAR(100);"))
-        await conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS address TEXT;"))
-        await conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS current_ctc VARCHAR(50);"))
-        await conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS expected_ctc VARCHAR(50);"))
-        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image VARCHAR(500);"))
-        await conn.execute(text("ALTER TABLE recruiters ADD COLUMN IF NOT EXISTS company_logo VARCHAR(500);"))
-        await conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS projects JSON;"))
-        await conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS certifications JSON;"))
-        await conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS languages JSON;"))
-        await conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS experience_years VARCHAR(50);"))
-        await conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS education_level VARCHAR(100);"))
-        await conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;"))
+
+        async def safe_execute(statement_str: str):
+            try:
+                if conn.dialect.name == "sqlite":
+                    sql = statement_str.replace(" ADD COLUMN IF NOT EXISTS ", " ADD COLUMN ")
+                else:
+                    sql = statement_str
+                await conn.execute(text(sql))
+            except Exception:
+                pass
+
+        await safe_execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Registered';")
+        await safe_execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS recruiter_notes TEXT;")
+        await safe_execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS rating FLOAT DEFAULT 0.0;")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS work_mode VARCHAR(50) DEFAULT 'Remote';")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS education_required VARCHAR(255);")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS requirements TEXT;")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS perks TEXT;")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS selection_process TEXT;")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS recruiter_contact VARCHAR(100);")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS recruiter_email VARCHAR(255);")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS recruiter_phone VARCHAR(50);")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS interview_rounds JSON;")
+        await safe_execute("ALTER TABLE job_postings ADD COLUMN IF NOT EXISTS hiring_timeline VARCHAR(100);")
+        await safe_execute("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS address TEXT;")
+        await safe_execute("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS current_ctc VARCHAR(50);")
+        await safe_execute("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS expected_ctc VARCHAR(50);")
+        await safe_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image VARCHAR(500);")
+        await safe_execute("ALTER TABLE recruiters ADD COLUMN IF NOT EXISTS company_logo VARCHAR(500);")
+        await safe_execute("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS projects JSON;")
+        await safe_execute("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS certifications JSON;")
+        await safe_execute("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS languages JSON;")
+        await safe_execute("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS experience_years VARCHAR(50);")
+        await safe_execute("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS education_level VARCHAR(100);")
+        await safe_execute("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;")
         
         # Interview Sessions & Scheduled Interviews workflow columns
-        await conn.execute(text("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS job_application_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS job_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS resume_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS question_count INTEGER DEFAULT 6;"))
-        await conn.execute(text("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS config_json JSON;"))
+        await safe_execute("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS job_application_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS job_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS resume_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS question_count INTEGER DEFAULT 6;")
+        await safe_execute("ALTER TABLE scheduled_interviews ADD COLUMN IF NOT EXISTS config_json JSON;")
 
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS recruiter_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS job_application_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS job_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS scheduled_interview_id VARCHAR(36);"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS difficulty VARCHAR(50) DEFAULT 'Medium';"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS duration_minutes INTEGER DEFAULT 30;"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS question_count INTEGER DEFAULT 6;"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS interview_type VARCHAR(50) DEFAULT 'Recruiter';"))
-        await conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS config_json JSON;"))
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS recruiter_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS job_application_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS job_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS scheduled_interview_id VARCHAR(36);")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS difficulty VARCHAR(50) DEFAULT 'Medium';")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS duration_minutes INTEGER DEFAULT 30;")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS question_count INTEGER DEFAULT 6;")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS interview_type VARCHAR(50) DEFAULT 'Recruiter';")
+        await safe_execute("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS config_json JSON;")
 
-        await conn.execute(text("ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS grammar_score FLOAT DEFAULT 90.0;"))
-        await conn.execute(text("ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS problem_solving_score FLOAT DEFAULT 85.0;"))
-        await conn.execute(text("ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS recommendation VARCHAR(50) DEFAULT 'Shortlist';"))
+        await safe_execute("ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS grammar_score FLOAT DEFAULT 90.0;")
+        await safe_execute("ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS problem_solving_score FLOAT DEFAULT 85.0;")
+        await safe_execute("ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS recommendation VARCHAR(50) DEFAULT 'Shortlist';")
         
         tables = [
             "users", "candidates", "recruiters", "admins", "resumes", "job_descriptions",
@@ -82,11 +93,8 @@ async def startup():
             "scheduled_interviews", "notifications", "job_postings", "job_applications", "offer_letters", "resume_views"
         ]
         for tbl in tables:
-            try:
-                await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;"))
-                await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';"))
-            except Exception:
-                pass
+            await safe_execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;")
+            await safe_execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';")
 
 @app.middleware("http")
 async def test_environment_middleware(request, call_next):
