@@ -250,10 +250,10 @@ export const CandidateDashboard: React.FC = () => {
                   <div
                     key={stg.key}
                     className={`p-4 rounded-2xl border transition-all ${isActive
-                        ? 'bg-brand-primary text-white border-brand-primary shadow-soft ring-2 ring-brand-primary/30'
-                        : isPassed
-                          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                          : 'bg-cream-100 text-slate-400 border-stoneBorder'
+                      ? 'bg-brand-primary text-white border-brand-primary shadow-soft ring-2 ring-brand-primary/30'
+                      : isPassed
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                        : 'bg-cream-100 text-slate-400 border-stoneBorder'
                       }`}
                   >
                     <p className="text-[10px] font-black uppercase tracking-wider">Step {idx + 1}</p>
@@ -918,10 +918,13 @@ export const CandidateDashboard: React.FC = () => {
       {/* Application Modal */}
       {selectedJobForApply && (
         <JobApplicationModal
-          isOpen={isJobModalOpen}
-          job={selectedJob}
-          onClose={handleCloseJobModal}
-          onSuccess={handleApplySuccess}
+          isOpen={selectedJobForApply !== null}
+          job={selectedJobForApply}
+          onClose={() => setSelectedJobForApply(null)}
+          onSuccess={() => {
+            setSelectedJobForApply(null);
+            fetchCandidateData();
+          }}
         />
       )}
 
