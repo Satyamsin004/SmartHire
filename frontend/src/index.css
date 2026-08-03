@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-brand-ink font-sans antialiased selection:bg-brand-accent selection:text-brand-primary min-h-screen overflow-x-hidden;
+    background-color: #FAF7F2;
+    color: #15342A;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight text-brand-ink;
+  }
+}
+
+/* Glassmorphism & Luxury Cards */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(231, 229, 228, 0.8);
+}
+
+.glass-panel-dark {
+  background: rgba(15, 107, 75, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(167, 243, 208, 0.2);
+}
+
+.hero-story-gradient {
+  background: linear-gradient(135deg, #0F6B4B 0%, #0B543A 40%, #15342A 100%);
+}
+
+.hero-cream-gradient {
+  background: linear-gradient(135deg, #FAF7F2 0%, #F4EFE6 50%, #EBE3D5 100%);
+}
+
+.card-luxury {
+  background: #FFFFFF;
+  border: 1px solid #E7E5E4;
+  border-radius: 1.5rem; /* 24px */
+  box-shadow: 0 12px 32px -10px rgba(15, 107, 75, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-luxury:hover {
+  box-shadow: 0 28px 56px -12px rgba(15, 107, 75, 0.16);
+  transform: translateY(-3px);
+  border-color: rgba(43, 182, 115, 0.4);
+}
+
+/* Keyframe Floating Animations */
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(1deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+.animate-float-slow {
+  animation: floatSlow 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAF7F2;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C7EFE0;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2BB673;
+}
