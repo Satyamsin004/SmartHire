@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api/v1';
+
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -11,6 +13,9 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
   }
   return config;
 });
@@ -34,6 +39,20 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const fullUrl = `${originalRequest?.baseURL || ''}${originalRequest?.url || ''}`;
+
+    if (error.response) {
+      console.error(
+        `🚨 [API ERROR] ${originalRequest?.method?.toUpperCase()} ${fullUrl}`,
+        `| Status: ${error.response.status}`,
+        `| Response:`, error.response.data
+      );
+    } else {
+      console.error(
+        `🚨 [NETWORK/CORS ERROR] ${originalRequest?.method?.toUpperCase()} ${fullUrl}`,
+        `| Message: ${error.message}`
+      );
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
@@ -62,7 +81,7 @@ api.interceptors.response.use(
       }
 
       try {
-        const res = await axios.post('/api/v1/auth/refresh', { refresh_token: refreshToken });
+        const res = await axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
         const newAccessToken = res.data.tokens.access_token;
         const newRefreshToken = res.data.tokens.refresh_token;
 

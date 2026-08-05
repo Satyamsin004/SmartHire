@@ -12,9 +12,17 @@ from app.api.v1.websocket import ws_manager
 from app.dependencies.auth import get_current_user, require_role
 from app.services.interview_service import PipelineManager
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/scheduling", tags=["Interview Scheduling"])
 
+from app.services.recruitment_pipeline_service import RecruitmentPipelineService
+from app.services.eligibility_service import eligibility_service
+
 class CreateScheduleRequest(BaseModel):
+    job_id: Optional[str] = None
     candidate_id: Optional[str] = None
     candidate_ids: Optional[List[str]] = []
     round_type: str = "Technical" # HR, Technical, Behavioral, Aptitude, Coding
@@ -24,36 +32,31 @@ class CreateScheduleRequest(BaseModel):
     job_description_id: Optional[str] = None
     instructions: Optional[str] = "Please be present 5 minutes early in a quiet environment."
 
-@router.get("/candidates-list")
-async def get_candidates_list(
+@router.get("/jobs-list")
+async def get_scheduling_jobs_list(
     user: User = Depends(require_role(["recruiter", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
-    """Returns all registered candidates for recruiters to choose from in the scheduling modal."""
-    # Query all users with role 'candidate' or any candidate profiles
-    res_users = await db.execute(select(User).where(User.role == "candidate", User.deleted_at == None))
-    cand_users = res_users.scalars().all()
+    """Returns published job postings for recruiter to select first in interview scheduling workflow."""
+    return await RecruitmentPipelineService.get_posted_jobs(db, recruiter_user_id=user.id, is_admin=(user.role == "admin"))
+
+@router.get("/candidates-list")
+async def get_candidates_list(
+    job_id: Optional[str] = None,
+    user: User = Depends(require_role(["recruiter", "admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns ONLY candidates who applied successfully for selected job posting, have ATS score >= 80%, status Shortlisted, and no active pending scheduled interview.
+    Uses RecruitmentPipelineService as the single source of truth.
+    """
+    logger.info("[Interview Scheduler Query Executed] User %s requested candidate list for Job ID: %s", user.email, job_id)
+    if job_id:
+        cands = await RecruitmentPipelineService.get_eligible_candidates_for_scheduler(db, recruiter_user_id=user.id, job_id=job_id)
+    else:
+        cands = await RecruitmentPipelineService.get_shortlisted_candidates(db, recruiter_user_id=user.id, is_admin=(user.role == "admin"))
     
-    out = []
-    for u in cand_users:
-        res_c = await db.execute(select(Candidate).where(Candidate.user_id == u.id))
-        c = res_c.scalar_one_or_none()
-        if not c:
-            c = Candidate(user_id=u.id, target_role="Full Stack Engineer", experience_level="Mid-Level")
-            db.add(c)
-            await db.flush()
-            
-        out.append({
-            "candidate_id": c.id,
-            "user_id": u.id,
-            "full_name": u.full_name,
-            "email": u.email,
-            "target_role": c.target_role or "Full Stack Engineer",
-            "experience_level": c.experience_level or "Mid-Level"
-        })
-        
-    await db.commit()
-    return out
+    logger.info("[Candidates Returned] Outputting %d candidate(s) for interview scheduling.", len(cands))
+    return cands
 
 @router.post("/create")
 async def create_scheduled_interview(
@@ -232,11 +235,6 @@ async def get_candidate_schedule(
 
     # Auto-sync completed status from interview sessions
     from app.models.domain import InterviewSession
-    res_sess = await db.execute(select(InterviewSession).where(
-        InterviewSession.candidate_id == cand.id,
-        InterviewSession.status == "completed"
-    ))
-    completed_sessions = res_sess.scalars().all()
 
     res = await db.execute(
         select(ScheduledInterview)
@@ -247,23 +245,32 @@ async def get_candidate_schedule(
     
     out = []
     for s in schedules:
-        if completed_sessions and s.status.lower() != "completed":
-            s.status = "Completed"
-            await db.commit()
+        # Check if THIS SPECIFIC scheduled interview was completed via an interview session
+        is_completed = s.status.lower() == "completed"
+        if not is_completed:
+            res_sess = await db.execute(select(InterviewSession).where(
+                (InterviewSession.scheduled_interview_id == s.id) | (InterviewSession.id == s.session_id),
+                InterviewSession.status == "completed"
+            ))
+            matched_sess = res_sess.scalar_one_or_none()
+            if matched_sess:
+                s.status = "Completed"
+                await db.commit()
+                is_completed = True
 
-        if s.status.lower() == "completed":
+        if is_completed:
             continue
 
         out.append({
             "id": s.id,
             "candidate_id": s.candidate_id,
             "candidate_name": user.full_name,
-            "round_type": s.round_type,
+            "round_type": s.round_type or "Technical",
             "scheduled_date": s.scheduled_date.isoformat(),
-            "duration_minutes": s.duration_minutes,
-            "difficulty": s.difficulty,
+            "duration_minutes": s.duration_minutes or 30,
+            "difficulty": s.difficulty or "Medium",
+            "instructions": s.instructions or "Please be present 5 minutes early.",
             "status": s.status,
-            "instructions": s.instructions,
             "recruiter_name": "Recruiter Manager",
             "company_name": "SmartHire AI Platform"
         })

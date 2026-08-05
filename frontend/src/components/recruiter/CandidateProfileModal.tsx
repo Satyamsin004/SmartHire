@@ -80,7 +80,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
 
         {loading ? (
           <div className="py-16 text-center text-slate-400 text-xs font-bold">
-            Loading candidate details from PostgreSQL...
+            Loading candidate details...
           </div>
         ) : (
           <div className="space-y-6">
@@ -125,7 +125,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
               </div>
 
               <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
-                <Phone className="w-4 h-4 text-emerald-500" />
+                <Phone className="w-4 h-4 text-indigo-500" />
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 block">Phone Number</span>
                   <span className="font-extrabold text-slate-800">{profile?.phone || 'N/A'}</span>
@@ -206,7 +206,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                   </div>
                   <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">Communication</span>
-                    <span className="text-lg font-black text-emerald-400">{profile.latest_evaluation.communication_score}%</span>
+                    <span className="text-lg font-black text-indigo-400">{profile.latest_evaluation.communication_score}%</span>
                   </div>
                   <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">Confidence</span>
@@ -221,7 +221,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                 {/* Strengths & Weaknesses */}
                 {profile.latest_evaluation.strengths?.length > 0 && (
                   <div>
-                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider block mb-1">Key Strengths</span>
+                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider block mb-1">Key Strengths</span>
                     <ul className="space-y-1 text-xs text-slate-300 list-disc list-inside">
                       {profile.latest_evaluation.strengths.map((str: string, i: number) => (
                         <li key={i}>{str}</li>
@@ -299,3 +299,4 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
     </div>
   );
 };
+

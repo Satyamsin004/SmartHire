@@ -2,13 +2,13 @@ import React from 'react';
 
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'emerald' | 'mint' | 'dark' | 'amber' | 'rose' | 'slate';
+  variant?: 'indigo' | 'mint' | 'dark' | 'amber' | 'rose' | 'slate';
   size?: 'sm' | 'md';
 }
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant = 'mint', size = 'md' }) => {
   const variants = {
-    emerald: 'bg-brand-primary text-brand-bg font-bold',
+    indigo: 'bg-brand-primary text-brand-bg font-bold',
     mint: 'bg-brand-accent text-brand-ink font-extrabold',
     dark: 'bg-brand-ink text-brand-accent font-bold',
     amber: 'bg-amber-100 text-amber-800 font-bold',
@@ -27,3 +27,4 @@ export const Badge: React.FC<BadgeProps> = ({ children, variant = 'mint', size =
     </span>
   );
 };
+

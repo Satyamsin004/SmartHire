@@ -1,4 +1,5 @@
 import uuid
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,12 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.db import get_db
-from app.models.domain import User, Candidate, Recruiter, JobPosting, JobApplication, Resume, Notification, InterviewSession, OfferLetter
+from app.models.domain import (
+    User, Candidate, Recruiter, JobPosting, JobApplication, Resume, Notification,
+    InterviewSession, OfferLetter, AssessmentSession, AssessmentResult, ScheduledInterview, ScoringReport
+)
 from app.dependencies.auth import get_current_user, require_role
 from app.services.resume_service import resume_service
 from app.services.interview_service import PipelineManager
 from app.api.v1.websocket import ws_manager
 
+logger = logging.getLogger("smarthire.jobs")
 router = APIRouter(prefix="/jobs", tags=["Jobs & Applications"])
 
 class CreateJobRequest(BaseModel):
@@ -64,13 +69,15 @@ async def create_job(
     user: User = Depends(require_role(["recruiter", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
-    """Allows recruiter/admin to create a professional hiring requisition. Published jobs appear automatically on candidate portals."""
+    logger.info("Job creation request received ✅")
     res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
     recruiter = res_r.scalar_one_or_none()
     if not recruiter:
         recruiter = Recruiter(user_id=user.id, company_name=body.company_name or "SmartHire Corporate")
         db.add(recruiter)
         await db.flush()
+
+    logger.info("Job validated ✅")
 
     new_job = JobPosting(
         recruiter_id=recruiter.id,
@@ -101,6 +108,8 @@ async def create_job(
         status=body.status
     )
     db.add(new_job)
+    await db.flush()
+    logger.info("Inserted into PostgreSQL ✅ Job ID generated ✅ ID: %s", new_job.id)
 
     # Broadcast notification to candidates if Published
     if body.status == "Published":
@@ -127,6 +136,7 @@ async def create_job(
         })
 
     await db.commit()
+    logger.info("Transaction committed ✅ Recruiter Posted Jobs refreshed ✅ Candidate Jobs refreshed ✅")
 
     return {
         "status": "success",
@@ -265,11 +275,42 @@ async def apply_for_job(
     db: AsyncSession = Depends(get_db)
 ):
     """Submits job application and performs AI Resume Screening against Job Description."""
+    logger.info("Candidate %s clicked Apply for Job ID %s", user.id, job_id)
+
+    # 1. Validate candidate user active state
+    if not user.is_active or getattr(user, "deleted_at", None) is not None:
+        logger.warning("Rejected inactive candidate account user_id=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive or disabled candidate account. Application rejected."
+        )
+
+    # 2. Check job exists
     res_job = await db.execute(select(JobPosting).where(JobPosting.id == job_id))
     job = res_job.scalar_one_or_none()
     if not job:
-        raise HTTPException(status_code=404, detail="Job posting not found.")
+        logger.warning("Job posting not found: %s", job_id)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job posting not found.")
+    
+    logger.info("Job loaded successfully: title='%s', company='%s'", job.title, job.company_name)
 
+    # 3. Check job status is Published
+    if job.status != "Published":
+        logger.warning("Job %s is not active (status=%s)", job_id, job.status)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Job posting is currently {job.status.lower()} and no longer accepting applications."
+        )
+
+    # 4. Check job expiry date
+    if job.expiry_date and job.expiry_date < datetime.utcnow():
+        logger.warning("Job %s has expired at %s", job_id, job.expiry_date)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job posting has expired and is no longer accepting applications."
+        )
+
+    # 5. Get/create candidate profile
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
     candidate = res_c.scalar_one_or_none()
     if not candidate:
@@ -277,31 +318,46 @@ async def apply_for_job(
         db.add(candidate)
         await db.flush()
     else:
-        # Dynamically set target role from applied job!
         candidate.target_role = job.title
 
-    # Check duplicate application
+    # 6. Check duplicate application
     res_exist = await db.execute(select(JobApplication).where(
         JobApplication.job_id == job.id,
         JobApplication.candidate_id == candidate.id
     ))
     if res_exist.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="You have already submitted an application for this job.")
+        logger.warning("Duplicate application blocked for candidate %s on job %s", candidate.id, job.id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already submitted an application for this position."
+        )
+    
+    logger.info("Duplicate check passed for candidate %s on job %s", candidate.id, job.id)
 
-    # Get candidate's uploaded resume
+    # 7. Get & verify candidate uploaded resume
     res_resume = await db.execute(select(Resume).where(Resume.candidate_id == candidate.id).order_by(Resume.created_at.desc()))
     resume = res_resume.scalars().first()
+    if not resume:
+        logger.warning("No resume found for candidate %s", candidate.id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid PDF resume is required before submitting your application."
+        )
 
-    candidate_skills = list(resume.keyword_density.keys()) if (resume and resume.keyword_density) else ["React", "Python", "FastAPI"]
+    logger.info("Application Submitted ✅ Resume Validated ✅ candidate_id=%s, file=%s", candidate.id, resume.file_name)
+    logger.info("ATS Started ✅ Evaluating Candidate Resume against Job Requisition ID: %s", job.id)
+
+    candidate_skills = list(resume.keyword_density.keys()) if (resume and resume.keyword_density) else []
     req_skills = job.required_skills if isinstance(job.required_skills, list) else []
-    match_result = resume_service.match_job_description(
+    match_result = await resume_service.match_job_description(
         candidate_skills=candidate_skills,
         job_description=f"{job.title} {job.description or ''} {' '.join(req_skills)}"
     )
-    ats_score = match_result.get("match_score", 85.0)
+    ats_score = match_result.get("match_score", 0.0)
     matching_skills = match_result.get("matching_skills", [])
     missing_skills = match_result.get("missing_skills", [])
     candidate.readiness_score = ats_score
+    logger.info("ATS Completed ✅ Match Score: %.1f%%", ats_score)
 
     # Process Automatic ATS Decision (<80% Auto-Reject, >=80% Shortlist)
     decision = await PipelineManager.process_ats_decision(
@@ -315,7 +371,7 @@ async def apply_for_job(
     new_app = JobApplication(
         job_id=job.id,
         candidate_id=candidate.id,
-        resume_id=resume.id if resume else None,
+        resume_id=resume.id,
         cover_letter=body.cover_letter,
         phone=body.phone or candidate.phone,
         address=body.address,
@@ -338,6 +394,10 @@ async def apply_for_job(
     )
     db.add(new_app)
     await db.commit()
+
+    stage_marker = "Shortlisted ✅" if decision["status"] in ["Shortlisted", "SHORTLISTED", "Screening Passed"] else "Rejected ✅"
+    logger.info("ATS Stored ✅ %s Application inserted into PostgreSQL ID: %s (status=%s)", stage_marker, new_app.id, new_app.status)
+
     # Candidate notification
     notif_cand = Notification(
         user_id=user.id,
@@ -360,10 +420,18 @@ async def apply_for_job(
         db.add(notif_rec)
         await ws_manager.send_personal_message({
             "event": "NEW_APPLICATION_RECEIVED",
-            "data": {"application_id": new_app.id, "job_title": job.title, "candidate_name": user.full_name}
+            "data": {
+                "application_id": new_app.id,
+                "job_id": job.id,
+                "job_title": job.title,
+                "candidate_name": user.full_name,
+                "ats_score": ats_score
+            }
         }, rec.user_id)
 
     await db.commit()
+
+    logger.info("Recruiter statistics updated & candidate application history updated. Response returned.")
 
     return {
         "status": "success",
@@ -392,15 +460,76 @@ async def get_my_applications(
         res_j = await db.execute(select(JobPosting).where(JobPosting.id == app.job_id))
         job = res_j.scalar_one_or_none()
 
-        # Check interview status
-        res_s = await db.execute(select(InterviewSession).where(InterviewSession.candidate_id == candidate.id))
-        sess = res_s.scalars().first()
-        int_status = sess.status.capitalize() if sess else ("Scheduled" if "Scheduled" in app.status else "Not Scheduled")
+        # 1. Fetch Recruiter Scheduled Assessment specifically for this Application
+        res_assess_sess = await db.execute(
+            select(AssessmentSession).where(
+                AssessmentSession.job_application_id == app.id
+            ).order_by(AssessmentSession.created_at.desc())
+        )
+        assess_sess = res_assess_sess.scalars().first()
+        recruiter_assessment = None
+        if assess_sess:
+            res_r = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == assess_sess.id))
+            assess_res = res_r.scalar_one_or_none()
+            recruiter_assessment = {
+                "session_id": assess_sess.id,
+                "status": "Completed" if assess_res else assess_sess.status,
+                "score": round(assess_res.overall_score, 1) if assess_res else None,
+                "attempt_date": assess_res.created_at.strftime('%B %d, %Y') if (assess_res and assess_res.created_at) else (assess_sess.created_at.strftime('%B %d, %Y') if assess_sess.created_at else "Recently"),
+                "duration_minutes": assess_sess.duration_minutes or 30
+            }
 
-        # Check offer status
+        # 2. Fetch Recruiter Scheduled Interview specifically for this Application
+        res_sched_int = await db.execute(
+            select(ScheduledInterview).where(
+                ScheduledInterview.job_application_id == app.id
+            ).order_by(ScheduledInterview.scheduled_date.desc())
+        )
+        sched_int = res_sched_int.scalars().first()
+        
+        res_int_sess = await db.execute(
+            select(InterviewSession).where(
+                InterviewSession.job_application_id == app.id
+            ).order_by(InterviewSession.started_at.desc())
+        )
+        int_sess = res_int_sess.scalars().first()
+
+        recruiter_interview = None
+        if sched_int or int_sess:
+            sess_id = int_sess.id if int_sess else (sched_int.session_id if sched_int else None)
+            scoring_report = None
+            if sess_id:
+                res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id == sess_id))
+                scoring_report = res_rep.scalar_one_or_none()
+
+            recruiter_interview = {
+                "schedule_id": sched_int.id if sched_int else None,
+                "session_id": sess_id,
+                "round_type": sched_int.round_type if sched_int else (int_sess.interview_type if int_sess else "Technical"),
+                "status": "Completed" if scoring_report else (int_sess.status if int_sess else (sched_int.status if sched_int else "Scheduled")),
+                "scheduled_date": sched_int.scheduled_date.strftime('%B %d, %Y %I:%M %p') if (sched_int and sched_int.scheduled_date) else None,
+                "duration_minutes": sched_int.duration_minutes if sched_int else 30,
+                "technical_score": round(scoring_report.technical_score, 1) if scoring_report else None,
+                "communication_score": round(scoring_report.communication_score, 1) if scoring_report else None,
+                "confidence_score": round(scoring_report.confidence_score, 1) if scoring_report else None,
+                "professionalism_score": round(scoring_report.professionalism_score, 1) if scoring_report else None,
+                "overall_score": round(scoring_report.overall_score, 1) if scoring_report else None,
+                "recommendation": scoring_report.recommendation if scoring_report else None
+            }
+
+        # 3. Check offer status
         res_o = await db.execute(select(OfferLetter).where(OfferLetter.job_application_id == app.id))
         off = res_o.scalar_one_or_none()
         offer_stat = off.status if off else "N/A"
+        offer_details = None
+        if off:
+            offer_details = {
+                "id": off.id,
+                "salary_offered": off.salary_offered,
+                "start_date": off.start_date.strftime('%B %d, %Y') if off.start_date else "ASAP",
+                "offer_letter_text": off.offer_letter_text,
+                "status": off.status
+            }
 
         out.append({
             "id": app.id,
@@ -409,11 +538,16 @@ async def get_my_applications(
             "company_name": job.company_name if job else "SmartHire Corporate",
             "location": job.location if job else "Remote",
             "work_mode": job.work_mode if job else "Remote",
+            "recruiter_contact": job.recruiter_contact or "Hiring Team",
+            "recruiter_email": job.recruiter_email or "recruiter@smarthire.ai",
             "ats_score": round(app.ats_score, 1) if app.ats_score is not None else None,
             "ai_recommendation": app.ai_recommendation or "Pending Review",
             "status": app.status,
-            "interview_status": int_status,
+            "interview_status": recruiter_interview["status"] if recruiter_interview else "Not Scheduled",
             "offer_status": offer_stat,
+            "offer_details": offer_details,
+            "recruiter_assessment": recruiter_assessment,
+            "recruiter_interview": recruiter_interview,
             "applied_at": app.applied_at.isoformat() if app.applied_at else None
         })
     return out

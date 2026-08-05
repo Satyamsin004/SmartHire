@@ -16,6 +16,9 @@ async def run_cleanup():
     async with AsyncSessionLocal() as session:
         report = await CleanupService.execute_full_cleanup(session)
 
+    from app.core.db import engine
+    await engine.dispose()
+
     print("\n---------------------------------------------------------------------------")
     print("                         FINAL CLEANUP REPORT                              ")
     print("---------------------------------------------------------------------------")

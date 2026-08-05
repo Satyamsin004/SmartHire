@@ -6,6 +6,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password?: string, role?: RoleType) => Promise<void>;
+  setAuthSession: (user: User, accessToken: string, refreshToken?: string) => void;
   googleLogin: () => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -35,6 +36,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   }
 
+  const setAuthSession = (userData: User, accessToken: string, refreshToken?: string) => {
+    setToken(accessToken);
+    setUser(userData);
+
+    localStorage.setItem('access_token', accessToken);
+    localStorage.setItem('user_data', JSON.stringify(userData));
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('token', accessToken);
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+    api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+  };
+
   const login = async (email: string, password?: string, role: RoleType = 'candidate') => {
     const pwd = password || 'Password123!';
     const res = await api.post('/auth/login', { email, password: pwd, role });
@@ -42,43 +57,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const accessToken = tokens?.access_token || res.data.access_token;
     const refreshToken = tokens?.refresh_token || res.data.refresh_token;
     
-    setToken(accessToken);
-    setUser(userData);
-
-    // Store under all keys for full consistency
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('user_data', JSON.stringify(userData));
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', accessToken);
-    if (refreshToken) {
-      localStorage.setItem('refresh_token', refreshToken);
-    }
-
-    api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    setAuthSession(userData, accessToken, refreshToken);
+    return userData;
   };
 
-  const googleLogin = async () => {
-    const res = await api.post('/auth/google', {
-      email: 'google_user@smarthire.ai',
-      full_name: 'Google Authenticated User',
-      role: 'candidate'
-    });
-    const { user: userData, tokens } = res.data;
-    const accessToken = tokens?.access_token || res.data.access_token;
-    const refreshToken = tokens?.refresh_token || res.data.refresh_token;
-    
-    setToken(accessToken);
-    setUser(userData);
-
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('user_data', JSON.stringify(userData));
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', accessToken);
-    if (refreshToken) {
-      localStorage.setItem('refresh_token', refreshToken);
-    }
-
-    api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+  const googleLogin = async (role: RoleType = 'candidate') => {
+    // We redirect to backend for real OAuth flow instead of mocking
+    const backendBase = api.defaults.baseURL || '/api/v1';
+    window.location.href = `${backendBase}/auth/google/login?role=${role}`;
   };
 
   const logout = () => {
@@ -92,11 +78,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('user_data');
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('user_data');
+    sessionStorage.removeItem('user');
+    sessionStorage.removeItem('token');
     delete api.defaults.headers.common['Authorization'];
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, googleLogin, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, token, login, setAuthSession, googleLogin, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );
@@ -107,3 +98,4 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };
+

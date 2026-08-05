@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.sql import func, case
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import json
 from datetime import datetime
 
@@ -110,9 +111,13 @@ async def get_candidate_metrics(
             func.count(InterviewSession.id).label("mock_count"),
             func.avg(ScoringReport.overall_score).label("avg_score"),
             func.max(ScoringReport.overall_score).label("best_score"),
-            func.count(case((ScoringReport.overall_score >= 80.0, 1))).label("passed_count")
+            func.count(case(((ScoringReport.overall_score >= 80.0), 1))).label("passed_count"),
+            func.avg(ScoringReport.communication_score).label("avg_comm"),
+            func.avg(ScoringReport.confidence_score).label("avg_conf"),
+            func.avg(ScoringReport.technical_score).label("avg_tech"),
+            func.avg(ScoringReport.professionalism_score).label("avg_prof")
         )
-        .join(ScoringReport, ScoringReport.session_id == InterviewSession.id)
+        .outerjoin(ScoringReport, ScoringReport.session_id == InterviewSession.id)
         .where(InterviewSession.candidate_id == c_id)
     )
     mock_row = res_mock.one()
@@ -120,6 +125,11 @@ async def get_candidate_metrics(
     avg_interview_score = round(float(mock_row.avg_score), 1) if mock_row.avg_score is not None else 0.0
     best_interview_score = round(float(mock_row.best_score), 1) if mock_row.best_score is not None else 0.0
     interviews_passed = mock_row.passed_count or 0
+
+    avg_communication = round(float(mock_row.avg_comm), 1) if mock_row.avg_comm is not None else 0.0
+    avg_confidence = round(float(mock_row.avg_conf), 1) if mock_row.avg_conf is not None else 0.0
+    avg_technical = round(float(mock_row.avg_tech), 1) if mock_row.avg_tech is not None else 0.0
+    avg_professionalism = round(float(mock_row.avg_prof), 1) if mock_row.avg_prof is not None else 0.0
 
     interviews_completed = mock_interviews_completed + recruiter_interviews_completed
 
@@ -272,6 +282,11 @@ async def get_candidate_metrics(
     ]
 
     return {
+        "full_name": user.full_name,
+        "email": user.email,
+        "role": user.role,
+        "profile_image": user.profile_image,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
         "jobs_applied": jobs_applied,
         "saved_jobs": saved_jobs,
         "active_applications": active_applications,
@@ -283,6 +298,10 @@ async def get_candidate_metrics(
         "recruiter_interviews_completed": recruiter_interviews_completed,
         "avg_ats_score": avg_ats_score,
         "avg_interview_score": avg_interview_score,
+        "avg_communication_score": avg_communication,
+        "avg_confidence_score": avg_confidence,
+        "avg_technical_score": avg_technical,
+        "avg_professionalism_score": avg_professionalism,
         "best_interview_score": best_interview_score,
         "readiness_score": readiness_score,
         "total_offers": total_offers,
@@ -322,7 +341,128 @@ async def get_candidate_metrics(
             "interview_score_trend": interview_score_trend,
             "readiness_trend": readiness_trend
         },
-        "recent_activity": recent_activity
+        "recent_activity": recent_activity,
+        "latest_resume": {
+            "id": latest_resume.id,
+            "file_name": latest_resume.file_name,
+            "version": resume_version,
+            "summary": latest_resume.summary,
+            "skills": [{"skill_name": s.skill_name, "category": s.category} for s in (await db.execute(select(ResumeSkill).where(ResumeSkill.resume_id == latest_resume.id))).scalars().all()] if latest_resume else [],
+            "experience_years": latest_resume.experience_years,
+            "education_level": latest_resume.education_level,
+            "projects": latest_resume.projects or [],
+            "certifications": latest_resume.certifications or [],
+            "languages": latest_resume.languages or []
+        } if latest_resume else None
+    }
+
+class UpdateProfileRequest(BaseModel):
+    full_name: Optional[str] = None
+    headline: Optional[str] = None
+    bio: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    preferred_location: Optional[str] = None
+    expected_salary: Optional[str] = None
+    employment_preference: Optional[str] = None
+    work_authorization: Optional[str] = None
+    target_role: Optional[str] = None
+    experience_level: Optional[str] = None
+    github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    languages: Optional[List[str]] = None
+    password: Optional[str] = None
+    interview_preferences: Optional[Dict[str, Any]] = None
+    assessment_preferences: Optional[Dict[str, Any]] = None
+    notification_settings: Optional[Dict[str, Any]] = None
+
+@router.put("/profile", summary="Update Candidate Profile")
+async def update_profile(
+    body: UpdateProfileRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Updates candidate profile fields in PostgreSQL."""
+    res_u = await db.execute(select(User).where(User.id == user.id))
+    db_user = res_u.scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if body.full_name is not None:
+        db_user.full_name = body.full_name
+    if body.password and len(body.password.strip()) >= 6:
+        from app.core.security import get_password_hash
+        db_user.password_hash = get_password_hash(body.password.strip())
+
+    res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+    candidate = res_c.scalar_one_or_none()
+    if not candidate:
+        candidate = Candidate(user_id=user.id)
+        db.add(candidate)
+        await db.flush()
+
+    field_map = {
+        'target_role': body.target_role,
+        'experience_level': body.experience_level,
+        'bio': body.bio,
+        'phone': body.phone,
+        'headline': body.headline,
+        'location': body.location,
+        'preferred_location': body.preferred_location,
+        'expected_salary': body.expected_salary,
+        'employment_preference': body.employment_preference,
+        'work_authorization': body.work_authorization,
+        'github_url': body.github_url,
+        'linkedin_url': body.linkedin_url,
+        'portfolio_url': body.portfolio_url,
+        'interview_preferences': body.interview_preferences,
+        'assessment_preferences': body.assessment_preferences,
+        'notification_settings': body.notification_settings,
+    }
+
+    for field, value in field_map.items():
+        if value is not None and hasattr(candidate, field):
+            setattr(candidate, field, value)
+
+    await db.commit()
+
+    return {"status": "success", "message": "Profile updated successfully."}
+
+@router.get("/profile-full", summary="Get Full Candidate Profile")
+async def get_full_profile(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns comprehensive candidate profile including all editable fields."""
+    res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+    candidate = res_c.scalar_one_or_none()
+
+    return {
+        "id": candidate.id if candidate else user.id,
+        "user_id": user.id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "role": user.role,
+        "profile_image": user.profile_image,
+        "target_role": getattr(candidate, 'target_role', None) if candidate else None,
+        "experience_level": getattr(candidate, 'experience_level', None) if candidate else None,
+        "bio": getattr(candidate, 'bio', None) if candidate else None,
+        "phone": getattr(candidate, 'phone', None) if candidate else None,
+        "headline": getattr(candidate, 'headline', None) if candidate else None,
+        "location": getattr(candidate, 'location', None) if candidate else None,
+        "preferred_location": getattr(candidate, 'preferred_location', None) if candidate else None,
+        "expected_salary": getattr(candidate, 'expected_salary', None) if candidate else None,
+        "employment_preference": getattr(candidate, 'employment_preference', None) if candidate else None,
+        "work_authorization": getattr(candidate, 'work_authorization', None) if candidate else None,
+        "github_url": getattr(candidate, 'github_url', None) if candidate else None,
+        "linkedin_url": getattr(candidate, 'linkedin_url', None) if candidate else None,
+        "portfolio_url": getattr(candidate, 'portfolio_url', None) if candidate else None,
+        "languages": getattr(candidate, 'languages', None) if candidate else None,
+        "interview_preferences": getattr(candidate, 'interview_preferences', {}) if candidate else {},
+        "assessment_preferences": getattr(candidate, 'assessment_preferences', {}) if candidate else {},
+        "notification_settings": getattr(candidate, 'notification_settings', {}) if candidate else {},
+        "status": candidate.status if candidate else "Registered"
     }
 
 @router.get("/admin-only", summary="Admin Only RBAC Protected Endpoint")
@@ -334,3 +474,4 @@ async def get_admin_dashboard(user: User = Depends(require_role(["admin"]))):
 async def get_recruiter_dashboard(user: User = Depends(require_role(["recruiter", "admin"]))):
     """Protected RBAC endpoint accessible ONLY by Recruiter and Admin roles."""
     return {"message": f"Welcome Recruiter {user.full_name}. You have access to talent requisitions."}
+

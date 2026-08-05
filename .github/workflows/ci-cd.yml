@@ -22,7 +22,7 @@ jobs:
       - name: Run Pytest Test Suite
         run: |
           cd backend
-          python -m pytest || true
+          PYTHONPATH=. python -m pytest app/tests/
 
   frontend-build:
     runs-on: ubuntu-latest

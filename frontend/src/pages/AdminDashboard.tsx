@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Navbar } from '../components/layout/Navbar';
-import { Sidebar } from '../components/layout/Sidebar';
 import { Shield, Trash2, Database, Cpu, CheckCircle2, RefreshCw, Lock, UserCheck, Users, Briefcase, FileText, Video, Award, Activity, AlertTriangle, Search, Check, X, KeyRound, Ban, Eye } from 'lucide-react';
 import api from '../services/api';
 
@@ -96,11 +94,7 @@ export const AdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-brand-bg flex text-brand-ink font-sans">
-      <Sidebar />
-
-      <div className="flex-1 flex flex-col min-w-0">
-        <Navbar />
+    <>
 
         <main className="p-6 lg:p-10 max-w-7xl mx-auto w-full space-y-8">
           
@@ -134,15 +128,15 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {cleanupMessage && (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-indigo-600" />
               <span>{cleanupMessage}</span>
             </div>
           )}
 
           {actionSuccessMsg && (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-indigo-600" />
               <span>{actionSuccessMsg}</span>
             </div>
           )}
@@ -196,7 +190,7 @@ export const AdminDashboard: React.FC = () => {
             <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="card-luxury p-5 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center font-bold">
                     <Users className="w-6 h-6" />
                   </div>
                   <div>
@@ -252,7 +246,7 @@ export const AdminDashboard: React.FC = () => {
 
                 <div className="card-luxury p-6 space-y-2">
                   <span className="text-xs font-extrabold text-slate-400 uppercase">System Security Status</span>
-                  <div className="text-3xl font-black text-emerald-700 flex items-center gap-2">
+                  <div className="text-3xl font-black text-indigo-700 flex items-center gap-2">
                     <Shield className="w-7 h-7" />
                     <span>Protected</span>
                   </div>
@@ -302,13 +296,13 @@ export const AdminDashboard: React.FC = () => {
                           </td>
                           <td className="py-4 px-4 text-slate-600">{c.target_role || 'Software Engineer'}</td>
                           <td className="py-4 px-4">
-                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold ${c.resume_status === 'Uploaded' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold ${c.resume_status === 'Uploaded' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-500'}`}>
                               {c.resume_status}
                             </span>
                           </td>
                           <td className="py-4 px-4 text-slate-600">{c.applications_count} Submitted</td>
                           <td className="py-4 px-4">
-                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase ${c.is_active ? 'bg-emerald-700 text-white' : 'bg-rose-700 text-white'}`}>
+                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase ${c.is_active ? 'bg-indigo-700 text-white' : 'bg-rose-700 text-white'}`}>
                               {c.is_active ? 'Active' : 'Blocked'}
                             </span>
                           </td>
@@ -326,7 +320,7 @@ export const AdminDashboard: React.FC = () => {
                                 <button
                                   onClick={() => handleUserAction(c.user_id, 'unblock')}
                                   title="Unblock Account"
-                                  className="p-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                  className="p-2 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                                 >
                                   <Check className="w-4 h-4" />
                                 </button>
@@ -375,12 +369,12 @@ export const AdminDashboard: React.FC = () => {
                         <td className="py-4 px-4 text-slate-700 font-extrabold">{r.company_name}</td>
                         <td className="py-4 px-4 text-slate-600">{r.jobs_posted} Requisitions</td>
                         <td className="py-4 px-4">
-                          <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase ${r.is_verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                          <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase ${r.is_verified ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-900'}`}>
                             {r.is_verified ? 'Verified Recruiter' : 'Pending Verification'}
                           </span>
                         </td>
                         <td className="py-4 px-4">
-                          <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase ${r.is_active ? 'bg-emerald-700 text-white' : 'bg-rose-700 text-white'}`}>
+                          <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase ${r.is_active ? 'bg-indigo-700 text-white' : 'bg-rose-700 text-white'}`}>
                             {r.is_active ? 'Active' : 'Blocked'}
                           </span>
                         </td>
@@ -415,7 +409,7 @@ export const AdminDashboard: React.FC = () => {
                               <button
                                 onClick={() => handleUserAction(r.user_id, 'unblock')}
                                 title="Unblock Account"
-                                className="p-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                className="p-2 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                               >
                                 <Check className="w-4 h-4" />
                               </button>
@@ -471,10 +465,10 @@ export const AdminDashboard: React.FC = () => {
                   <h4 className="text-sm font-extrabold text-brand-ink">PostgreSQL Engine</h4>
                 </div>
                 <div className="space-y-2 text-xs font-semibold text-slate-600">
-                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-emerald-700">{dbStatus}</span></div>
+                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-indigo-700">{dbStatus}</span></div>
                   <div className="flex justify-between"><span>Domain Tables:</span><span className="font-extrabold text-brand-ink">23 Active</span></div>
                   <div className="flex justify-between"><span>Connection Pool:</span><span className="font-extrabold text-brand-ink">Async SQLAlchemy (20 max)</span></div>
-                  <div className="flex justify-between"><span>Integrity State:</span><span className="font-extrabold text-emerald-700">0 Orphan Foreign Keys</span></div>
+                  <div className="flex justify-between"><span>Integrity State:</span><span className="font-extrabold text-indigo-700">0 Orphan Foreign Keys</span></div>
                 </div>
               </div>
 
@@ -484,10 +478,10 @@ export const AdminDashboard: React.FC = () => {
                   <h4 className="text-sm font-extrabold text-brand-ink">Gemini 1.5 Pro AI Engine</h4>
                 </div>
                 <div className="space-y-2 text-xs font-semibold text-slate-600">
-                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-emerald-700">{aiStatus}</span></div>
+                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-indigo-700">{aiStatus}</span></div>
                   <div className="flex justify-between"><span>Inference Model:</span><span className="font-extrabold text-brand-ink">Gemini 1.5 Pro / Flash</span></div>
-                  <div className="flex justify-between"><span>Question Deduplication:</span><span className="font-extrabold text-emerald-700">Active</span></div>
-                  <div className="flex justify-between"><span>Multimodal Vision Engine:</span><span className="font-extrabold text-emerald-700">Active</span></div>
+                  <div className="flex justify-between"><span>Question Deduplication:</span><span className="font-extrabold text-indigo-700">Active</span></div>
+                  <div className="flex justify-between"><span>Multimodal Vision Engine:</span><span className="font-extrabold text-indigo-700">Active</span></div>
                 </div>
               </div>
 
@@ -497,30 +491,30 @@ export const AdminDashboard: React.FC = () => {
                   <h4 className="text-sm font-extrabold text-brand-ink">JWT & OAuth Authentication</h4>
                 </div>
                 <div className="space-y-2 text-xs font-semibold text-slate-600">
-                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-emerald-700">{authStatus}</span></div>
+                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-indigo-700">{authStatus}</span></div>
                   <div className="flex justify-between"><span>Algorithm:</span><span className="font-extrabold text-brand-ink">HS256 Secret Encryption</span></div>
                   <div className="flex justify-between"><span>Access Token Lifetime:</span><span className="font-extrabold text-brand-ink">60 Minutes</span></div>
-                  <div className="flex justify-between"><span>Google OAuth Fallback:</span><span className="font-extrabold text-emerald-700">Configured</span></div>
+                  <div className="flex justify-between"><span>Google OAuth Fallback:</span><span className="font-extrabold text-indigo-700">Configured</span></div>
                 </div>
               </div>
 
               <div className="card-luxury p-6 space-y-4">
                 <div className="flex items-center gap-3 border-b border-stoneBorder pb-3">
-                  <Activity className="w-6 h-6 text-emerald-600" />
+                  <Activity className="w-6 h-6 text-indigo-600" />
                   <h4 className="text-sm font-extrabold text-brand-ink">File Storage & Upload Engine</h4>
                 </div>
                 <div className="space-y-2 text-xs font-semibold text-slate-600">
-                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-emerald-700">{storageStatus}</span></div>
+                  <div className="flex justify-between"><span>Status:</span><span className="font-extrabold text-indigo-700">{storageStatus}</span></div>
                   <div className="flex justify-between"><span>Upload Directory:</span><span className="font-extrabold text-brand-ink">/static/uploads</span></div>
                   <div className="flex justify-between"><span>Resume Format:</span><span className="font-extrabold text-brand-ink">PDF Strict Sanitation</span></div>
-                  <div className="flex justify-between"><span>Storage Limit:</span><span className="font-extrabold text-emerald-700">10 MB Per File</span></div>
+                  <div className="flex justify-between"><span>Storage Limit:</span><span className="font-extrabold text-indigo-700">10 MB Per File</span></div>
                 </div>
               </div>
             </div>
           )}
 
         </main>
-      </div>
-    </div>
+      </>
   );
 };
+

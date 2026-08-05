@@ -6,13 +6,17 @@ interface JobDetailsModalProps {
   onClose: () => void;
   job: any;
   onEdit?: (job: any) => void;
+  onApply?: (job: any) => void;
+  isApplied?: boolean;
 }
 
 export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
   isOpen,
   onClose,
   job,
-  onEdit
+  onEdit,
+  onApply,
+  isApplied = false
 }) => {
   if (!isOpen || !job) return null;
 
@@ -36,7 +40,7 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
             </div>
             <div>
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                job.status === 'Published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                job.status === 'Published' ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-800'
               }`}>
                 {job.status || 'Published'} Requisition
               </span>
@@ -125,7 +129,7 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
           {job.benefits && (
             <div>
               <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Benefits & Perks</h3>
-              <p className="text-xs text-brand-ink font-medium bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-emerald-900">
+              <p className="text-xs text-brand-ink font-medium bg-indigo-50 border border-indigo-200 p-4 rounded-2xl text-indigo-900">
                 {job.benefits}
               </p>
             </div>
@@ -147,6 +151,21 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
                 Edit Requisition Specs
               </button>
             )}
+            {onApply && (
+              isApplied ? (
+                <span className="py-2.5 px-6 rounded-2xl bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-xs flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  Applied to Position
+                </span>
+              ) : (
+                <button
+                  onClick={() => { onClose(); onApply(job); }}
+                  className="py-2.5 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs transition-all shadow-luxury"
+                >
+                  Apply Now
+                </button>
+              )
+            )}
           </div>
 
         </div>
@@ -155,3 +174,4 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
     </div>
   );
 };
+

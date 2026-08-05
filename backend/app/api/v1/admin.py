@@ -415,7 +415,7 @@ async def get_system_health(
     })
 
     # 6. Gemini AI API
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY_1")
     services.append({
         "name": "Gemini API",
         "status": "Healthy" if gemini_key else "Warning",
@@ -455,7 +455,7 @@ async def get_api_monitoring(
     user: User = Depends(require_role(["admin", "recruiter", "candidate"]))
 ):
     """Monitors connectivity, latency, and status of external APIs without exposing keys."""
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY_1")
     google_id = os.environ.get("GOOGLE_CLIENT_ID")
     
     return {
@@ -533,7 +533,7 @@ async def get_health_check(
     except Exception:
         db_status = "Offline"
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY_1")
     ai_status = "Active • Key Configured" if gemini_key else "Fallback Heuristics"
 
     return {

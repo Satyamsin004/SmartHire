@@ -8,12 +8,13 @@ import { LoginLandingIllustration } from '../components/illustrations/Illustrati
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, setAuthSession } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
   const [role, setRole] = useState<'candidate' | 'recruiter' | 'admin'>('candidate');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -22,8 +23,10 @@ export const LoginPage: React.FC = () => {
   
   // Persistent Error State - NEVER clears automatically on re-render or loading end
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; confirmPassword?: string; fullName?: string }>({});
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
 
   // Forgot Password Modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -48,27 +51,40 @@ export const LoginPage: React.FC = () => {
           return;
         }
 
-        localStorage.setItem('access_token', tokenParam);
-        localStorage.setItem('user_data', JSON.stringify(userObj));
-        localStorage.setItem('user', JSON.stringify(userObj));
-        localStorage.setItem('token', tokenParam);
-        api.defaults.headers.common['Authorization'] = `Bearer ${tokenParam}`;
+        setAuthSession(userObj, tokenParam);
 
         setSuccessToast(`Welcome back, ${userObj.full_name || 'User'}!`);
         // 2.5 seconds visible toast before redirect
         setTimeout(() => {
-          if (userObj.role === 'recruiter') navigate('/recruiter');
-          else if (userObj.role === 'admin') navigate('/admin');
-          else navigate('/dashboard');
-          window.location.reload();
-        }, 2500);
+          if (userObj.role === 'recruiter') navigate('/recruiter', { replace: true });
+          else if (userObj.role === 'admin') navigate('/admin', { replace: true });
+          else navigate('/dashboard', { replace: true });
+        }, 1500);
       } catch (e) {
         console.error('Failed to parse Google OAuth user payload:', e);
       }
     }
   }, [location.search]);
 
-  // Input Change Handlers - Clear Error ONLY when user types!
+  // Password Strength Calculation Helper
+  const getPasswordStrength = (pwd: string): { label: 'Weak' | 'Medium' | 'Strong'; color: string; percent: number } => {
+    if (!pwd) return { label: 'Weak', color: 'bg-rose-500', percent: 0 };
+    if (pwd.length < 8) return { label: 'Weak', color: 'bg-rose-500', percent: 33 };
+    const hasLetters = /[a-zA-Z]/.test(pwd);
+    const hasNumbers = /[0-9]/.test(pwd);
+    const hasSpecial = /[^a-zA-Z0-9]/.test(pwd);
+    const hasUpper = /[A-Z]/.test(pwd);
+
+    if (pwd.length >= 8 && hasLetters && hasNumbers && hasSpecial && hasUpper) {
+      return { label: 'Strong', color: 'bg-emerald-500', percent: 100 };
+    }
+    if (pwd.length >= 8 && (hasLetters && hasNumbers)) {
+      return { label: 'Medium', color: 'bg-amber-500', percent: 66 };
+    }
+    return { label: 'Weak', color: 'bg-rose-500', percent: 33 };
+  };
+
+  // Input Change Handlers - Clear ONLY the field error being edited
   const handleEmailChange = (val: string) => {
     setEmail(val);
     setError(null);
@@ -81,6 +97,12 @@ export const LoginPage: React.FC = () => {
     setFieldErrors(prev => ({ ...prev, password: undefined }));
   };
 
+  const handleConfirmPasswordChange = (val: string) => {
+    setConfirmPassword(val);
+    setError(null);
+    setFieldErrors(prev => ({ ...prev, confirmPassword: undefined }));
+  };
+
   const handleFullNameChange = (val: string) => {
     setFullName(val);
     setError(null);
@@ -89,7 +111,7 @@ export const LoginPage: React.FC = () => {
 
   // Client-Side Validation
   const validateForm = (): boolean => {
-    const errs: { email?: string; password?: string; fullName?: string } = {};
+    const errs: { email?: string; password?: string; confirmPassword?: string; fullName?: string } = {};
     let isValid = true;
 
     if (isSignup && !fullName.trim()) {
@@ -101,7 +123,7 @@ export const LoginPage: React.FC = () => {
       isValid = false;
     } else {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (!emailRegex.test(email.trim())) {
         errs.email = 'Please enter a valid email address.';
         isValid = false;
       }
@@ -110,6 +132,14 @@ export const LoginPage: React.FC = () => {
     if (!password) {
       errs.password = 'Password is required.';
       isValid = false;
+    } else if (password.length < 8) {
+      errs.password = 'Password must contain at least 8 characters.';
+      isValid = false;
+    }
+
+    if (isSignup && password !== confirmPassword) {
+      errs.confirmPassword = 'Passwords do not match.';
+      isValid = false;
     }
 
     setFieldErrors(errs);
@@ -117,6 +147,7 @@ export const LoginPage: React.FC = () => {
     if (!isValid) {
       if (errs.email) setError(errs.email);
       else if (errs.password) setError(errs.password);
+      else if (errs.confirmPassword) setError(errs.confirmPassword);
       else if (errs.fullName) setError(errs.fullName);
     }
 
@@ -125,6 +156,7 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSuccessMsg(null);
 
     if (!validateForm()) return;
 
@@ -133,14 +165,14 @@ export const LoginPage: React.FC = () => {
     try {
       if (isSignup) {
         await api.post('/auth/register', {
-          email,
+          email: email.trim(),
           password,
-          full_name: fullName,
+          full_name: fullName.trim(),
           role,
         });
       }
 
-      const loginRes = await api.post('/auth/login', { email, password });
+      const loginRes = await api.post('/auth/login', { email: email.trim(), password });
       const { user, tokens } = loginRes.data;
 
       // Role Mismatch Validation
@@ -154,26 +186,21 @@ export const LoginPage: React.FC = () => {
       const accessToken = tokens?.access_token || loginRes.data.access_token;
       const refreshToken = tokens?.refresh_token || loginRes.data.refresh_token;
 
-      localStorage.setItem('access_token', accessToken);
-      if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
-      localStorage.setItem('user_data', JSON.stringify(user));
-      localStorage.setItem('user', JSON.stringify(user));
-      localStorage.setItem('token', accessToken);
-      api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+      setAuthSession(user, accessToken, refreshToken);
 
+      setError(null);
+      setSuccessMsg("Login successful.");
       setSuccessToast(`Welcome back, ${user.full_name || 'User'}!`);
 
-      // Keep toast visible for 2.5 seconds before redirecting
       setTimeout(() => {
         if (user.role === 'recruiter') {
-          navigate('/recruiter');
+          navigate('/recruiter', { replace: true });
         } else if (user.role === 'admin') {
-          navigate('/admin');
+          navigate('/admin', { replace: true });
         } else {
-          navigate('/dashboard');
+          navigate('/dashboard', { replace: true });
         }
-        window.location.reload();
-      }, 2500);
+      }, 1000);
 
     } catch (err: any) {
       console.error('Authentication Error:', err);
@@ -183,11 +210,11 @@ export const LoginPage: React.FC = () => {
       if (status === 401) {
         setError('Invalid email or password.');
       } else if (status === 404) {
-        setError('User account not found.');
+        setError('Account not found. Please register first.');
+      } else if (status === 409) {
+        setError(isSignup ? 'An account with this email already exists.' : 'Role mismatch. Please log in using the correct portal workspace.');
       } else if (status === 403) {
         setError('Your account has been blocked. Please contact support.');
-      } else if (status === 409) {
-        setError('Role mismatch. Please log in using the correct portal workspace.');
       } else if (status === 423) {
         setError('Account temporarily locked due to multiple failed login attempts.');
       } else if (status === 429) {
@@ -237,7 +264,7 @@ export const LoginPage: React.FC = () => {
       
       {/* Success Toast Notification Banner - Visible for 2.5s */}
       {successToast && (
-        <div className="fixed top-6 right-6 z-50 p-4 rounded-2xl bg-emerald-800 text-white shadow-2xl border border-emerald-500 flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-6 right-6 z-50 p-4 rounded-2xl bg-indigo-600 text-white shadow-2xl border border-indigo-400 flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
           <CheckCircle2 className="w-5 h-5 text-brand-accent shrink-0" />
           <span className="text-xs font-extrabold">{successToast}</span>
         </div>
@@ -245,7 +272,7 @@ export const LoginPage: React.FC = () => {
 
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 bg-white rounded-5xl shadow-floating border border-stoneBorder overflow-hidden min-h-[700px]">
         
-        {/* Left Side: Deep Emerald Storytelling Hero */}
+        {/* Left Side: Deep indigo Storytelling Hero */}
         <div className="lg:col-span-6 bg-gradient-to-br from-brand-primary via-sb-800 to-brand-ink p-8 lg:p-12 text-brand-bg flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-brand-secondary/20 rounded-full blur-3xl" />
           
@@ -311,6 +338,14 @@ export const LoginPage: React.FC = () => {
               </button>
             </div>
 
+            {/* Success Banner Message */}
+            {successMsg && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2.5 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
             {/* Persistent Banner Error Message (Stays visible until input edit) */}
             {error && (
               <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2.5 animate-in fade-in">
@@ -318,6 +353,7 @@ export const LoginPage: React.FC = () => {
                 <span>{error}</span>
               </div>
             )}
+
 
             {/* Role Selector Cards */}
             <div>
@@ -415,7 +451,46 @@ export const LoginPage: React.FC = () => {
                 {fieldErrors.password && (
                   <p className="text-[11px] font-bold text-rose-600 mt-1">{fieldErrors.password}</p>
                 )}
+                {isSignup && password.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                      <span>Password Strength</span>
+                      <span className={getPasswordStrength(password).label === 'Strong' ? 'text-emerald-600' : getPasswordStrength(password).label === 'Medium' ? 'text-amber-600' : 'text-rose-600'}>
+                        {getPasswordStrength(password).label}
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${getPasswordStrength(password).color}`}
+                        style={{ width: `${getPasswordStrength(password).percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {isSignup && (
+                <div>
+                  <label className="block text-xs font-bold text-brand-ink mb-1.5">Confirm Password</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      disabled={isFormDisabled}
+                      value={confirmPassword}
+                      onChange={(e) => handleConfirmPasswordChange(e.target.value)}
+                      placeholder="••••••••••••"
+                      className={`w-full bg-cream-100 border rounded-2xl pl-10 pr-4 py-3 text-xs font-bold text-brand-ink focus:outline-none transition-all ${
+                        fieldErrors.confirmPassword ? 'border-rose-500 bg-rose-50/30' : 'border-stoneBorder focus:border-brand-primary'
+                      }`}
+                    />
+                  </div>
+                  {fieldErrors.confirmPassword && (
+                    <p className="text-[11px] font-bold text-rose-600 mt-1">{fieldErrors.confirmPassword}</p>
+                  )}
+                </div>
+              )}
+
 
               {!isSignup && (
                 <div className="flex items-center gap-2">
@@ -508,7 +583,7 @@ export const LoginPage: React.FC = () => {
             </p>
 
             {forgotMsg && (
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+              <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold">
                 {forgotMsg}
               </div>
             )}
@@ -550,3 +625,4 @@ export const LoginPage: React.FC = () => {
     </div>
   );
 };
+

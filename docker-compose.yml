@@ -1,12 +1,13 @@
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:18-alpine
     container_name: smarthire_postgres
     restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgrespassword2026
       POSTGRES_DB: smarthire_db
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
@@ -59,7 +60,17 @@ services:
       - POSTGRES_PASSWORD=postgrespassword2026
       - POSTGRES_DB=smarthire_db
       - REDIS_HOST=redis
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY_1=${GEMINI_API_KEY_1}
+      - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
+      - GEMINI_API_KEY_3=${GEMINI_API_KEY_3}
+      - GEMINI_API_KEY_4=${GEMINI_API_KEY_4}
+      - OPENROUTER_API_KEY_1=${OPENROUTER_API_KEY_1}
+      - OPENROUTER_API_KEY_2=${OPENROUTER_API_KEY_2}
+      - GROQ_API_KEY_1=${GROQ_API_KEY_1}
+      - GROQ_API_KEY_2=${GROQ_API_KEY_2}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL}
+      - GROQ_MODEL=${GROQ_MODEL}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
@@ -81,7 +92,7 @@ services:
     container_name: smarthire_frontend
     restart: always
     ports:
-      - "3000:80"
+      - "3001:80"
     depends_on:
       - backend
 

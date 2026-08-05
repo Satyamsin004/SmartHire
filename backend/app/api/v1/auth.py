@@ -30,11 +30,21 @@ async def register(user_in: UserRegister, db: AsyncSession = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse, summary="User Login")
 async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
     """Authenticates credentials, updates last_login, and returns Access (15m) + Refresh (7d) JWT tokens."""
-    auth_service = AuthService(db)
-    return await auth_service.authenticate_user(
-        email=user_in.email,
-        password=user_in.password
-    )
+    try:
+        auth_service = AuthService(db)
+        return await auth_service.authenticate_user(
+            email=user_in.email,
+            password=user_in.password
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.error(f"[AUTH LOGIN FAILURE] Exception during user authentication for {user_in.email}: {type(e).__name__} - {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication server error: {type(e).__name__} - {str(e)}"
+        )
 
 @router.post("/refresh", summary="Regenerate Access Token")
 async def refresh_token(body: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):

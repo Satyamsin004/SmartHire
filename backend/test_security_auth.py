@@ -1,5 +1,9 @@
 import requests
 import time
+import sys
+import io
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 BASE_URL = "http://localhost:8000/api/v1"
 

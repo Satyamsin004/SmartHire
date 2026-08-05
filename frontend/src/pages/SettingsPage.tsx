@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Navbar } from '../components/layout/Navbar';
-import { Sidebar } from '../components/layout/Sidebar';
 import { SettingsSecurityIllustration } from '../components/illustrations/Illustrations';
 import { Settings, Shield, User, Save, Lock } from 'lucide-react';
 import api from '../services/api';
@@ -34,11 +32,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-brand-bg flex text-brand-ink">
-      <Sidebar />
-
-      <div className="flex-1 flex flex-col min-w-0">
-        <Navbar />
+    <>
 
         <main className="p-6 lg:p-10 max-w-7xl mx-auto w-full space-y-8">
           
@@ -61,7 +55,7 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           {saved && (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold">
               Account settings updated successfully.
             </div>
           )}
@@ -107,7 +101,7 @@ export const SettingsPage: React.FC = () => {
           </div>
 
         </main>
-      </div>
-    </div>
+      </>
   );
 };
+

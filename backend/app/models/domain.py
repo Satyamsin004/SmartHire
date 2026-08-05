@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, Integer, Float, ForeignKey, JSON, Enum, Text
+    Column, String, Boolean, DateTime, Integer, Float, ForeignKey, JSON, Enum, Text, Index, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.core.db import Base
@@ -64,6 +64,20 @@ class Candidate(Base):
     status = Column(String(50), default="Registered")
     recruiter_notes = Column(Text, nullable=True)
     rating = Column(Float, nullable=True)
+    headline = Column(String(255), nullable=True)
+    location = Column(String(255), nullable=True)
+    preferred_location = Column(String(255), nullable=True)
+    expected_salary = Column(String(100), nullable=True)
+    employment_preference = Column(String(100), nullable=True)
+    work_authorization = Column(String(100), nullable=True)
+    github_url = Column(String(500), nullable=True)
+    linkedin_url = Column(String(500), nullable=True)
+    portfolio_url = Column(String(500), nullable=True)
+    languages = Column(JSON, nullable=True)
+    interview_preferences = Column(JSON, default=dict)
+    assessment_preferences = Column(JSON, default=dict)
+    notification_settings = Column(JSON, default=dict)
+    resume_url = Column(String(500), nullable=True)
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -111,6 +125,7 @@ class Resume(Base):
     file_path = Column(String(500), nullable=True)
     raw_text = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
+    objective = Column(Text, nullable=True)
     ats_score = Column(Float, nullable=True)
     keyword_density = Column(JSON, default=dict)
     missing_skills = Column(JSON, default=list)
@@ -120,23 +135,156 @@ class Resume(Base):
     experience_years = Column(String(50), nullable=True)
     education_level = Column(String(100), nullable=True)
     version = Column(Integer, default=1)
+    is_active = Column(Boolean, default=True, index=True)
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     candidate = relationship("Candidate", back_populates="resumes")
     skills = relationship("ResumeSkill", back_populates="resume", cascade="all, delete-orphan")
+    educations = relationship("ResumeEducation", back_populates="resume", cascade="all, delete-orphan")
+    experiences = relationship("ResumeExperience", back_populates="resume", cascade="all, delete-orphan")
+    internships = relationship("ResumeInternship", back_populates="resume", cascade="all, delete-orphan")
+    parsed_projects = relationship("ResumeProject", back_populates="resume", cascade="all, delete-orphan")
+    parsed_certs = relationship("ResumeCertification", back_populates="resume", cascade="all, delete-orphan")
+    parsed_achievements = relationship("ResumeAchievement", back_populates="resume", cascade="all, delete-orphan")
+    parsed_languages = relationship("ResumeLanguage", back_populates="resume", cascade="all, delete-orphan")
+    ats_record = relationship("ResumeATS", back_populates="resume", uselist=False, cascade="all, delete-orphan")
 
 class ResumeSkill(Base):
     __tablename__ = "resume_skills"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    resume_id = Column(String(36), ForeignKey("resumes.id"), index=True, nullable=False)
     skill_name = Column(String(100), nullable=False)
-    category = Column(String(50), default="Technical") # Technical, Soft, Tool
+    category = Column(String(50), default="Technical") # Technical, Soft, Tool, Language, Database, Cloud
     proficiency = Column(String(50), default="Expert")
 
     resume = relationship("Resume", back_populates="skills")
+
+class ResumeEducation(Base):
+    __tablename__ = "resume_educations"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), index=True, nullable=False)
+    degree = Column(String(255), nullable=True)
+    college = Column(String(255), nullable=True)
+    university = Column(String(255), nullable=True)
+    board = Column(String(255), nullable=True)
+    cgpa = Column(String(50), nullable=True)
+    percentage = Column(String(50), nullable=True)
+    year = Column(String(50), nullable=True)
+    branch = Column(String(100), nullable=True)
+    specialization = Column(String(100), nullable=True)
+
+    resume = relationship("Resume", back_populates="educations")
+
+class ResumeExperience(Base):
+    __tablename__ = "resume_experiences"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    company_name = Column(String(255), nullable=True)
+    job_title = Column(String(255), nullable=True)
+    employment_type = Column(String(100), default="Full-Time")
+    location = Column(String(255), nullable=True)
+    joining_date = Column(String(50), nullable=True)
+    ending_date = Column(String(50), nullable=True)
+    is_current = Column(Boolean, default=False)
+    duration = Column(String(50), nullable=True)
+    responsibilities = Column(JSON, default=list)
+    achievements = Column(JSON, default=list)
+    technologies = Column(JSON, default=list)
+    projects_worked = Column(JSON, default=list)
+
+    resume = relationship("Resume", back_populates="experiences")
+
+class ResumeInternship(Base):
+    __tablename__ = "resume_internships"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    company = Column(String(255), nullable=True)
+    role = Column(String(255), nullable=True)
+    duration = Column(String(100), nullable=True)
+    description = Column(Text, nullable=True)
+    skills_used = Column(JSON, default=list)
+    projects = Column(JSON, default=list)
+    technologies = Column(JSON, default=list)
+
+    resume = relationship("Resume", back_populates="internships")
+
+class ResumeProject(Base):
+    __tablename__ = "resume_projects"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    project_name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    role = Column(String(255), nullable=True)
+    responsibilities = Column(JSON, default=list)
+    technologies = Column(JSON, default=list)
+    programming_languages = Column(JSON, default=list)
+    frameworks = Column(JSON, default=list)
+    database = Column(String(100), nullable=True)
+    cloud = Column(String(100), nullable=True)
+    github_link = Column(String(500), nullable=True)
+    live_link = Column(String(500), nullable=True)
+    achievements = Column(JSON, default=list)
+
+    resume = relationship("Resume", back_populates="parsed_projects")
+
+class ResumeCertification(Base):
+    __tablename__ = "resume_certifications"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    certificate_name = Column(String(255), nullable=False)
+    organization = Column(String(255), nullable=True)
+    issue_date = Column(String(50), nullable=True)
+    credential_id = Column(String(255), nullable=True)
+    verification_url = Column(String(500), nullable=True)
+
+    resume = relationship("Resume", back_populates="parsed_certs")
+
+class ResumeAchievement(Base):
+    __tablename__ = "resume_achievements"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    category = Column(String(100), default="Award") # Hackathon, Award, Competition, Open Source, Patent, Research
+    description = Column(Text, nullable=True)
+
+    resume = relationship("Resume", back_populates="parsed_achievements")
+
+class ResumeLanguage(Base):
+    __tablename__ = "resume_languages"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    language_name = Column(String(100), nullable=False)
+    proficiency = Column(String(50), default="Fluent")
+
+    resume = relationship("Resume", back_populates="parsed_languages")
+
+class ResumeATS(Base):
+    __tablename__ = "resume_ats"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), unique=True, nullable=False)
+    ats_score = Column(Float, default=85.0)
+    keyword_match_percentage = Column(Float, default=80.0)
+    technical_keywords = Column(JSON, default=list)
+    domain_keywords = Column(JSON, default=list)
+    missing_keywords = Column(JSON, default=list)
+    repeated_skills = Column(JSON, default=dict)
+    strengths = Column(JSON, default=list)
+    weaknesses = Column(JSON, default=list)
+    formatting_issues = Column(JSON, default=list)
+    suggestions = Column(JSON, default=list)
+
+    resume = relationship("Resume", back_populates="ats_record")
 
 class JobDescription(Base):
     __tablename__ = "job_descriptions"
@@ -199,6 +347,7 @@ class InterviewSession(Base):
     question_count = Column(Integer, default=6)
     interview_type = Column(String(50), default="Recruiter")
     config_json = Column(JSON, default=dict)
+    fsm_state = Column(String(50), default="WAITING_FOR_QUESTION")
     status = Column(String(50), default="completed") # scheduled, active, completed
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
@@ -292,17 +441,33 @@ class ScoringReport(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False)
-    communication_score = Column(Float, default=88.0) # 30% weight
-    confidence_score = Column(Float, default=90.0)    # 25% weight
-    technical_score = Column(Float, default=82.0)     # 30% weight
-    professionalism_score = Column(Float, default=85.0) # 15% weight
-    grammar_score = Column(Float, default=90.0)
-    problem_solving_score = Column(Float, default=85.0)
-    overall_score = Column(Float, default=86.15)      # Comm*0.3 + Conf*0.25 + Tech*0.3 + Prof*0.15
+    communication_score = Column(Float, default=82.0)
+    confidence_score = Column(Float, default=80.0)
+    technical_score = Column(Float, default=85.0)
+    professionalism_score = Column(Float, default=88.0)
+    grammar_score = Column(Float, default=85.0)
+    problem_solving_score = Column(Float, default=84.0)
+    behavior_score = Column(Float, default=82.0)
+    leadership_score = Column(Float, default=78.0)
+    overall_score = Column(Float, default=83.5)
     recommendation = Column(String(50), default="Shortlist")
-    strengths = Column(JSON, default=lambda: ["Exceptional technical depth in system architecture", "Clear articulation without excessive filler words", "Maintained consistent eye contact throughout"])
-    weaknesses = Column(JSON, default=lambda: ["Could detail GraphQL caching strategies further", "Slight hesitation during scenario questions"])
-    improvement_plan = Column(JSON, default=lambda: ["Review Redis pub/sub patterns", "Practice micro-frontend architecture scenarios"])
+    overall_summary = Column(Text, nullable=True)
+    technical_analysis = Column(Text, nullable=True)
+    communication_analysis = Column(Text, nullable=True)
+    behavioral_analysis = Column(Text, nullable=True)
+    grammar_analysis = Column(Text, nullable=True)
+    confidence_analysis = Column(Text, nullable=True)
+    strengths = Column(JSON, default=lambda: [])
+    weaknesses = Column(JSON, default=lambda: [])
+    improvement_plan = Column(JSON, default=lambda: [])
+    learning_resources = Column(JSON, default=lambda: [])
+    communication_metrics = Column(JSON, default=dict)
+    confidence_metrics = Column(JSON, default=dict)
+    technical_metrics = Column(JSON, default=dict)
+    professionalism_metrics = Column(JSON, default=dict)
+    missing_topics = Column(JSON, default=list)
+    ideal_answers = Column(JSON, default=list)
+    practice_suggestions = Column(JSON, default=list)
     pdf_url = Column(String(500), nullable=True)
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
@@ -467,5 +632,144 @@ class ResumeView(Base):
     environment = Column(String(50), default="PRODUCTION", index=True)
 
     candidate = relationship("Candidate", back_populates="resume_views")
+
+class AssessmentSession(Base):
+    __tablename__ = "assessment_sessions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    title = Column(String(255), nullable=False, default="Aptitude & Technical Assessment")
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), index=True, nullable=True)
+    recruiter_id = Column(String(36), ForeignKey("recruiters.id"), nullable=True)
+    job_id = Column(String(36), ForeignKey("job_postings.id"), nullable=True)
+    job_application_id = Column(String(36), ForeignKey("job_applications.id"), nullable=True)
+    topics = Column(JSON, default=lambda: ["Aptitude", "Technical", "Reasoning"])
+    difficulty = Column(String(50), default="Medium")
+    question_count = Column(Integer, default=10)
+    duration_minutes = Column(Integer, default=15)
+    passing_score = Column(Float, default=70.0)
+    negative_marking = Column(Float, default=0.25)
+    proctoring_enabled = Column(Boolean, default=True)
+    is_recruiter_configured = Column(Boolean, default=False)
+    status = Column(String(50), default="active") # active, completed, expired
+    violations_count = Column(Integer, default=0)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+class AssessmentQuestion(Base):
+    __tablename__ = "assessment_questions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("assessment_sessions.id"), index=True, nullable=False)
+    order_index = Column(Integer, nullable=False, default=1)
+    category = Column(String(100), default="General Aptitude")
+    topic = Column(String(100), default="Reasoning")
+    question_text = Column(Text, nullable=False)
+    code_snippet = Column(Text, nullable=True)
+    options = Column(JSON, nullable=False) # ["Option A", "Option B", "Option C", "Option D"]
+    correct_option = Column(Integer, nullable=False, default=0) # 0-indexed int
+    explanation = Column(Text, nullable=True)
+    negative_marks = Column(Float, default=0.25)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class AssessmentQuestionHistory(Base):
+    """Immutable candidate question ledger used to prevent repeat assessment items."""
+    __tablename__ = "assessment_question_history"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "question_fingerprint", name="uq_assessment_history_candidate_fingerprint"),
+        Index("ix_assessment_history_candidate_generated", "candidate_id", "generated_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), index=True, nullable=True)
+    session_id = Column(String(36), ForeignKey("assessment_sessions.id"), index=True, nullable=False)
+    question_id = Column(String(36), ForeignKey("assessment_questions.id"), index=True, nullable=False)
+    question_fingerprint = Column(String(64), index=True, nullable=False)
+    normalized_question = Column(Text, nullable=False)
+    topic = Column(String(100), nullable=True)
+    difficulty = Column(String(50), nullable=True)
+    attempt_number = Column(Integer, nullable=False, default=1)
+    generated_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+class AssessmentAnswer(Base):
+    __tablename__ = "assessment_answers"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("assessment_sessions.id"), index=True, nullable=False)
+    question_id = Column(String(36), ForeignKey("assessment_questions.id"), index=True, nullable=False)
+    selected_option = Column(Integer, nullable=True) # None if skipped, 0-3 if answered
+    is_correct = Column(Boolean, default=False)
+    points_earned = Column(Float, default=0.0)
+    time_taken_seconds = Column(Integer, default=0)
+    submitted_at = Column(DateTime, default=datetime.utcnow)
+
+class AssessmentResult(Base):
+    __tablename__ = "assessment_results"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("assessment_sessions.id"), unique=True, nullable=False)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), index=True, nullable=True)
+    overall_score = Column(Float, nullable=False, default=0.0)
+    total_correct = Column(Integer, default=0)
+    total_wrong = Column(Integer, default=0)
+    total_skipped = Column(Integer, default=0)
+    section_scores = Column(JSON, default=dict)
+    weak_areas = Column(JSON, default=list)
+    strong_areas = Column(JSON, default=list)
+    improvement_suggestions = Column(JSON, default=list)
+    hiring_recommendation = Column(String(50), default="Pass") # Pass, Fail, Review
+    proctoring_violations = Column(Integer, default=0)
+    report_pdf_url = Column(String(500), nullable=True)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class MasterQuestionBank(Base):
+    """Permanent Master Question Bank for enterprise practice and recruiter assessments."""
+    __tablename__ = "master_question_bank"
+    __table_args__ = (
+        UniqueConstraint("question_fingerprint", name="uq_master_question_fingerprint"),
+        Index("ix_master_qb_topic_diff", "topic", "difficulty"),
+        Index("ix_master_qb_concept_hash", "concept_hash"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    topic = Column(String(100), nullable=False, index=True)
+    subtopic = Column(String(100), nullable=False, default="General Concepts")
+    concept = Column(String(150), nullable=False, default="Core Principles")
+    difficulty = Column(String(50), nullable=False, default="Medium") # Beginner, Easy, Medium, Hard, Expert
+    bloom_taxonomy = Column(String(50), nullable=False, default="Apply") # Remember, Understand, Apply, Analyze, Evaluate, Create
+    question_type = Column(String(50), nullable=False, default="MCQ") # Conceptual, Scenario Based, Debugging, Output Prediction, Code Completion, Architecture, Performance, Security, MCQ, SQL, System Design
+    scenario_type = Column(String(100), default="General Enterprise")
+    technology = Column(String(100), default="Python")
+    tags = Column(JSON, default=list)
+    question_text = Column(Text, nullable=False)
+    options = Column(JSON, nullable=False) # ["Option A", "Option B", "Option C", "Option D"]
+    correct_option = Column(Integer, nullable=False, default=0) # 0-indexed int
+    explanation = Column(Text, nullable=True)
+    code_snippet = Column(Text, nullable=True)
+    language = Column(String(50), nullable=True)
+    created_by = Column(String(100), default="ai_factory") # system, ai_factory, recruiter_id
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    question_fingerprint = Column(String(64), nullable=False, index=True)
+    concept_hash = Column(String(64), nullable=False, index=True)
+    embedding = Column(JSON, nullable=True)
+
+
+class RecruiterAssessmentHistory(Base):
+    """Ledger tracking recruiter assessment question assignments to prevent duplicates."""
+    __tablename__ = "recruiter_assessment_history"
+    __table_args__ = (
+        Index("ix_recruiter_history_recruiter_session", "recruiter_id", "session_id"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    recruiter_id = Column(String(36), ForeignKey("recruiters.id"), nullable=False, index=True)
+    session_id = Column(String(36), ForeignKey("assessment_sessions.id"), nullable=False, index=True)
+    question_id = Column(String(36), nullable=False, index=True)
+    question_fingerprint = Column(String(64), nullable=False, index=True)
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+
 
 

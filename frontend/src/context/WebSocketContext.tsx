@@ -19,7 +19,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!user) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/${user.id || 'usr-demo-001'}`;
+    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/${user.id}`;
 
     let socket: WebSocket | null = null;
     try {
@@ -27,7 +27,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       socket.onopen = () => {
         setIsConnected(true);
-        console.log('Real-Time WebSocket Connected:', wsUrl);
       };
 
       socket.onmessage = (event) => {
@@ -45,16 +44,15 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setNotifications((prev) => [notif, ...prev]);
           }
         } catch (e) {
-          console.warn('Socket message parse error:', e);
+          // Silent message parse error handling
         }
       };
 
       socket.onclose = () => {
         setIsConnected(false);
-        console.log('WebSocket Disconnected');
       };
     } catch (e) {
-      console.warn('WebSocket connection error:', e);
+      // Silent connection error handling
     }
 
     return () => {
@@ -74,3 +72,4 @@ export const useWebSocket = () => {
   if (!context) throw new Error('useWebSocket must be used within WebSocketProvider');
   return context;
 };
+

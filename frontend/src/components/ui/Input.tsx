@@ -23,7 +23,7 @@ export const Input: React.FC<InputProps> = ({
   return (
     <div className="w-full space-y-1.5">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-black text-[#15342A] dark:text-[#E6F7EF] tracking-tight">
+        <label htmlFor={inputId} className="block text-xs font-black text-[#0F172A] dark:text-[#E6F7EF] tracking-tight">
           {label}
         </label>
       )}
@@ -35,12 +35,12 @@ export const Input: React.FC<InputProps> = ({
         )}
         <input
           id={inputId}
-          className={`w-full bg-[#FAF7F2] dark:bg-[#091B15] text-[#15342A] dark:text-white rounded-2xl text-xs font-bold px-4 py-3 border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#0F6B4B] dark:focus:ring-[#6EE7B7] disabled:opacity-60 placeholder-[#6B7280]/60 ${
+          className={`w-full bg-[#F8FAFC] dark:bg-[#091B15] text-[#0F172A] dark:text-white rounded-2xl text-xs font-bold px-4 py-3 border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#0B0F1B] dark:focus:ring-[#6EE7B7] disabled:opacity-60 placeholder-[#6B7280]/60 ${
             leftIcon ? 'pl-10' : ''
           } ${rightIcon ? 'pr-10' : ''} ${
             error
               ? 'border-rose-400 focus:ring-rose-500'
-              : 'border-[#E7E5E4] dark:border-[#0B543A] hover:border-[#0F6B4B]/50'
+              : 'border-[#E7E5E4] dark:border-[#0B543A] hover:border-[#0B0F1B]/50'
           } ${className}`}
           {...props}
         />
@@ -58,3 +58,4 @@ export const Input: React.FC<InputProps> = ({
     </div>
   );
 };
+

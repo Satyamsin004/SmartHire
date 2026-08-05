@@ -1,95 +1,163 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
-from typing import Optional
-from app.services.resume_service import resume_service
-from app.schemas.domain import ResumeParseResponse, JDMatchRequest, JDMatchResponse
-
-from app.dependencies.auth import get_current_user
-from app.models.domain import User
-
-router = APIRouter(prefix="/resume", tags=["Resume & ATS"])
-
-@router.post("/parse", response_model=ResumeParseResponse)
-async def parse_resume(
-    file: UploadFile = File(...),
-    user: User = Depends(get_current_user)
-):
-    filename = file.filename or "resume.pdf"
-    content = await file.read()
-    
-    # Extract text from PDF using pdfplumber for accurate parsing
-    raw_text = ""
-    try:
-        import pdfplumber, io
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                t = page.extract_text()
-                if t:
-                    raw_text += t + "\n"
-    except Exception:
-        # Fallback: try UTF-8 decode for plain text files
-        try:
-            raw_text = content.decode("utf-8", errors="ignore")
-        except Exception:
-            raw_text = ""
-
-    if not raw_text.strip():
-        raw_text = "Unable to extract text from uploaded file."
-
-    parsed = resume_service.parse_resume_text(raw_text)
-    
-    return {
-        "id": "res-9901-abc",
-        "file_name": filename,
-        "ats_score": parsed["ats_score"],
-        "summary": parsed["summary"],
-        "skills": parsed["skills"],
-        "keyword_density": parsed["keyword_density"],
-        "missing_skills": parsed["missing_skills"]
-    }
-
+import os
+import uuid
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.core.db import get_db
-from app.models.domain import Candidate, Resume, ResumeSkill
 
-@router.get("/my-resume", summary="Get Stored Candidate Resume")
+from app.core.db import get_db
+from app.dependencies.auth import get_current_user, require_role
+from app.models.domain import User, Candidate, Resume, ResumeSkill, JobApplication
+from app.services.resume_service import resume_service
+
+router = APIRouter(prefix="/resume", tags=["Resume & ATS Pipeline"])
+
+UPLOAD_DIR = os.path.join(os.getcwd(), "uploads", "resumes")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@router.post("/parse")
+@router.post("/upload")
+async def upload_and_parse_resume(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Production-ready endpoint to upload, validate, extract, parse, version, and store resume in normalized PostgreSQL tables."""
+    filename = file.filename or "resume.pdf"
+    content = await file.read()
+
+    # 1. Validate File & Extract Clean Text (Supports PDF & DOCX)
+    raw_text = resume_service.extract_text_from_file_bytes(content, filename, max_size_mb=10)
+
+    # 2. Get or Create Candidate Profile
+    res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+    candidate = res_c.scalar_one_or_none()
+    if not candidate:
+        candidate = Candidate(
+            id=f"cand-{uuid.uuid4().hex[:8]}",
+            user_id=user.id,
+            target_role="Full Stack Engineer",
+            experience_level="Mid-Level"
+        )
+        db.add(candidate)
+        await db.flush()
+
+    # 3. Save File to Disk
+    safe_filename = f"{candidate.id}_v{uuid.uuid4().hex[:6]}_{filename}"
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(content)
+    except Exception:
+        file_path = f"/uploads/resumes/{safe_filename}"
+
+    # 4. Parse, Normalize into PostgreSQL, Version & Auto-Sync Candidate Profile
+    full_parsed_resume = await resume_service.parse_and_store_resume(
+        db=db,
+        candidate=candidate,
+        file_name=filename,
+        file_path=file_path,
+        raw_text=raw_text
+    )
+
+    return full_parsed_resume
+
+@router.get("/my-resume", summary="Get Active Candidate Resume & Profile Data")
 async def get_my_resume(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Retrieves stored PDF resume record and extracted skills for candidate."""
+    """Retrieves active normalized resume and full parsed structure for current candidate."""
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
     candidate = res_c.scalar_one_or_none()
     if not candidate:
         return None
 
     res_r = await db.execute(
-        select(Resume).where(Resume.candidate_id == candidate.id).order_by(Resume.created_at.desc())
+        select(Resume)
+        .where(Resume.candidate_id == candidate.id, Resume.is_active == True)
+        .order_by(Resume.created_at.desc())
     )
     resume = res_r.scalars().first()
+    
+    if not resume:
+        # Fallback to most recent resume if no active flag set
+        res_r2 = await db.execute(
+            select(Resume).where(Resume.candidate_id == candidate.id).order_by(Resume.created_at.desc())
+        )
+        resume = res_r2.scalars().first()
+
     if not resume:
         return None
 
-    res_sk = await db.execute(select(ResumeSkill).where(ResumeSkill.resume_id == resume.id))
-    skills = res_sk.scalars().all()
+    return await resume_service.get_full_parsed_resume(db, resume.id)
 
-    from app.api.v1.uploads import _extract_education
-    education_val = _extract_education(resume.raw_text) if resume.raw_text else resume.education_level
-    if not education_val or education_val == "Master's Degree":
-        education_val = _extract_education(resume.raw_text or "")
+@router.get("/versions", summary="Get Candidate Resume Upload Versions")
+async def get_resume_versions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieves list of all resume upload versions for candidate history."""
+    res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+    candidate = res_c.scalar_one_or_none()
+    if not candidate:
+        return []
+
+    return await resume_service.get_resume_versions(db, candidate.id)
+
+@router.get("/recruiter-view/{candidate_id}", summary="Get Full Parsed Resume for Recruiter View")
+async def get_recruiter_candidate_view(
+    candidate_id: str,
+    user: User = Depends(require_role(["recruiter", "admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns normalized parsed resume data, experience, education, projects, skills, and ATS breakdown for recruiter view."""
+    res_r = await db.execute(
+        select(Resume)
+        .where(Resume.candidate_id == candidate_id, Resume.is_active == True)
+        .order_by(Resume.created_at.desc())
+    )
+    resume = res_r.scalars().first()
+
+    if not resume:
+        res_r2 = await db.execute(
+            select(Resume).where(Resume.candidate_id == candidate_id).order_by(Resume.created_at.desc())
+        )
+        resume = res_r2.scalars().first()
+
+    if not resume:
+        raise HTTPException(status_code=404, detail="Candidate resume not found.")
+
+    return await resume_service.get_full_parsed_resume(db, resume.id)
+
+@router.get("/interview-context/{candidate_id}", summary="Get Candidate Resume AI Interview Context")
+async def get_interview_resume_context(
+    candidate_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns formatted context payload (skills, projects, ATS missing skills) for AI Question Generator."""
+    res_r = await db.execute(
+        select(Resume)
+        .where(Resume.candidate_id == candidate_id, Resume.is_active == True)
+        .order_by(Resume.created_at.desc())
+    )
+    resume = res_r.scalars().first()
+    if not resume:
+        return {"skills": [], "projects": [], "missing_skills": [], "summary": ""}
+
+    full_data = await resume_service.get_full_parsed_resume(db, resume.id)
+    skills = [s["skill_name"] for s in full_data.get("skills", [])]
+    projects = [p["project_name"] for p in full_data.get("projects", [])]
+    missing = full_data.get("ats_analysis", {}).get("missing_keywords", [])
 
     return {
-        "id": resume.id,
-        "file_name": resume.file_name,
-        "file_path": resume.file_path,
+        "resume_id": resume.id,
         "summary": resume.summary,
-        "skills": [{"skill_name": s.skill_name, "category": s.category} for s in skills],
-        "experience_years": resume.experience_years or "3+ Years Professional Experience",
-        "education_level": education_val or "Not Available",
-        "projects": resume.projects or [],
-        "certifications": resume.certifications or [],
-        "languages": resume.languages or [],
-        "ats_score": None
+        "skills": skills,
+        "projects": projects,
+        "missing_skills": missing,
+        "experience_years": resume.experience_years
     }
 
 @router.delete("/my-resume", summary="Delete Stored Resume")
@@ -97,13 +165,12 @@ async def delete_my_resume(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Deletes stored candidate resume record from database."""
+    """Deletes stored candidate resume records from database."""
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
     candidate = res_c.scalar_one_or_none()
     if not candidate:
-        return {"message": "No resume found."}
+        return {"message": "No candidate profile found."}
 
-    from app.models.domain import JobApplication
     res_apps = await db.execute(select(JobApplication).where(JobApplication.candidate_id == candidate.id))
     apps = res_apps.scalars().all()
     for app in apps:
@@ -118,4 +185,4 @@ async def delete_my_resume(
     candidate.status = "Registered"
     await db.commit()
 
-    return {"message": "Resume deleted successfully."}
+    return {"message": "Resume and associated versions deleted successfully."}

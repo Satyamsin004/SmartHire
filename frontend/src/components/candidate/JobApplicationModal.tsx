@@ -134,7 +134,7 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
 
         {appliedSuccess ? (
           <div className="py-12 text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto shadow-sm">
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-black text-slate-900">Application Submitted Successfully!</h3>
@@ -159,7 +159,7 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
                   Candidate Resume Profile (Mandatory)
                 </span>
                 {existingResume && (
-                  <span className="text-[11px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                  <span className="text-[11px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
                     ✓ Resume Stored
                   </span>
                 )}
@@ -349,3 +349,4 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
     </div>
   );
 };
+

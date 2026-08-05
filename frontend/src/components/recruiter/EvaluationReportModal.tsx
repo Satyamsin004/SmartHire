@@ -92,7 +92,7 @@ export const EvaluationReportModal: React.FC<EvaluationReportModalProps> = ({
         {loading ? (
           <div className="py-20 text-center space-y-3">
             <Sparkles className="w-10 h-10 text-brand-secondary animate-spin mx-auto" />
-            <p className="text-xs font-extrabold text-brand-ink">Fetching Candidate Evaluation Telemetry from PostgreSQL...</p>
+            <p className="text-xs font-extrabold text-brand-ink">Loading candidate evaluation report...</p>
           </div>
         ) : errorMsg ? (
           <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold text-center">
@@ -125,7 +125,7 @@ export const EvaluationReportModal: React.FC<EvaluationReportModalProps> = ({
                   <span className="px-3 py-1 rounded-xl bg-brand-accent/30 text-brand-primary text-xs font-bold">
                     ATS Score: {ats.ats_score != null ? `${ats.ats_score}%` : '85%'}
                   </span>
-                  <span className="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold">
+                  <span className="px-3 py-1 rounded-xl bg-indigo-100 text-indigo-800 text-xs font-bold">
                     Stage: {data.pipeline_stage || 'Recruiter Review'}
                   </span>
                 </div>
@@ -165,14 +165,14 @@ export const EvaluationReportModal: React.FC<EvaluationReportModalProps> = ({
 
             {/* Strengths & Weaknesses */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="card-luxury p-6 border-l-4 border-emerald-500 space-y-3">
-                <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
+              <div className="card-luxury p-6 border-l-4 border-indigo-500 space-y-3">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4" /> Candidate Key Strengths
                 </h4>
                 <ul className="space-y-2 text-xs font-bold text-slate-700">
                   {(data.strengths || []).map((s: string, idx: number) => (
                     <li key={idx} className="flex items-start gap-2">
-                      <span className="text-emerald-500 font-extrabold">•</span> {s}
+                      <span className="text-indigo-500 font-extrabold">•</span> {s}
                     </li>
                   ))}
                 </ul>
@@ -269,3 +269,4 @@ export const EvaluationReportModal: React.FC<EvaluationReportModalProps> = ({
     </div>
   );
 };
+

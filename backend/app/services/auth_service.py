@@ -13,6 +13,7 @@ from app.services.email_service import email_service
 
 class AuthService:
     def __init__(self, db: AsyncSession):
+        self.db = db
         self.user_repo = UserRepository(db)
 
     async def register_user(self, email: str, password: str, full_name: str, role: str = "candidate") -> Dict[str, Any]:
@@ -25,9 +26,10 @@ class AuthService:
         existing = await self.user_repo.get_by_email(email)
         if existing:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email address is already registered."
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with this email already exists."
             )
+
 
         hashed_pwd = get_password_hash(password)
         user = await self.user_repo.create_user(
@@ -41,6 +43,21 @@ class AuthService:
 
         verify_token_str = create_action_token(subject=user.id, action="verify_email", expires_minutes=1440)
         await email_service.send_verification_email(user.email, verify_token_str)
+
+        if user.role == "candidate":
+            try:
+                from app.api.v1.websocket import ws_manager
+                await ws_manager.broadcast({
+                    "event": "CANDIDATE_REGISTERED",
+                    "data": {
+                        "id": user.id,
+                        "full_name": user.full_name,
+                        "email": user.email,
+                        "role": user.role
+                    }
+                })
+            except Exception as e:
+                pass
 
         access_token = create_access_token(subject=user.id, email=user.email, role=user.role)
         refresh_token = create_refresh_token(subject=user.id, email=user.email, role=user.role)
@@ -65,11 +82,18 @@ class AuthService:
 
     async def authenticate_user(self, email: str, password: str) -> Dict[str, Any]:
         user = await self.user_repo.get_by_email(email)
-        if not user or not verify_password(password, user.password_hash):
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Account not found. Please register first."
+            )
+
+        if not verify_password(password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials provided."
+                detail="Invalid email or password."
             )
+
 
         if not user.is_active:
             raise HTTPException(
@@ -148,6 +172,20 @@ class AuthService:
                 provider="google",
                 is_verified=True
             )
+            if user.role == "candidate":
+                try:
+                    from app.api.v1.websocket import ws_manager
+                    await ws_manager.broadcast({
+                        "event": "CANDIDATE_REGISTERED",
+                        "data": {
+                            "id": user.id,
+                            "full_name": user.full_name,
+                            "email": user.email,
+                            "role": user.role
+                        }
+                    })
+                except Exception as e:
+                    pass
         else:
             await self.user_repo.update_last_login(user.id)
 

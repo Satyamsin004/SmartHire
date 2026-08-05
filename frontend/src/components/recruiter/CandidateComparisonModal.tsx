@@ -90,7 +90,7 @@ export const CandidateComparisonModal: React.FC<CandidateComparisonModalProps> =
               <tr>
                 <td className="py-4 px-4 font-extrabold text-slate-500">ATS Resume Match</td>
                 {candidates.map((c) => (
-                  <td key={c.id} className="py-4 px-4 text-emerald-600 font-extrabold">{c.ats_score || 88.5}%</td>
+                  <td key={c.id} className="py-4 px-4 text-indigo-600 font-extrabold">{c.ats_score || 88.5}%</td>
                 ))}
               </tr>
 
@@ -98,7 +98,7 @@ export const CandidateComparisonModal: React.FC<CandidateComparisonModalProps> =
                 <td className="py-4 px-4 font-extrabold text-slate-500">Recruiter Status</td>
                 {candidates.map((c) => (
                   <td key={c.id} className="py-4 px-4">
-                    <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold text-[11px]">
+                    <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold text-[11px]">
                       {c.status || 'Applied'}
                     </span>
                   </td>
@@ -121,3 +121,4 @@ export const CandidateComparisonModal: React.FC<CandidateComparisonModalProps> =
     </div>
   );
 };
+

@@ -20,40 +20,7 @@ RESUME_DIR = os.path.join(UPLOAD_DIR, "resumes")
 for d in [AVATAR_DIR, LOGO_DIR, RESUME_DIR]:
     os.makedirs(d, exist_ok=True)
 
-import re
-
-def _extract_experience(text: str) -> str:
-    """Extract experience years from resume text."""
-    patterns = [
-        r'(\d+)\+?\s*(?:years?|yrs?)\s*(?:of)?\s*(?:experience|exp)',
-        r'(?:experience|exp)\s*(?:of)?\s*(\d+)\+?\s*(?:years?|yrs?)',
-        r'(\d+)\+?\s*(?:years?|yrs?)\s*(?:in|of)\s*(?:software|web|full.?stack|development|engineering)',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            years = match.group(1)
-            return f"{years}+ Years"
-    return "Not Available"
-
-def _extract_education(text: str) -> str:
-    """Extract education level accurately from resume text."""
-    if re.search(r"\b(bachelor(?:'s)?|b\.?tech|b\.?e\.?|b\.?s\.?|b\.?sc|b\.?a\.?)\b", text, re.IGNORECASE):
-        field_match = re.search(r"\b(?:bachelor(?:'s)?|b\.?tech|b\.?e\.?|b\.?s\.?|b\.?e)\b[^.\n]*?(?:in|of)?\s*([A-Za-z\s&]{3,40})", text, re.IGNORECASE)
-        degree_name = "Bachelor's Degree"
-        if field_match:
-            clean_field = re.sub(r'^(?:of|in|engineering|science)\s+', '', field_match.group(1).strip(), flags=re.IGNORECASE)
-            if clean_field and len(clean_field) > 2:
-                degree_name = f"Bachelor's Degree in {clean_field.strip()}"
-        return degree_name
-    elif re.search(r"\b(master(?:'s)?|m\.?s\.?|m\.?tech|mba|m\.?sc)\b", text, re.IGNORECASE):
-        return "Master's Degree"
-    elif re.search(r"\b(ph\.?d|doctorate)\b", text, re.IGNORECASE):
-        return "Ph.D. Doctorate"
-    elif re.search(r"\b(diploma|associate)\b", text, re.IGNORECASE):
-        return "Diploma / Associate Degree"
-    return "Not Available"
-
+# Regex extraction functions removed, now entirely powered by AI Engine.
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 MAX_IMAGE_SIZE = 5 * 1024 * 1024 # 5 MB
 MAX_PDF_SIZE = 10 * 1024 * 1024 # 10 MB
@@ -148,15 +115,33 @@ async def upload_company_logo(
         "company_logo": web_url
     }
 
-@router.post("/resume", summary="Upload & Parse PDF Resume")
+def _extract_docx_text(content: bytes) -> str:
+    """Extracts text from DOCX files using pure Python zipfile & ElementTree."""
+    try:
+        import zipfile, io
+        import xml.etree.ElementTree as ET
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            xml_content = z.read("word/document.xml")
+            tree = ET.fromstring(xml_content)
+            texts = [elem.text for elem in tree.iter() if elem.tag.endswith('}t') and elem.text]
+            return "\n".join(texts)
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to parse DOCX: {e}")
+        return ""
+
+@router.post("/resume", summary="Upload & Parse PDF/DOCX Resume")
 async def upload_resume(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    is_pdf = (file.content_type in ["application/pdf", "application/x-pdf", "application/octet-stream"]) or (file.filename and file.filename.lower().endswith(".pdf"))
-    if not is_pdf:
-        raise HTTPException(status_code=400, detail="Only PDF resume files (.pdf) are accepted.")
+    filename = (file.filename or "resume.pdf").lower()
+    is_pdf = filename.endswith(".pdf") or file.content_type in ["application/pdf", "application/x-pdf"]
+    is_docx = filename.endswith(".docx") or file.content_type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+    
+    if not (is_pdf or is_docx):
+        raise HTTPException(status_code=400, detail="Only PDF (.pdf) and Word (.docx) files are supported.")
 
     content = await file.read()
     if len(content) > MAX_PDF_SIZE:
@@ -169,7 +154,8 @@ async def upload_resume(
         db.add(candidate)
         await db.flush()
 
-    unique_filename = f"resume_{candidate.id}_{uuid.uuid4().hex[:8]}.pdf"
+    ext = ".docx" if is_docx else ".pdf"
+    unique_filename = f"resume_{candidate.id}_{uuid.uuid4().hex[:8]}{ext}"
     file_path = os.path.join(RESUME_DIR, unique_filename)
 
     with open(file_path, "wb") as f:
@@ -183,86 +169,57 @@ async def upload_resume(
     existing_resumes = res_existing.scalars().all()
     next_version = len(existing_resumes) + 1
 
-    # Real PDF Text Extraction using pdfplumber
     raw_text = ""
-    try:
-        import pdfplumber, io
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                t = page.extract_text()
-                if t:
-                    raw_text += t + "\n"
-    except Exception:
-        raw_text = content.decode("utf-8", errors="ignore")
+    if is_docx:
+        raw_text = _extract_docx_text(content)
+    else:
+        # Try pdfplumber first, then pypdf, then raw string decode
+        try:
+            import pdfplumber, io
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                pages_text = [p.extract_text() for p in pdf.pages if p.extract_text()]
+                if pages_text:
+                    raw_text = "\n".join(pages_text)
+        except Exception:
+            pass
 
-    parsed = resume_service.parse_resume(raw_text) if raw_text.strip() else {}
-    summary_val = parsed.get("summary", "Resume uploaded successfully.")
-    
-    skills_list = parsed.get("skills", ["React", "TypeScript", "FastAPI", "PostgreSQL", "Docker"])
-    if not skills_list and raw_text:
-        skills_list = ["React", "TypeScript", "Python", "FastAPI", "PostgreSQL"]
+        if not raw_text.strip():
+            try:
+                from pypdf import PdfReader
+                import io
+                reader = PdfReader(io.BytesIO(content))
+                pages_text = [page.extract_text() for page in reader.pages if page.extract_text()]
+                if pages_text:
+                    raw_text = "\n".join(pages_text)
+            except Exception:
+                pass
 
-    certifications_list = parsed.get("certifications", [])
-    if not certifications_list and ("certif" in raw_text.lower() or "aws" in raw_text.lower()):
-        certifications_list = ["AWS Certified Solutions Architect"]
+    if not raw_text.strip():
+        try:
+            raw_text = content.decode("utf-8", errors="ignore")
+        except Exception:
+            raw_text = ""
 
-    # Extract experience and education from resume text
-    experience_years = _extract_experience(raw_text)
-    education_level = _extract_education(raw_text)
-    
-    # Save to PostgreSQL resumes table
-    new_resume = Resume(
-        candidate_id=candidate.id,
-        file_name=file.filename or "resume.pdf",
+    # Delegate to resume_service to parse, normalize, version, store in PostgreSQL, and sync candidate profile
+    full_parsed_resume = await resume_service.parse_and_store_resume(
+        db=db,
+        candidate=candidate,
+        file_name=file.filename or f"resume{ext}",
         file_path=web_url,
-        raw_text=raw_text,
-        summary=summary_val,
-        ats_score=None, # Explicitly NULL until JD match!
-        keyword_density=parsed.get("keyword_density", {}),
-        missing_skills=[],
-        projects=parsed.get("projects", []),
-        certifications=certifications_list,
-        languages=parsed.get("languages", ["English"]),
-        experience_years=experience_years,
-        education_level=education_level,
-        version=next_version
+        raw_text=raw_text
     )
-    db.add(new_resume)
-    await db.flush()
 
-    # Save skills
-    for sk in skills_list:
-        sk_name = sk.get("skill_name") if isinstance(sk, dict) else str(sk)
-        db.add(ResumeSkill(resume_id=new_resume.id, skill_name=sk_name, category="Technical"))
-
-    candidate.status = "Resume Uploaded"
-
-    # Notification & Activity Log for auto-update feed
+    # Activity Log & Notification
     notif = Notification(
         user_id=user.id,
-        title="Resume Uploaded",
-        message=f"Resume '{file.filename}' (v{next_version}) uploaded and {len(skills_list)} skills extracted.",
+        title="Resume Uploaded & Parsed",
+        message=f"Resume '{file.filename}' (v{full_parsed_resume.get('version', 1)}) uploaded and parsed successfully.",
         notification_type="resume_updated"
     )
     db.add(notif)
-    db.add(ActivityLog(user_id=user.id, action=f"Uploaded Resume v{next_version}", endpoint="/uploads/resume"))
-
+    db.add(ActivityLog(user_id=user.id, action=f"Uploaded Resume v{full_parsed_resume.get('version', 1)}", endpoint="/uploads/resume"))
     await db.commit()
 
-    return {
-        "status": "success",
-        "message": f"Resume v{next_version} uploaded and parsed successfully.",
-        "resume": {
-            "id": new_resume.id,
-            "version": next_version,
-            "file_name": new_resume.file_name,
-            "file_path": web_url,
-            "summary": new_resume.summary,
-            "skills": [sk.get("skill_name") if isinstance(sk, dict) else str(sk) for sk in skills_list],
-            "experience_years": new_resume.experience_years,
-            "education_level": new_resume.education_level,
-            "projects": new_resume.projects,
-            "certifications": new_resume.certifications,
-            "languages": new_resume.languages
-        }
-    }
+    return full_parsed_resume
+
+

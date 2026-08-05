@@ -1,6 +1,10 @@
 import requests
 import time
+import json
+import sys
+import io
 
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 BASE_URL = "http://127.0.0.1:8000/api/v1"
 
 def run_qa_acceptance_test_suite():

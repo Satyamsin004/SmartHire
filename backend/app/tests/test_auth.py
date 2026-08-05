@@ -59,6 +59,7 @@ async def test_full_auth_flow_via_api():
             "password": "Password123!"
         })
         assert login_res.status_code == 200
+        refresh_token = login_res.json()["tokens"]["refresh_token"]
 
         # 3. Access Protected Route /users/me
         me_res = await client.get("/api/v1/users/me", headers={

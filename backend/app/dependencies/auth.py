@@ -1,4 +1,5 @@
 from fastapi import Depends, HTTPException, status, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Callable, Optional
 
@@ -8,17 +9,29 @@ from app.core.redis import is_token_blacklisted
 from app.repositories.user_repository import UserRepository
 from app.models.domain import User
 
+security_scheme = HTTPBearer(auto_error=False)
+
 async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
     authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db)
 ) -> User:
-    if not authorization or not authorization.startswith("Bearer "):
+    token = None
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+    elif authorization:
+        token = authorization
+
+    if token:
+        token = token.strip()
+        if token.lower().startswith("bearer "):
+            token = token[7:].strip()
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication credentials were not provided or invalid format."
         )
-
-    token = authorization.split(" ")[1]
 
     if await is_token_blacklisted(token):
         raise HTTPException(

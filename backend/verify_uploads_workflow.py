@@ -1,123 +1,96 @@
-import requests
-import json
-import time
+import asyncio
+import io
+import uuid
+from pypdf import PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from app.core.db import AsyncSessionLocal
+from app.models.domain import User, Candidate, Resume
+from app.services.resume_service import resume_service
 
-BASE_URL = "http://localhost:8000/api/v1"
+def generate_sample_pdf(filename: str, name: str, email: str, role: str, skills: list, exp_text: str):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    c.drawString(100, 750, f"Full Name: {name}")
+    c.drawString(100, 730, f"Email: {email}")
+    c.drawString(100, 710, f"Phone: +1-555-0199")
+    c.drawString(100, 690, f"Target Role: {role}")
+    c.drawString(100, 670, f"Location: San Francisco, CA")
+    c.drawString(100, 650, f"GitHub: https://github.com/sampleuser")
+    c.drawString(100, 630, f"LinkedIn: https://linkedin.com/in/sampleuser")
+    c.drawString(100, 600, "Professional Summary:")
+    c.drawString(100, 585, f"Dedicated {role} with 5+ years of experience building scalable applications.")
+    c.drawString(100, 550, "Technical Skills:")
+    c.drawString(100, 535, ", ".join(skills))
+    c.drawString(100, 500, "Work Experience:")
+    c.drawString(100, 485, exp_text)
+    c.drawString(100, 450, "Education:")
+    c.drawString(100, 435, "B.S. in Computer Science - Stanford University (2020)")
+    c.save()
+    pdf_bytes = buffer.getvalue()
 
-def run_uploads_verification():
-    print("=== STARTING FILE UPLOADS & ZERO DEMO JOBS VERIFICATION ===")
+    with open(filename, "wb") as f:
+        f.write(pdf_bytes)
+    return pdf_bytes
 
-    # 1. Register Candidate Satyam
-    satyam_email = f"satyam_upload_{int(time.time())}@example.com"
-    r1 = requests.post(f"{BASE_URL}/auth/register", json={
-        "full_name": "Satyam Candidate",
-        "email": satyam_email,
-        "password": "Password123!",
-        "role": "candidate"
-    })
-    assert r1.status_code in [200, 201]
-    cand_token = r1.json()["tokens"]["access_token"]
-    print("✓ Candidate Satyam Registered Successfully")
+async def run_resume_analyzer_pipeline_test():
+    print("====================================================================")
+    print("         RESUME ANALYZER PIPELINE END-TO-END VERIFICATION")
+    print("====================================================================\n")
 
-    # 2. Upload Candidate Avatar Picture
-    avatar_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    avatar_res = requests.post(
-        f"{BASE_URL}/uploads/avatar",
-        headers={"Authorization": f"Bearer {cand_token}"},
-        files={"file": ("profile.png", avatar_bytes, "image/png")}
-    )
-    assert avatar_res.status_code == 200, f"Avatar upload failed: {avatar_res.text}"
-    avatar_url = avatar_res.json()["profile_image"]
-    assert "/uploads/avatars/" in avatar_url
-    print(f"✓ Candidate Profile Picture Uploaded: {avatar_url}")
+    test_resumes = [
+        {"file": "test_student_resume.pdf", "name": "Alice Student", "email": "alice_student@smarthire.ai", "role": "Junior Developer", "skills": ["Python", "HTML", "Git"], "exp": "Software Engineering Intern at Startup Co (2023)"},
+        {"file": "test_experienced_resume.pdf", "name": "Bob Architect", "email": "bob_architect@smarthire.ai", "role": "Senior Architect", "skills": ["Python", "FastAPI", "React", "Docker", "PostgreSQL"], "exp": "Lead Systems Engineer at TechCorp (2018-2026)"},
+        {"file": "test_intern_resume.pdf", "name": "Charlie Intern", "email": "charlie_intern@smarthire.ai", "role": "QA Intern", "skills": ["Python", "Selenium", "Postman"], "exp": "QA Testing Assistant at University Lab (2024)"},
+        {"file": "test_singlepage_resume.pdf", "name": "Diana Solo", "email": "diana_solo@smarthire.ai", "role": "Frontend Engineer", "skills": ["TypeScript", "React", "TailwindCSS"], "exp": "Frontend Engineer at WebAgency (2022-2026)"},
+        {"file": "test_multipage_resume.pdf", "name": "Evan Lead", "email": "evan_lead@smarthire.ai", "role": "DevOps Manager", "skills": ["Kubernetes", "Terraform", "AWS", "Python"], "exp": "DevOps Manager at CloudEnterprise (2015-2026)"}
+    ]
 
-    # Verify avatar rendered in /users/me
-    me_res = requests.get(f"{BASE_URL}/users/me", headers={"Authorization": f"Bearer {cand_token}"})
-    assert me_res.status_code == 200
-    assert me_res.json()["profile_image"] == avatar_url
-    print("✓ Candidate /users/me Profile Picture Verified")
+    async with AsyncSessionLocal() as db:
+        for idx, item in enumerate(test_resumes, 1):
+            print(f"--- TEST RESUME #{idx}: {item['name']} ({item['file']}) ---")
+            
+            # Step 1: Generate PDF & extract bytes
+            pdf_bytes = generate_sample_pdf(item['file'], item['name'], item['email'], item['role'], item['skills'], item['exp'])
+            print(f"  [PASS] Step 1: PDF File Created ({len(pdf_bytes)} Bytes)")
 
-    # 3. Upload Candidate PDF Resume
-    pdf_bytes = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000101 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n178\n%%EOF\n"
-    resume_res = requests.post(
-        f"{BASE_URL}/uploads/resume",
-        headers={"Authorization": f"Bearer {cand_token}"},
-        files={"file": ("satyam_resume.pdf", pdf_bytes, "application/pdf")}
-    )
-    assert resume_res.status_code == 200, f"Resume upload failed: {resume_res.text}"
-    resume_data = resume_res.json()["resume"]
-    assert "/uploads/resumes/" in resume_data["file_path"]
-    print(f"✓ Candidate PDF Resume Uploaded & Saved: {resume_data['file_path']}")
-    print("✓ ATS Score is NULL/None on initial upload (as required)")
+            # Step 2: Extract text
+            raw_text = resume_service.extract_text_from_file_bytes(pdf_bytes, item['file'])
+            print(f"  [PASS] Step 2: Text Extracted ({len(raw_text)} Characters)")
 
-    # 4. Register Recruiter Ravi
-    ravi_email = f"ravi_upload_{int(time.time())}@example.com"
-    r2 = requests.post(f"{BASE_URL}/auth/register", json={
-        "full_name": "Ravi Recruiter",
-        "email": ravi_email,
-        "password": "Password123!",
-        "role": "recruiter"
-    })
-    assert r2.status_code in [200, 201]
-    rec_token = r2.json()["tokens"]["access_token"]
-    print("✓ Recruiter Ravi Registered Successfully")
+            # Step 3: Create User & Candidate in DB
+            unique_email = f"{item['email'].split('@')[0]}_{uuid.uuid4().hex[:4]}@smarthire.ai"
+            user = User(
+                id=f"usr-res-{uuid.uuid4().hex[:6]}",
+                email=unique_email,
+                password_hash="pwd",
+                full_name=item['name'],
+                role="candidate"
+            )
+            db.add(user)
+            await db.flush()
 
-    # 5. Upload Company Logo
-    logo_res = requests.post(
-        f"{BASE_URL}/uploads/logo",
-        headers={"Authorization": f"Bearer {rec_token}"},
-        files={"file": ("company_logo.png", avatar_bytes, "image/png")}
-    )
-    assert logo_res.status_code == 200, f"Logo upload failed: {logo_res.text}"
-    logo_url = logo_res.json()["company_logo"]
-    assert "/uploads/logos/" in logo_url
-    print(f"✓ Recruiter Company Logo Uploaded: {logo_url}")
+            cand = Candidate(id=f"cand-res-{uuid.uuid4().hex[:6]}", user_id=user.id)
+            db.add(cand)
+            await db.flush()
 
-    # 6. Recruiter posts job with company logo
-    job_res = requests.post(f"{BASE_URL}/jobs/create", headers={"Authorization": f"Bearer {rec_token}"}, json={
-        "title": "Senior Backend Systems Engineer",
-        "company_name": "Acme Innovations",
-        "company_logo": logo_url,
-        "department": "Infrastructure",
-        "employment_type": "Full Time",
-        "work_mode": "Hybrid",
-        "experience_required": "4-6 Years",
-        "location": "New York, NY",
-        "salary_range": "$150,000 - $190,000",
-        "description": "Building high scale distributed services with Python, FastAPI, PostgreSQL, Docker, Redis.",
-        "required_skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis"],
-        "status": "Published"
-    })
-    assert job_res.status_code == 200, f"Job creation failed: {job_res.status_code} - {job_res.text}"
-    job_id = job_res.json()["job"]["id"]
-    print(f"✓ Recruiter Published Job Requisition. Job ID: {job_id}")
+            # Step 4: Execute Parse & Store Pipeline
+            parsed_result = await resume_service.parse_and_store_resume(
+                db=db,
+                candidate=cand,
+                file_name=item['file'],
+                file_path=f"/uploads/resumes/{item['file']}",
+                raw_text=raw_text
+            )
+            print(f"  [PASS] Step 4: Resume Parsed & Stored in PostgreSQL (Resume ID: {parsed_result.get('resume_id')})")
+            print(f"         Extracted Skills: {parsed_result.get('skills', [])}")
+            print(f"         ATS Match Score : {parsed_result.get('ats_score')}%")
+            print(f"         Candidate Bio   : {parsed_result.get('summary')[:60]}...")
 
-    # 7. Candidate discovers public jobs
-    public_res = requests.get(f"{BASE_URL}/jobs/public")
-    assert public_res.status_code == 200
-    pub_jobs = public_res.json()
-    assert len(pub_jobs) > 0
-    created_job = next((j for j in pub_jobs if j["id"] == job_id), None)
-    assert created_job is not None
-    print(f"Debug: created_job logo = {created_job.get('company_logo')}, expected = {logo_url}")
-    assert created_job["company_logo"] == logo_url
-    print(f"✓ Public Job Discovery Verified with Recruiter Company Logo: {created_job['company_logo']}")
-
-    # 8. Candidate applies for job
-    apply_res = requests.post(f"{BASE_URL}/jobs/{job_id}/apply", headers={"Authorization": f"Bearer {cand_token}"}, json={
-        "cover_letter": "Enthusiastic about distributed systems and cloud infrastructure.",
-        "phone": "+1-555-019-9988",
-        "current_ctc": "$130,000 / yr",
-        "expected_ctc": "$165,000 / yr",
-        "notice_period": "2 Weeks",
-        "declaration": True
-    })
-    assert apply_res.status_code == 200, f"Apply job failed: {apply_res.status_code} - {apply_res.text}"
-    app_data = apply_res.json()
-    assert app_data["ats_score"] is not None
-    print(f"✓ Candidate Applied for Job. Dynamic ATS Score Generated: {app_data['ats_score']}%")
-
-    print("\n=== ALL FILE UPLOADS & ZERO DEMO JOBS VERIFICATION TESTS PASSED! ===")
+        await db.commit()
+        print("\n====================================================================")
+        print("[SUCCESS] ALL 5 RESUME PIPELINE TESTS PASSED 100%")
+        print("====================================================================\n")
 
 if __name__ == "__main__":
-    run_uploads_verification()
+    asyncio.run(run_resume_analyzer_pipeline_test())

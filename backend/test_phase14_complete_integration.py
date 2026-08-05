@@ -131,7 +131,7 @@ async def run_phase14_automated_integration_test():
         # STEP 3: ATS Score Generation
         print("\n[STEP 3/13] Generating ATS Screening Score...")
         candidate_skills = ["Python", "FastAPI", "PostgreSQL", "System Design", "Git", "REST APIs"]
-        ats_res = resume_service.match_job_description(
+        ats_res = await resume_service.match_job_description(
             candidate_skills=candidate_skills,
             job_description=" ".join(test_job.required_skills)
         )

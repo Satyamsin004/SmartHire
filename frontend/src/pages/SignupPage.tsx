@@ -162,7 +162,7 @@ export const SignupPage: React.FC = () => {
                   <div
                     onClick={() => setRole('candidate')}
                     className={`p-4 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${
-                      role === 'candidate' ? 'bg-emerald-50/50 border-brand-primary' : 'bg-cream-100 border-stoneBorder hover:border-slate-300'
+                      role === 'candidate' ? 'bg-indigo-50/50 border-brand-primary' : 'bg-cream-100 border-stoneBorder hover:border-slate-300'
                     }`}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-brand-primary text-white flex items-center justify-center font-bold">
@@ -178,7 +178,7 @@ export const SignupPage: React.FC = () => {
                   <div
                     onClick={() => setRole('recruiter')}
                     className={`p-4 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${
-                      role === 'recruiter' ? 'bg-emerald-50/50 border-brand-primary' : 'bg-cream-100 border-stoneBorder hover:border-slate-300'
+                      role === 'recruiter' ? 'bg-indigo-50/50 border-brand-primary' : 'bg-cream-100 border-stoneBorder hover:border-slate-300'
                     }`}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-brand-secondary text-white flex items-center justify-center font-bold">
@@ -272,7 +272,7 @@ export const SignupPage: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold leading-relaxed">
+                  <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-semibold leading-relaxed">
                     By registering, you agree to SmartHire AI's Enterprise Platform Terms of Service and Privacy Policy.
                   </div>
                 </div>
@@ -318,3 +318,4 @@ export const SignupPage: React.FC = () => {
     </div>
   );
 };
+

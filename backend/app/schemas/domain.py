@@ -84,7 +84,10 @@ class StartInterviewRequest(BaseModel):
     resume_id: Optional[str] = None
     job_description_id: Optional[str] = None
     resume_text: Optional[str] = None
+    parsed_resume: Optional[Dict[str, Any]] = None
     duration_minutes: Optional[int] = 10
+    language: Optional[str] = "English"
+
 
 class QuestionResponse(BaseModel):
     question_id: str
@@ -100,6 +103,7 @@ class SubmitAnswerRequest(BaseModel):
     session_id: str
     transcript_text: str
     speech_duration_seconds: Optional[float] = 45.0
+    elapsed_seconds: Optional[float] = None
     audio_telemetry: Optional[Dict[str, Any]] = None
     vision_telemetry: Optional[Dict[str, Any]] = None
 
@@ -112,6 +116,7 @@ class AnswerEvaluationResponse(BaseModel):
     confidence_percentage: float
     dominant_emotion: str
     evaluation_feedback: Optional[str] = "Good explanation! Let's move to the next question."
+    interviewer_remark: Optional[str] = "Good explanation! Let's move to the next question."
     next_question: Optional[QuestionResponse] = None
 
 # --- Scoring & Report Schemas ---
@@ -122,10 +127,22 @@ class ScoringReportResponse(BaseModel):
     confidence_score: float
     technical_score: float
     professionalism_score: float
+    grammar_score: Optional[float] = 85.0
+    problem_solving_score: Optional[float] = 84.0
+    behavior_score: Optional[float] = 82.0
+    leadership_score: Optional[float] = 78.0
     overall_score: float
+    recommendation: Optional[str] = "Shortlist"
+    overall_summary: Optional[str] = None
+    technical_analysis: Optional[str] = None
+    communication_analysis: Optional[str] = None
+    behavioral_analysis: Optional[str] = None
+    grammar_analysis: Optional[str] = None
+    confidence_analysis: Optional[str] = None
     strengths: List[str]
     weaknesses: List[str]
     improvement_plan: List[str]
+    learning_resources: Optional[List[str]] = []
     rating_rubric: str
 
 # --- Code Execution Schemas ---

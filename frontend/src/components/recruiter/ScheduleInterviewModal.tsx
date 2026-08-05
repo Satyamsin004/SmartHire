@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, User, Shield, FileText, Send, Sparkles, CheckSquare, Square } from 'lucide-react';
+import { X, Calendar, Clock, User, Shield, FileText, Send, Sparkles, CheckSquare, Square, Briefcase } from 'lucide-react';
 import api from '../../services/api';
 
 interface ScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  candidates?: any[];
+  defaultJobId?: string;
 }
 
-export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, onClose, onSuccess, defaultJobId }) => {
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>('');
+  const [selectedJob, setSelectedJob] = useState<any>(null);
+
   const [candidates, setCandidates] = useState<any[]>([]);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
   const [roundType, setRoundType] = useState<string>('Technical');
@@ -21,6 +25,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
+  // 1. Fetch available Job Postings when modal opens
   useEffect(() => {
     if (isOpen) {
       setErrorMsg('');
@@ -28,16 +33,46 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
       tomorrow.setDate(tomorrow.getDate() + 1);
       setScheduledDate(tomorrow.toISOString().split('T')[0]);
 
-      api.get('/scheduling/candidates-list')
+      api.get('/scheduling/jobs-list')
         .then((res) => {
-          setCandidates(res.data);
-          if (res.data.length > 0) {
-            setSelectedCandidateIds(res.data.map((c: any) => c.candidate_id));
+          const fetchedJobs = res.data || [];
+          setJobs(fetchedJobs);
+          if (fetchedJobs.length > 0) {
+            const initialJob = defaultJobId 
+              ? fetchedJobs.find((j: any) => j.id === defaultJobId) || fetchedJobs[0]
+              : fetchedJobs[0];
+            setSelectedJobId(initialJob.id);
+            setSelectedJob(initialJob);
           }
         })
-        .catch((err) => console.warn('Candidate list fetch error:', err));
+        .catch((err) => console.warn('Jobs list fetch error:', err));
     }
-  }, [isOpen]);
+  }, [isOpen, defaultJobId]);
+
+  // 2. Fetch Shortlisted Candidates for the selected Job Posting
+  useEffect(() => {
+    if (isOpen && selectedJobId) {
+      const matchJob = jobs.find((j) => j.id === selectedJobId);
+      if (matchJob) {
+        setSelectedJob(matchJob);
+        if (matchJob.experience_level?.toLowerCase().includes('senior')) setDifficulty('Hard');
+        else if (matchJob.experience_level?.toLowerCase().includes('entry')) setDifficulty('Easy');
+        else setDifficulty('Medium');
+      }
+
+      api.get(`/scheduling/candidates-list?job_id=${selectedJobId}`)
+        .then((res) => {
+          const eligibleCands = res.data || [];
+          setCandidates(eligibleCands);
+          setSelectedCandidateIds(eligibleCands.map((c: any) => c.candidate_id));
+        })
+        .catch((err) => {
+          console.warn('Candidate list fetch error:', err);
+          setCandidates([]);
+          setSelectedCandidateIds([]);
+        });
+    }
+  }, [isOpen, selectedJobId]);
 
   if (!isOpen) return null;
 
@@ -59,8 +94,12 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedJobId) {
+      setErrorMsg('Please select a job requisition to schedule interviews for.');
+      return;
+    }
     if (selectedCandidateIds.length === 0) {
-      setErrorMsg('Please select at least one candidate for this interview invitation.');
+      setErrorMsg('Please select at least one shortlisted candidate for this interview invitation.');
       return;
     }
 
@@ -70,6 +109,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
     try {
       const fullIsoDate = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
       await api.post('/scheduling/create', {
+        job_id: selectedJobId,
         candidate_ids: selectedCandidateIds,
         round_type: roundType,
         scheduled_date: fullIsoDate,
@@ -100,7 +140,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
             </div>
             <div>
               <h3 className="text-lg font-extrabold text-slate-900">Schedule Interview Invitation</h3>
-              <p className="text-xs text-slate-400 font-semibold">Select candidate(s), role round, and dispatch live invitation</p>
+              <p className="text-xs text-slate-400 font-semibold">Job-First Requisition Workflow · Single Source of Truth</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg">
@@ -115,11 +155,53 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          
-          {/* Multi-Candidate Selection Box */}
+
+          {/* STEP 1: Select Job Posting Requisition */}
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
+              <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
+              1. Select Job Posting Requisition
+            </label>
+            <select
+              value={selectedJobId}
+              onChange={(e) => setSelectedJobId(e.target.value)}
+              className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50/40"
+            >
+              {jobs.length === 0 ? (
+                <option value="">No Active Published Jobs Found</option>
+              ) : (
+                jobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.title} · {j.company_name || 'SmartHire AI'} ({j.shortlisted_count || 0} Shortlisted Candidates)
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* Job Details Metadata Capsule */}
+          {selectedJob && (
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1">
+              <div className="flex items-center justify-between font-extrabold text-slate-900">
+                <span>Role: {selectedJob.title}</span>
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">
+                  {selectedJob.experience_level}
+                </span>
+              </div>
+              {selectedJob.required_skills && selectedJob.required_skills.length > 0 && (
+                <p className="text-[11px] text-slate-500 font-medium truncate">
+                  Required Skills: {selectedJob.required_skills.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* STEP 2: Candidate Selection Box */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-700">Select Candidates ({selectedCandidateIds.length} selected)</label>
+              <label className="text-xs font-bold text-slate-700">
+                2. Select Shortlisted Candidates for {selectedJob?.title || 'Position'} ({selectedCandidateIds.length} selected)
+              </label>
               {candidates.length > 0 && (
                 <button
                   type="button"
@@ -131,11 +213,14 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
               )}
             </div>
 
-            <div className="border border-slate-200 rounded-2xl p-3 max-h-40 overflow-y-auto space-y-2 bg-slate-50/50">
+            <div className="border border-slate-200 rounded-2xl p-3 max-h-44 overflow-y-auto space-y-2 bg-slate-50/50">
               {candidates.length === 0 ? (
-                <p className="text-xs text-slate-400 py-3 text-center">
-                  No candidates registered in database. Register candidate users first.
-                </p>
+                <div className="p-4 text-center space-y-1">
+                  <p className="text-xs font-bold text-slate-700">No Eligible Shortlisted Candidates for this Job</p>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Only candidates who applied for this position with ATS match score ≥ 80% and status 'Shortlisted' will appear.
+                  </p>
+                </div>
               ) : (
                 candidates.map((c) => {
                   const isSelected = selectedCandidateIds.includes(c.candidate_id);
@@ -143,26 +228,34 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
                     <div
                       key={c.candidate_id}
                       onClick={() => toggleCandidateSelect(c.candidate_id)}
-                      className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
+                      className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
                         isSelected 
-                          ? 'bg-indigo-50/80 border-indigo-200 text-indigo-950 font-bold' 
-                          : 'bg-white border-slate-200/80 text-slate-700 hover:border-slate-300'
+                          ? 'bg-indigo-50/90 border-indigo-300 text-indigo-950 font-bold shadow-xs' 
+                          : 'bg-white border-slate-200/80 text-slate-700 hover:border-indigo-200'
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-indigo-600" />
+                          <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
                         ) : (
-                          <Square className="w-4 h-4 text-slate-400" />
+                          <Square className="w-4 h-4 text-slate-400 shrink-0" />
                         )}
                         <div>
-                          <p className="text-xs font-bold text-slate-900">{c.full_name}</p>
-                          <p className="text-[11px] text-slate-500 font-medium">{c.target_role} · {c.email}</p>
+                          <p className="text-xs font-black text-slate-900">{c.candidate_name || c.full_name}</p>
+                          <p className="text-[11px] text-slate-500 font-medium">{c.email} · {c.applied_job || c.job_title}</p>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Applied: {c.applied_date}</p>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
-                        {c.experience_level}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                          c.ats_score >= 80 ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {c.ats_score}% ATS Match
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {c.status || 'Shortlisted'}
+                        </span>
+                      </div>
                     </div>
                   );
                 })
@@ -170,7 +263,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
             </div>
           </div>
 
-          {/* Round Type & Difficulty */}
+          {/* STEP 3: Round Type & Difficulty */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-slate-500 block mb-1">Round Type</label>
@@ -188,7 +281,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Difficulty Level</label>
+              <label className="text-xs font-bold text-slate-500 block mb-1">Difficulty Level (Auto-Inferred)</label>
               <select
                 value={difficulty}
                 onChange={(e) => setDifficulty(e.target.value)}
@@ -244,7 +337,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
           <div>
             <label className="text-xs font-bold text-slate-500 block mb-1">Interview Instructions for Candidate</label>
             <textarea
-              rows={3}
+              rows={2}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               className="w-full p-3 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"

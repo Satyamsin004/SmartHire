@@ -30,9 +30,9 @@ export const RecruiterSettings: React.FC = () => {
       </div>
 
       {savedSuccess && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          Settings saved successfully to PostgreSQL database.
+        <div className="p-4 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-2xl text-xs font-bold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+          Settings saved successfully.
         </div>
       )}
 
@@ -101,7 +101,7 @@ export const RecruiterSettings: React.FC = () => {
         {/* Notifications & Live WebSocket Settings */}
         <div className="bg-white rounded-3xl p-7 border border-slate-200/80 shadow-sm space-y-5">
           <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
               <Bell className="w-5 h-5" />
             </div>
             <div>
@@ -147,3 +147,4 @@ export const RecruiterSettings: React.FC = () => {
     </div>
   );
 };
+

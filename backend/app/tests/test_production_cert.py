@@ -17,7 +17,14 @@ class TestProductionCertification(unittest.TestCase):
             "password": "Password123!",
             "role": "recruiter"
         })
-        assert rec_res.status_code == 200, f"Recruiter login failed: {rec_res.text}"
+        if rec_res.status_code != 200:
+            rec_res = requests.post(f"{BASE_URL}/auth/register", json={
+                "email": "abhay@gmail.com",
+                "password": "Password123!",
+                "full_name": "Abhay Raj Yadav",
+                "role": "recruiter"
+            })
+        assert rec_res.status_code in [200, 201], f"Recruiter auth failed: {rec_res.text}"
         cls.rec_token = rec_res.json()["tokens"]["access_token"]
         cls.rec_headers = {"Authorization": f"Bearer {cls.rec_token}"}
 
@@ -27,7 +34,14 @@ class TestProductionCertification(unittest.TestCase):
             "password": "Password123!",
             "role": "candidate"
         })
-        assert cand_res.status_code == 200, f"Candidate login failed: {cand_res.text}"
+        if cand_res.status_code != 200:
+            cand_res = requests.post(f"{BASE_URL}/auth/register", json={
+                "email": "satyamsin004@gmail.com",
+                "password": "Password123!",
+                "full_name": "Satyam Singh",
+                "role": "candidate"
+            })
+        assert cand_res.status_code in [200, 201], f"Candidate auth failed: {cand_res.text}"
         cls.cand_token = cand_res.json()["tokens"]["access_token"]
         cls.cand_headers = {"Authorization": f"Bearer {cls.cand_token}"}
 

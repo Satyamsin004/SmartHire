@@ -9,6 +9,8 @@ from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["Notification Center"])
 
+@router.get("", summary="Get User Notifications")
+@router.get("/", summary="Get User Notifications")
 @router.get("/me", summary="Get User Notifications")
 async def get_my_notifications(
     user: User = Depends(get_current_user),
@@ -74,3 +76,39 @@ async def mark_all_read(
 
     await db.commit()
     return {"status": "success", "marked_count": len(notifs)}
+
+@router.post("/{notification_id}/unread", summary="Mark Single Notification as Unread")
+async def mark_notification_unread(
+    notification_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Marks a single notification as unread."""
+    res = await db.execute(select(Notification).where(
+        Notification.id == notification_id,
+        Notification.user_id == user.id
+    ))
+    notif = res.scalar_one_or_none()
+    if notif:
+        notif.is_read = False
+        await db.commit()
+
+    return {"status": "success", "notification_id": notification_id}
+
+@router.delete("/{notification_id}", summary="Delete Notification")
+async def delete_notification(
+    notification_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Permanently deletes a notification from PostgreSQL."""
+    res = await db.execute(select(Notification).where(
+        Notification.id == notification_id,
+        Notification.user_id == user.id
+    ))
+    notif = res.scalar_one_or_none()
+    if notif:
+        await db.delete(notif)
+        await db.commit()
+
+    return {"status": "success", "notification_id": notification_id}

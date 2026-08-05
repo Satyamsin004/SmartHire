@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Video, FileText, Briefcase, Award, Settings,
-  LogOut, Sparkles, Shield, ChevronLeft, ChevronRight, BarChart3, Users
+  LayoutDashboard, Briefcase, Users, FileText, CheckSquare,
+  Video, BarChart2, TrendingUp, Settings, Plus, LogOut, Sparkles,
+  ChevronLeft, ChevronRight, Star, ClipboardList, Building2, UserCircle, Mail, History
 } from 'lucide-react';
 import api from '../../services/api';
 
 export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('candidate');
 
   useEffect(() => {
@@ -16,6 +18,7 @@ export const Sidebar: React.FC = () => {
     if (raw) {
       try {
         const u = JSON.parse(raw);
+        setUser(u);
         setUserRole(u.role || 'candidate');
       } catch (e) {
         console.error(e);
@@ -30,7 +33,12 @@ export const Sidebar: React.FC = () => {
     window.location.href = '/login';
   };
 
+  const initials = user?.full_name
+    ? user.full_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+    : 'AB';
+
   const navItems = [
+    // ── Common ──
     {
       name: 'Dashboard',
       path: userRole === 'recruiter' ? '/recruiter' : userRole === 'admin' ? '/admin' : '/dashboard',
@@ -38,11 +46,13 @@ export const Sidebar: React.FC = () => {
       roles: ['candidate', 'recruiter', 'admin'],
     },
     {
-      name: 'Job Openings',
+      name: 'Jobs',
       path: '/jobs',
       icon: Briefcase,
-      roles: ['candidate'],
+      roles: ['candidate', 'admin'],
     },
+
+    // ── Candidate-only sidebar items (Unified AI Practice Hub + Core Portal) ──
     {
       name: 'My Applications',
       path: '/applications',
@@ -50,40 +60,68 @@ export const Sidebar: React.FC = () => {
       roles: ['candidate'],
     },
     {
-      name: 'AI Mock Session',
-      path: '/interview',
+      name: 'AI Practice Hub',
+      path: '/practice',
+      icon: Sparkles,
+      roles: ['candidate', 'admin'],
+    },
+
+    // ── Recruiter-only sidebar items ──
+    {
+      name: 'Posted Jobs',
+      path: '/recruiter/posted-jobs',
+      icon: Briefcase,
+      roles: ['recruiter'],
+    },
+    {
+      name: 'Applications',
+      path: '/recruiter/applications',
+      icon: ClipboardList,
+      roles: ['recruiter'],
+    },
+    {
+      name: 'Shortlisted',
+      path: '/recruiter/shortlisted',
+      icon: Star,
+      roles: ['recruiter'],
+    },
+    {
+      name: 'Assessments',
+      path: '/recruiter/assessments',
+      icon: CheckSquare,
+      roles: ['recruiter'],
+    },
+    {
+      name: 'Interviews',
+      path: '/recruiter/interviews',
       icon: Video,
-      roles: ['candidate'],
-    },
-    {
-      name: 'Resume Analyzer',
-      path: '/resume',
-      icon: FileText,
-      roles: ['candidate', 'recruiter'],
-    },
-    {
-      name: 'Evaluation Reports',
-      path: '/reports',
-      icon: BarChart3,
-      roles: ['candidate', 'recruiter', 'admin'],
+      roles: ['recruiter'],
     },
     {
       name: 'Offers',
-      path: '/offers',
-      icon: Award,
-      roles: ['candidate'],
+      path: '/recruiter/offers',
+      icon: Mail,
+      roles: ['recruiter'],
     },
     {
-      name: 'Recruiter Workspace',
-      path: '/recruiter',
-      icon: Users,
-      roles: ['recruiter', 'admin'],
+      name: 'Reports',
+      path: '/recruiter/reports',
+      icon: BarChart2,
+      roles: ['recruiter'],
     },
     {
-      name: 'Admin Governance',
-      path: '/admin',
-      icon: Shield,
-      roles: ['admin'],
+      name: 'Analytics',
+      path: '/recruiter/analytics',
+      icon: TrendingUp,
+      roles: ['recruiter'],
+    },
+
+    // ── Common bottom items ──
+    {
+      name: 'Profile',
+      path: '/profile',
+      icon: UserCircle,
+      roles: ['candidate', 'recruiter', 'admin'],
     },
     {
       name: 'Settings',
@@ -97,85 +135,122 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
-      className={`relative sticky top-0 h-screen bg-brand-ink text-brand-bg transition-all duration-300 z-50 flex flex-col justify-between p-4 shadow-floating ${
+      aria-label="Main Navigation"
+      className={`relative sticky top-0 h-screen bg-[#0B0F1B] text-slate-200 transition-all duration-300 z-50 flex flex-col justify-between p-4 border-r border-slate-800/80 shadow-2xl select-none ${
         collapsed ? 'w-20' : 'w-64'
       }`}
     >
       {/* Collapse Toggle Button */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3.5 top-8 w-7 h-7 rounded-full bg-brand-primary text-brand-accent border-2 border-white flex items-center justify-center shadow-md hover:scale-110 transition-transform"
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-expanded={!collapsed}
+        className="absolute -right-3.5 top-8 w-7 h-7 rounded-full bg-indigo-600 text-white border-2 border-[#0B0F1B] flex items-center justify-center shadow-lg hover:scale-110 transition-transform z-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1B]"
       >
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      <div>
+      <div className="flex flex-col h-full overflow-y-auto custom-scrollbar">
         {/* Brand Emblem & Logo */}
-        <div className={`flex items-center gap-3 px-2 py-4 mb-6 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-secondary to-brand-primary flex items-center justify-center shadow-luxury">
-            <Sparkles className="w-5 h-5 text-brand-accent" />
+        <div className={`flex items-center gap-3 px-2 py-4 mb-4 ${collapsed ? 'justify-center' : ''}`}>
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <Sparkles className="w-5 h-5 text-white" />
           </div>
           {!collapsed && (
-            <div>
-              <h1 className="text-lg font-extrabold tracking-tight text-white flex items-center gap-1">
-                SmartHire <span className="text-brand-accent text-xs px-1.5 py-0.5 rounded-lg bg-brand-primary">AI</span>
-              </h1>
-              <p className="text-[10px] text-slate-400 font-semibold">Enterprise AI Recruitment</p>
-            </div>
+            <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-1.5">
+              SmartHire <span className="text-indigo-400 font-extrabold text-sm">AI</span>
+            </h1>
           )}
         </div>
 
-        {/* Primary Action Button */}
-        {!collapsed && userRole === 'candidate' && (
-          <button
-            onClick={() => navigate('/interview')}
-            className="w-full mb-6 py-3 px-4 rounded-2xl bg-brand-secondary hover:bg-sb-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-soft transition-all"
-          >
-            <Video className="w-4 h-4" />
-            <span>Start Practice Session</span>
-          </button>
+        {/* Section Label */}
+        {!collapsed && (
+          <div className="px-3 mb-2">
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+              Workspace Navigation
+            </p>
+          </div>
         )}
 
         {/* Navigation Workspace Links */}
-        <nav className="space-y-1.5">
+        <nav className="space-y-1">
           {filteredNav.map((item) => (
             <NavLink
-              key={item.path}
+              key={item.name}
               to={item.path}
+              aria-label={item.name}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-extrabold transition-all group relative ${
+                `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0B0F1B] ${
                   isActive
-                    ? 'bg-brand-primary text-brand-accent shadow-soft'
-                    : 'text-slate-300 hover:bg-sb-800/80 hover:text-white'
+                    ? 'bg-slate-800/90 text-white shadow-inner font-extrabold border border-slate-700/60'
+                    : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
                 } ${collapsed ? 'justify-center' : ''}`
               }
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-brand-accent' : 'text-slate-400 group-hover:text-white'}`} />
+                  <item.icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`} />
                   {!collapsed && <span>{item.name}</span>}
                   {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-brand-accent rounded-r-full" />
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-indigo-500 rounded-r-full" />
                   )}
                 </>
               )}
             </NavLink>
           ))}
         </nav>
+
+        {/* Primary Action Button (+ Post New Job) */}
+        {!collapsed && (
+          <div className="mt-6 mb-4 px-1">
+            <button
+              onClick={() => {
+                if (userRole === 'recruiter' || userRole === 'admin') {
+                  navigate('/recruiter?action=create-job');
+                } else {
+                  navigate('/interview');
+                }
+              }}
+              aria-label={userRole === 'candidate' ? 'Start Practice Session' : 'Post New Job'}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1B]"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>{userRole === 'candidate' ? 'Start Practice Session' : 'Post New Job'}</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Footer Profile & Logout */}
-      <div className="pt-4 border-t border-sb-800">
-        <button
-          onClick={handleLogout}
-          className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-extrabold text-rose-400 hover:bg-rose-950/40 transition-colors ${
-            collapsed ? 'justify-center' : ''
-          }`}
-        >
-          <LogOut className="w-5 h-5 shrink-0" />
-          {!collapsed && <span>Sign Out</span>}
-        </button>
+      {/* Footer Profile & Logout Capsule */}
+      <div className="pt-3 border-t border-slate-800/80">
+        <div className={`flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800/80 ${collapsed ? 'justify-center' : ''}`}>
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-8 h-8 rounded-full bg-indigo-900/80 border border-indigo-500/40 text-indigo-200 font-extrabold text-xs flex items-center justify-center shrink-0">
+              {initials}
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-100 truncate leading-tight">
+                  {user?.full_name || 'User'}
+                </p>
+                <p className="text-[10px] font-medium text-slate-400 truncate leading-tight">
+                  {user?.email || ''}
+                </p>
+              </div>
+            )}
+          </div>
+          {!collapsed && (
+            <button 
+              onClick={handleLogout}
+              aria-label="Log out"
+              className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800/50 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );
 };
+

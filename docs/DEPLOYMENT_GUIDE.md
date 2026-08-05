@@ -17,7 +17,7 @@
    docker-compose up --build -d
    ```
 4. Verify endpoints:
-   - Client Web App: http://localhost:3000
+   - Client Web App: http://localhost:3001
    - FastAPI Docs: http://localhost:8000/api/v1/docs
 
 ## Production AWS EC2 + S3 Deployment
