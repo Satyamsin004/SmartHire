@@ -28,6 +28,11 @@ class TestFullSmartHirePipeline(unittest.TestCase):
                 "full_name": "Abhay Raj Yadav",
                 "role": "recruiter"
             })
+            if rec_res.status_code == 409:
+                rec_res = requests.post(f"{BASE_URL}/auth/login", json={
+                    "email": "abhay@gmail.com",
+                    "password": "Password123!"
+                })
         assert rec_res.status_code in [200, 201], f"Recruiter auth failed: {rec_res.text}"
         cls.rec_token = rec_res.json()["tokens"]["access_token"]
         cls.rec_headers = {"Authorization": f"Bearer {cls.rec_token}"}
@@ -45,6 +50,11 @@ class TestFullSmartHirePipeline(unittest.TestCase):
                 "full_name": "Satyam Singh",
                 "role": "candidate"
             })
+            if cand_res.status_code == 409:
+                cand_res = requests.post(f"{BASE_URL}/auth/login", json={
+                    "email": "satyamsin004@gmail.com",
+                    "password": "Password123!"
+                })
         assert cand_res.status_code in [200, 201], f"Candidate auth failed: {cand_res.text}"
         cls.cand_token = cand_res.json()["tokens"]["access_token"]
         cls.cand_headers = {"Authorization": f"Bearer {cls.cand_token}"}
