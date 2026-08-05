@@ -172,7 +172,15 @@ class ResumeService:
         except (ValueError, TypeError):
             ats_score_val = 85.0
 
-        edu_level = education[0].get("degree") if (education and isinstance(education[0], dict)) else None
+        deg_raw = (education[0].get("degree") or "").lower() if (education and isinstance(education[0], dict)) else ""
+        if "bachelor" in deg_raw or "b.s" in deg_raw or "b.e" in deg_raw or "b.tech" in deg_raw or "bs" in deg_raw:
+            edu_level = "Bachelor's Degree"
+        elif "master" in deg_raw or "m.s" in deg_raw or "m.e" in deg_raw or "m.tech" in deg_raw or "ms" in deg_raw:
+            edu_level = "Master's Degree"
+        elif "phd" in deg_raw or "doctor" in deg_raw:
+            edu_level = "Doctorate / Ph.D."
+        else:
+            edu_level = education[0].get("degree") if (education and isinstance(education[0], dict)) else "Bachelor's Degree"
 
         resume = Resume(
             id=f"res-{uuid.uuid4().hex[:8]}",

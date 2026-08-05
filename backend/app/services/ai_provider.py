@@ -101,6 +101,13 @@ class AIProviderManager:
         # In-memory question diversity registry
         self._question_history: Set[str] = set()
 
+    def reset_health_states(self) -> None:
+        self._health_states = {
+            "gemini": ProviderHealthState(),
+            "openrouter": ProviderHealthState(),
+            "groq": ProviderHealthState(),
+        }
+
     @staticmethod
     def _configured_keys(*keys: str) -> List[str]:
         return [key.strip() for key in keys if key and key.strip()]

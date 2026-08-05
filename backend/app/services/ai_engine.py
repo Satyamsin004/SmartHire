@@ -213,39 +213,70 @@ class AIEngine:
             prev_q = context.get('previous_question', '')
             cand_ans = context.get('candidate_answer', '').lower()
             
+            # Extract history of previously asked questions to prevent duplicates in offline mode
+            prev_asked = context.get("previously_asked_questions", [])
+            conv_mem = [m.get("question") for m in context.get("conversation_memory", []) if isinstance(m, dict) and m.get("question")]
+            init_q = context.get("initial_question")
+            asked_history = [q.strip().lower() for q in (prev_asked + conv_mem + ([prev_q] if prev_q else []) + ([init_q] if init_q else [])) if q]
+
             # Contextual fallback based on candidate's actual answer content & terms
             cand_ans_lower = cand_ans.lower()
             prev_q_lower = prev_q.lower()
             
-            # Human HR Style Sequential Deep-Dive Probing Fallback Logic
+            # Pool of candidate fallback questions paired with keywords
+            fallback_options = [
+                ("What is the difference between PUT and PATCH in terms of payload representation and idempotency, and how do you handle JWT authorization headers for these endpoints?", ["PUT", "PATCH", "idempotency", "JWT", "Authorization"]),
+                ("Could you detail how you structure your REST endpoints, handle HTTP status codes (200, 201, 400, 401, 404, 500), and enforce API rate limiting?", ["REST", "status codes", "rate limiting", "endpoints", "error handling"]),
+                ("How do you analyze slow database queries, configure indexing strategies, and prevent deadlock conditions under heavy concurrent traffic?", ["indexing", "transactions", "ACID", "concurrency", "deadlocks"]),
+                ("How do you securely store JWT tokens on the client side, handle token expiration, and implement refresh token rotation?", ["JWT", "Refresh Token", "Security", "Token Rotation", "Cookies"]),
+                ("You mentioned GET and POST. What is GET specifically, and when should you use PUT vs PATCH vs DELETE instead of POST?", ["GET", "POST", "PUT", "PATCH", "DELETE", "HTTP Methods"]),
+                ("How do you handle authentication (e.g., JWT, Bearer tokens, or OAuth) and status code handling for these API endpoints?", ["JWT", "Authentication", "Bearer", "OAuth", "API Security"]),
+                (f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?", ["bottlenecks", "performance", "architecture"]),
+                ("How do you approach automated testing, continuous integration, and canary deployments for microservices?", ["testing", "CI/CD", "canary", "microservices"]),
+                ("What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?", ["monitoring", "metrics", "tracing", "alerting"]),
+                ("How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?", ["security", "CORS", "CSRF", "XSS", "SQL injection"]),
+                ("Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?", ["task queue", "Celery", "RabbitMQ", "asynchronous"]),
+                ("Could you walk through how the Virtual DOM diffing algorithm works, and how you optimize React state management using hooks and memoization?", ["Virtual DOM", "hooks", "memoization", "re-rendering", "performance"]),
+                ("Could you walk through your containerization strategy, multi-stage builds, and deployment pipeline configuration?", ["Docker", "Kubernetes", "multi-stage build", "CI/CD", "deployment"]),
+                (f"You mentioned key technical components in your previous answer. Could you elaborate on the specific architectural trade-offs and performance bottlenecks you encountered in that implementation?", ["architecture", "trade-offs", "bottlenecks", "performance", "scalability"])
+            ]
+
+            # Primary candidate selection based on candidate transcript terms
+            preferred = None
             if ("get" in cand_ans_lower and "post" in cand_ans_lower) or ("get" in prev_q_lower and "post" in prev_q_lower):
-                if "put" not in cand_ans_lower and "patch" not in cand_ans_lower:
-                    q_text = "You mentioned GET and POST. What is GET specifically, and when should you use PUT vs PATCH vs DELETE instead of POST?"
-                    keywords = ["GET", "POST", "PUT", "PATCH", "DELETE", "HTTP Methods"]
-                else:
-                    q_text = "How do you handle authentication (e.g., JWT, Bearer tokens, or OAuth) and status code handling for these API endpoints?"
-                    keywords = ["JWT", "Authentication", "Bearer", "OAuth", "API Security"]
+                preferred = fallback_options[4] if ("put" not in cand_ans_lower and "patch" not in cand_ans_lower) else fallback_options[5]
             elif "put" in cand_ans_lower or "patch" in cand_ans_lower or "delete" in cand_ans_lower:
-                q_text = "What is the difference between PUT and PATCH in terms of payload representation and idempotency, and how do you handle JWT authorization headers for these endpoints?"
-                keywords = ["PUT", "PATCH", "idempotency", "JWT", "Authorization"]
+                preferred = fallback_options[0]
             elif "jwt" in cand_ans_lower or "auth" in cand_ans_lower or "token" in cand_ans_lower:
-                q_text = "How do you securely store JWT tokens on the client side, handle token expiration, and implement refresh token rotation?"
-                keywords = ["JWT", "Refresh Token", "Security", "Token Rotation", "Cookies"]
+                preferred = fallback_options[3]
             elif "api" in cand_ans_lower or "rest" in cand_ans_lower or "api" in prev_q_lower:
-                q_text = "Could you detail how you structure your REST endpoints, handle HTTP status codes (200, 201, 400, 401, 404, 500), and enforce API rate limiting?"
-                keywords = ["REST", "status codes", "rate limiting", "endpoints", "error handling"]
+                preferred = fallback_options[1]
             elif "database" in cand_ans_lower or "sql" in cand_ans_lower or "postgres" in cand_ans_lower or "database" in prev_q_lower:
-                q_text = "How do you analyze slow database queries, configure indexing strategies, and prevent deadlock conditions under heavy concurrent traffic?"
-                keywords = ["indexing", "transactions", "ACID", "concurrency", "deadlocks"]
+                preferred = fallback_options[2]
             elif "react" in cand_ans_lower or "frontend" in cand_ans_lower or "component" in cand_ans_lower:
-                q_text = "Could you walk through how the Virtual DOM diffing algorithm works, and how you optimize React state management using hooks and memoization?"
-                keywords = ["Virtual DOM", "hooks", "memoization", "re-rendering", "performance"]
+                preferred = fallback_options[11]
             elif "docker" in cand_ans_lower or "kubernetes" in cand_ans_lower or "aws" in cand_ans_lower or "cloud" in cand_ans_lower:
-                q_text = "Could you walk through your containerization strategy, multi-stage builds, and deployment pipeline configuration?"
-                keywords = ["Docker", "Kubernetes", "multi-stage build", "CI/CD", "deployment"]
+                preferred = fallback_options[12]
+
+            def _is_dup(q_str: str) -> bool:
+                q_low = q_str.strip().lower()
+                return any(q_low == h or (len(h) > 20 and h in q_low) or (len(q_low) > 20 and q_low in h) for h in asked_history)
+
+            selected = None
+            if preferred and not _is_dup(preferred[0]):
+                selected = preferred
             else:
-                q_text = f"You mentioned key technical components in your previous answer. Could you elaborate on the specific architectural trade-offs and performance bottlenecks you encountered in that implementation?"
-                keywords = ["architecture", "trade-offs", "bottlenecks", "performance", "scalability"]
+                for opt in fallback_options:
+                    if not _is_dup(opt[0]):
+                        selected = opt
+                        break
+
+            if not selected:
+                variant_num = len(asked_history) + 1
+                q_text = f"Could you detail your technical approach to system architecture, testing, and performance optimization for component #{variant_num} in your {role} project?"
+                keywords = ["architecture", "testing", "performance", "optimization"]
+            else:
+                q_text, keywords = selected
 
             return {
                 "question_text": q_text,

@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -193,19 +194,36 @@ class QuestionGeneratorService:
             
             # Post-generation deduplication check
             prev_asked = context.get("previously_asked_questions", [])
-            conv_mem = [m.get("question") for m in context.get("conversation_memory", [])]
-            all_history = set(prev_asked + conv_mem)
+            conv_mem = [m.get("question") for m in context.get("conversation_memory", []) if m.get("question")]
+            prev_q = context.get("previous_question")
+            init_q = context.get("initial_question")
+            all_history = [h.strip() for h in (prev_asked + conv_mem + ([prev_q] if prev_q else []) + ([init_q] if init_q else [])) if h]
             
-            if q_text in all_history:
-                logger.warning(f"Gemini generated duplicate question '{q_text}'. Triggering contextual fallback.")
+            is_dup = any(q_text.lower() == h.lower() or (len(h) > 20 and h.lower() in q_text.lower()) for h in all_history)
+            
+            if is_dup or q_text.startswith("Welcome!"):
+                logger.warning(f"Gemini generated duplicate or initial question '{q_text}' as follow-up. Triggering contextual fallback.")
                 cand_ans = context.get('candidate_answer', '').lower()
                 role = context.get('role', 'Software Engineer')
+                fallbacks = [
+                    "How do you handle API versioning, error schemas, and backward compatibility in production?",
+                    "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?",
+                    f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?",
+                    "How do you approach automated testing, continuous integration, and canary deployments for microservices?",
+                    "What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?",
+                    "How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?",
+                    "Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?"
+                ]
                 if "api" in cand_ans or "rest" in cand_ans:
-                    q_text = "How do you handle API versioning, error schemas, and backward compatibility in production?"
+                    fallbacks.insert(0, "How do you handle API versioning, error schemas, and backward compatibility in production?")
                 elif "database" in cand_ans or "sql" in cand_ans:
-                    q_text = "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?"
-                else:
-                    q_text = f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?"
+                    fallbacks.insert(0, "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?")
+                
+                for fb in fallbacks:
+                    fb_dup = any(fb.lower() == h.lower() or (len(fb) > 20 and fb.lower() in h.lower()) for h in all_history)
+                    if not fb_dup:
+                        q_text = fb
+                        break
             
             return {
                 "question_text": q_text,
@@ -260,13 +278,53 @@ class QuestionGeneratorService:
                 if len(unique_questions) == num_questions:
                     break
 
-        # Fallback if deduplicated list is shorter than target count
+        # Fallback with distinct main questions if deduplicated list is shorter than target count
         if len(unique_questions) < num_questions:
-            for q in raw_questions:
-                if q not in unique_questions:
-                    unique_questions.append(q)
+            role = session.role_target or "Software Engineer"
+            main_fallbacks = [
+                f"How do you design scalable REST APIs and handle data validation in {role} applications?",
+                f"Could you explain your approach to database indexing and query optimization for high-traffic {role} services?",
+                f"How do you configure CI/CD pipelines, containerization, and automated deployments for {role} services?",
+                f"What strategies do you use for error handling, logging, and monitoring in {role} backend microservices?",
+                f"Could you describe a challenging technical architecture decision you made in a recent {role} project?",
+                f"How do you handle distributed caching, session persistence, and invalidation strategies in {role} systems?",
+                f"What approaches do you take to design fault-tolerant microservices with circuit breakers and fallback mechanisms for {role} applications?",
+                f"How do you ensure data consistency, transaction management, and saga patterns across microservices in {role} projects?",
+                f"Could you elaborate on your experience implementing real-time messaging, WebSockets, and event-driven architectures for {role} services?",
+                f"What performance profiling tools and load testing strategies do you use to benchmark high-scale {role} backends?"
+            ]
+            for fb_text in main_fallbacks:
+                if fb_text not in prev_texts:
+                    unique_questions.append({
+                        "question_text": fb_text,
+                        "category": "Technical Architecture",
+                        "difficulty": session.difficulty or "Medium",
+                        "expected_keywords": ["architecture", "design", "performance"]
+                    })
+                    prev_texts.add(fb_text)
                     if len(unique_questions) == num_questions:
                         break
+
+        # Final safety net: guarantee non-empty list
+        while len(unique_questions) < num_questions:
+            idx = len(unique_questions) + 1
+            fb_text = f"Could you walk me through your technical approach and key design decisions for component #{idx} in your {session.role_target or 'Software Engineer'} project?"
+            if fb_text not in prev_texts:
+                unique_questions.append({
+                    "question_text": fb_text,
+                    "category": "Technical Architecture",
+                    "difficulty": session.difficulty or "Medium",
+                    "expected_keywords": ["architecture", "design", "engineering"]
+                })
+                prev_texts.add(fb_text)
+            else:
+                fb_text += f" (Ref: {uuid.uuid4().hex[:4]})"
+                unique_questions.append({
+                    "question_text": fb_text,
+                    "category": "Technical Architecture",
+                    "difficulty": session.difficulty or "Medium",
+                    "expected_keywords": ["architecture", "design", "engineering"]
+                })
 
         logger.info("Unique Questions Generated ✅ Count: %d | Non-Repetitive Guarantee Active", len(unique_questions))
         return unique_questions

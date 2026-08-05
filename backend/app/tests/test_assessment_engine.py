@@ -35,7 +35,8 @@ async def test_three_attempts_have_no_candidate_question_overlap(monkeypatch):
     async def generated_gemini(prompt, **_kwargs):
         nonlocal counter
         count = int(re.search(r"Generate exactly (\d+)", prompt).group(1))
-        topic = re.search(r"Topic: (.+)", prompt).group(1).strip()
+        topic_match = re.search(r"Topic[:=]'?\s*([^',\n\r]+)", prompt)
+        topic = topic_match.group(1).strip() if topic_match else "React"
         questions = []
         for _ in range(count):
             counter += 1

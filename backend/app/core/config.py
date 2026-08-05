@@ -31,16 +31,17 @@ class Settings(BaseSettings):
         if db_override:
             return db_override
         use_sqlite = os.getenv("USE_SQLITE", "true").lower() in ("true", "1")
-        if use_sqlite or self.POSTGRES_SERVER == "localhost" or self.POSTGRES_SERVER == "postgres":
-            # Check if Postgres 5432 port is reachable
-            import socket
-            try:
-                s = socket.create_connection((self.POSTGRES_SERVER, int(self.POSTGRES_PORT)), timeout=1)
-                s.close()
-                return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-            except Exception:
-                return "sqlite+aiosqlite:///./smarthire.db"
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        if use_sqlite:
+            return "sqlite+aiosqlite:///./smarthire.db"
+
+        # Check if Postgres 5432 port is reachable
+        import socket
+        try:
+            s = socket.create_connection((self.POSTGRES_SERVER, int(self.POSTGRES_PORT)), timeout=1)
+            s.close()
+            return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        except Exception:
+            return "sqlite+aiosqlite:///./smarthire.db"
     
     @property
     def SYNC_DATABASE_URL(self) -> str:

@@ -168,3 +168,15 @@ build/
 # pgAdmin
 pgadmin/pgpass
 pgadmin/servers.json
+
+
+# Uploaded resumes
+backend/static/uploads/resumes/
+
+# Other uploaded files
+backend/static/uploads/
+
+# SQLite database
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3

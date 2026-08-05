@@ -24,6 +24,8 @@ interface ProfileData {
   languages: string[];
   status: string;
   password?: string;
+  resume_url?: string | null;
+  resume_filename?: string | null;
 }
 
 interface ResumeData {

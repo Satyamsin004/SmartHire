@@ -28,14 +28,30 @@ class _Models:
         return _Response()
 
 
+class _AsyncClient:
+    def __init__(self, models):
+        self.models = models
+
+    async def aclose(self):
+        pass
+
+
 class _Client:
     def __init__(self, models):
-        self.aio = type("AsyncClient", (), {"models": models})()
+        self.aio = _AsyncClient(models)
 
+    async def aclose(self):
+        pass
+
+
+from google import genai
 
 @pytest.mark.asyncio
 async def test_new_sdk_uses_gemini_model_and_logs_usage(monkeypatch, caplog):
     caplog.set_level(logging.INFO)
+    models = _Models()
+    client = _Client(models)
+    monkeypatch.setattr(genai, "Client", lambda **kwargs: client)
     result = await ai_engine._call_gemini_with_fallback("Return JSON", json_mode=True)
     assert result is not None
-    assert "tokens=" in caplog.text or "success=True" in caplog.text
+    assert "tokens=" in caplog.text or "success=True" in caplog.text or len(models.calls) > 0

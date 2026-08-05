@@ -39,15 +39,15 @@ async def sync_database_schema():
         await conn.run_sync(Base.metadata.create_all)
         
         for query in ALTER_QUERIES:
+            sql = query
+            if conn.dialect.name == "sqlite":
+                sql = sql.replace(" ADD COLUMN IF NOT EXISTS ", " ADD COLUMN ")
+                sql = sql.replace("JSONB DEFAULT '{}'::jsonb", "JSON").replace("JSONB DEFAULT '[]'::jsonb", "JSON")
+                sql = sql.replace("JSONB", "JSON").replace("::jsonb", "")
             try:
-                await conn.execute(text(query))
+                await conn.execute(text(sql))
             except Exception as e:
-                # Handle SQLite vs PostgreSQL syntax differences
-                fallback_query = query.replace("JSONB DEFAULT '{}'::jsonb", "JSON DEFAULT '{}'").replace("JSONB DEFAULT '[]'::jsonb", "JSON DEFAULT '[]'")
-                try:
-                    await conn.execute(text(fallback_query))
-                except Exception as inner_e:
-                    logger.warning("Query execution warning: %s", inner_e)
+                logger.warning("Query execution warning: %s", e)
 
     print("[SUCCESS] DATABASE SCHEMA SYNCHRONIZED CLEANLY!")
 
