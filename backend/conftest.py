@@ -19,9 +19,3 @@ async def initialize_and_cleanup_test_database():
     await sync_database_schema()
     yield
     await dispose_engine()
-
-
-@pytest.fixture(autouse=True)
-async def cleanup_per_test_db_connections():
-    yield
-    await dispose_engine()

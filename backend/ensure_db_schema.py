@@ -136,7 +136,8 @@ async def sync_database_schema():
                 except Exception:
                     pass
 
-    await engine.dispose()
+    from app.core.db import dispose_engine
+    await dispose_engine()
     print("[SUCCESS] DATABASE SCHEMA SYNCHRONIZED CLEANLY!")
 
 if __name__ == "__main__":
