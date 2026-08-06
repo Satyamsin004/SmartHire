@@ -2,8 +2,10 @@ import os
 import sys
 import json
 import uuid
+import asyncio
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.db import dispose_engine
 import unittest
 
 BASE_URL = "/api/v1"
@@ -66,6 +68,11 @@ class TestFullSmartHirePipeline(unittest.TestCase):
             files={"file": ("satyam_resume.pdf", resume_pdf_bytes, "application/pdf")},
             headers=cls.cand_headers
         )
+
+    @classmethod
+    def tearDownClass(cls):
+        asyncio.run(dispose_engine())
+        cls.client.close()
 
     def test_01_health_and_gemini_diagnostics(self):
         """PHASE 1: Verify API health and Gemini live connection."""
