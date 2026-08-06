@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 from sqlalchemy.orm import declarative_base
@@ -7,10 +8,21 @@ from app.core.config import settings
 Base = declarative_base()
 
 _engine: Optional[AsyncEngine] = None
+_engine_loop: Optional[asyncio.AbstractEventLoop] = None
 _async_session_factory: Optional[async_sessionmaker] = None
 
 def get_engine() -> AsyncEngine:
-    global _engine
+    global _engine, _engine_loop, _async_session_factory
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+
+    if _engine is not None and current_loop is not None and _engine_loop is not None and _engine_loop is not current_loop:
+        _engine = None
+        _engine_loop = None
+        _async_session_factory = None
+
     if _engine is None:
         connect_args = {}
         if settings.DATABASE_URL.startswith("sqlite"):
@@ -35,6 +47,7 @@ def get_engine() -> AsyncEngine:
             settings.DATABASE_URL,
             **engine_kwargs
         )
+        _engine_loop = current_loop
 
         if settings.DATABASE_URL.startswith("sqlite"):
             @event.listens_for(_engine.sync_engine, "connect")
@@ -48,9 +61,10 @@ def get_engine() -> AsyncEngine:
 
 def get_session_factory() -> async_sessionmaker:
     global _async_session_factory
-    if _async_session_factory is None:
+    engine = get_engine()
+    if _async_session_factory is None or _async_session_factory.kw.get("bind") is not engine:
         _async_session_factory = async_sessionmaker(
-            bind=get_engine(),
+            bind=engine,
             class_=AsyncSession,
             expire_on_commit=False,
             autocommit=False,
@@ -59,13 +73,14 @@ def get_session_factory() -> async_sessionmaker:
     return _async_session_factory
 
 async def dispose_engine():
-    global _engine, _async_session_factory
+    global _engine, _engine_loop, _async_session_factory
     if _engine is not None:
         try:
             await _engine.dispose()
         except Exception:
             pass
         _engine = None
+        _engine_loop = None
         _async_session_factory = None
 
 def __getattr__(name: str):
