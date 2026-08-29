@@ -170,13 +170,33 @@ pgadmin/pgpass
 pgadmin/servers.json
 
 
-# Uploaded resumes
-backend/static/uploads/resumes/
-
-# Other uploaded files
+# Uploaded resumes and media
+static/uploads/resumes/*
+!static/uploads/resumes/.gitkeep
+static/uploads/recordings/*
+!static/uploads/recordings/.gitkeep
+static/uploads/avatars/*
+!static/uploads/avatars/.gitkeep
+static/uploads/logos/*
+!static/uploads/logos/.gitkeep
 backend/static/uploads/
+static/uploads/
 
-# SQLite database
+# Datasets
+archive/
+data/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
 backend/*.db
 backend/*.sqlite
 backend/*.sqlite3
+
+# ML Checkpoints (Keep primary model for out-of-the-box behavioral AI)
+backend/ml/emotion/models/checkpoints/*
+!backend/ml/emotion/models/checkpoints/best_behavior_model.pt
+!backend/ml/emotion/models/checkpoints/.gitkeep

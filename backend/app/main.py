@@ -1,3 +1,7 @@
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s: %(message)s')
+logging.getLogger("smarthire.auth").setLevel(logging.DEBUG)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -20,7 +24,17 @@ app = FastAPI(
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,6 +42,62 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
+    from app.models import domain as _domain_models  # Registers all 25+ domain models with Base.metadata
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            
+        for col_def in [
+            "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS recording_status VARCHAR(50) DEFAULT 'PENDING';",
+            "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS integrity_status VARCHAR(50) DEFAULT 'CLEAN';",
+            "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS integrity_score FLOAT DEFAULT 100.0;",
+            "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS total_integrity_incidents INTEGER DEFAULT 0;",
+            "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS termination_reason VARCHAR(255);",
+            "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS terminated_at TIMESTAMP;",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS candidate_id VARCHAR(36);",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS transcript_id VARCHAR(36);",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS vision_analysis_id VARCHAR(36);",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'COMPLETED';",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS question_evaluations JSON DEFAULT '[]';",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS practice_recommendations JSON DEFAULT '[]';",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS speech_timeline JSON DEFAULT '[]';",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS gaze_timeline JSON DEFAULT '[]';",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS emotion_timeline JSON DEFAULT '[]';",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS model_version VARCHAR(50) DEFAULT 'smart-hire-v2.0.0';",
+            "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS analysis_version VARCHAR(50) DEFAULT 'evidence_based_v2';",
+            "ALTER TABLE interview_visual_observations ADD COLUMN IF NOT EXISTS model_version VARCHAR(50) DEFAULT 'smart-hire-behavior-v2.0';",
+            "ALTER TABLE interview_visual_observations ADD COLUMN IF NOT EXISTS probability_distribution JSON DEFAULT '{}';",
+            "ALTER TABLE interview_visual_observations ADD COLUMN IF NOT EXISTS observation_status VARCHAR(50) DEFAULT 'VALID';",
+            "ALTER TABLE interview_visual_observations ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE interview_visual_observations ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';",
+            "ALTER TABLE interview_visual_metrics ADD COLUMN IF NOT EXISTS model_version VARCHAR(50) DEFAULT 'smart-hire-behavior-v2.0';",
+            "ALTER TABLE interview_visual_metrics ADD COLUMN IF NOT EXISTS emotion_distribution JSON DEFAULT '{}';",
+            "ALTER TABLE interview_visual_metrics ADD COLUMN IF NOT EXISTS emotion_timeline JSON DEFAULT '[]';",
+            "ALTER TABLE interview_visual_metrics ADD COLUMN IF NOT EXISTS head_pose_stability FLOAT DEFAULT 0.0;",
+            "ALTER TABLE interview_visual_metrics ADD COLUMN IF NOT EXISTS long_away_periods INTEGER DEFAULT 0;",
+            "ALTER TABLE interview_visual_metrics ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE interview_visual_metrics ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS filler_breakdown JSON DEFAULT '{}';",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS grammar_errors_sample JSON DEFAULT '[]';",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS pronunciation_status VARCHAR(100) DEFAULT 'Available';",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS pause_count INTEGER DEFAULT 0;",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS long_pause_count INTEGER DEFAULT 0;",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS average_pause_duration FLOAT DEFAULT 0.0;",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS response_latency_avg FLOAT DEFAULT 0.0;",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS vocabulary_richness FLOAT DEFAULT 0.0;",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';",
+            "ALTER TABLE interview_transcript_segments ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE interview_transcript_segments ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';"
+        ]:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(col_def))
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Notice during startup DB schema check: {e}")
+
     # Print all registered FastAPI routes safely
     print("\n================================================================================")
     print("=== REGISTERED FASTAPI ROUTES (VERIFYING BACKEND ENDPOINTS) ===")
@@ -39,15 +109,12 @@ async def startup():
         print(f"  {methods_str:<12} {path}")
     print("================================================================================\n")
 
-@app.middleware("http")
-async def test_environment_middleware(request, call_next):
-    is_test_env = (
-        request.headers.get("X-Test-Environment") == "TEST" or 
-        request.query_params.get("environment") == "TEST"
-    )
-    request.state.is_test_env = is_test_env
-    response = await call_next(request)
-    return response
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    import traceback
+    logging.getLogger("smarthire.server").error(f"GLOBAL SERVER EXCEPTION on {request.method} {request.url.path}: {exc}\n{traceback.format_exc()}")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"detail": f"Server Error: {type(exc).__name__} - {str(exc)}"})
 
 import os
 from fastapi.staticfiles import StaticFiles

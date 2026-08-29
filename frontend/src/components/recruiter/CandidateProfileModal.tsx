@@ -57,6 +57,28 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
     }
   };
 
+  const formatBehavioralState = (raw: string | undefined | null) => {
+    if (!raw) return 'Neutral';
+    const lower = raw.toLowerCase().trim();
+    const map: Record<string, string> = {
+      'surprise': 'Confused',
+      'surprised': 'Confused',
+      'happy': 'Confident',
+      'sad': 'Unconfident',
+      'angry': 'Frustrated',
+      'disgust': 'Confused',
+      'fear': 'Fear',
+      'focused': 'Focused',
+      'confident': 'Confident',
+      'unconfident': 'Unconfident',
+      'confused': 'Confused',
+      'frustrated': 'Frustrated',
+      'looking away': 'Looking away',
+      'neutral': 'Neutral'
+    };
+    return map[lower] || raw.charAt(0).toUpperCase() + raw.slice(1);
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-6">
@@ -249,7 +271,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                       <div className="flex gap-3 text-[10px] font-bold text-slate-400">
                         <span>Pace: {qa.speaking_pace_wpm} WPM</span>
                         <span>Eye Contact: {qa.eye_contact_percentage}%</span>
-                        <span>Emotion: {qa.dominant_emotion}</span>
+                        <span>Behavioral State: {formatBehavioralState(qa.dominant_emotion)}</span>
                       </div>
                     </div>
                   ))}

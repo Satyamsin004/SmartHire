@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, User, Shield, FileText, Send, Sparkles, CheckSquare, Square, Briefcase } from 'lucide-react';
+import { X, Calendar, Clock, User, Shield, FileText, Send, Sparkles, CheckSquare, Square, Briefcase, Video } from 'lucide-react';
 import api from '../../services/api';
 
 interface ScheduleModalProps {
@@ -7,9 +7,14 @@ interface ScheduleModalProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultJobId?: string;
+  defaultMode?: 'assessment' | 'interview';
+  defaultCandidateId?: string;
 }
 
-export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, onClose, onSuccess, defaultJobId }) => {
+export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
+  isOpen, onClose, onSuccess, defaultJobId, defaultMode = 'assessment', defaultCandidateId
+}) => {
+  const [scheduleMode, setScheduleMode] = useState<'assessment' | 'interview'>(defaultMode);
   const [jobs, setJobs] = useState<any[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [selectedJob, setSelectedJob] = useState<any>(null);
@@ -24,6 +29,24 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
   const [instructions, setInstructions] = useState<string>('Please join 5 minutes before the scheduled time in a quiet, well-lit room with your camera enabled.');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+
+  const [assessmentTitle, setAssessmentTitle] = useState<string>('Online Aptitude & Technical Assessment');
+  const [assessmentTopics, setAssessmentTopics] = useState<string>('React, TypeScript, FastAPI, PostgreSQL, Data Structures');
+  const [questionCount, setQuestionCount] = useState<number>(10);
+  const [passingScore, setPassingScore] = useState<number>(70.0);
+  const [assessmentInstructions, setAssessmentInstructions] = useState<string>('Please complete all questions within the allocated time limit. Video & browser tab proctoring is enabled.');
+
+  useEffect(() => {
+    if (defaultMode) setScheduleMode(defaultMode);
+  }, [defaultMode]);
+
+  // Update assessment topics when selected job changes
+  useEffect(() => {
+    if (selectedJob && selectedJob.required_skills && selectedJob.required_skills.length > 0) {
+      setAssessmentTopics(selectedJob.required_skills.join(', '));
+      setAssessmentTitle(`${selectedJob.title} - Technical & Aptitude Assessment`);
+    }
+  }, [selectedJob]);
 
   // 1. Fetch available Job Postings when modal opens
   useEffect(() => {
@@ -49,7 +72,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
     }
   }, [isOpen, defaultJobId]);
 
-  // 2. Fetch Shortlisted Candidates for the selected Job Posting
+  // 2. Fetch Candidates for the selected Job Posting and Schedule Mode
   useEffect(() => {
     if (isOpen && selectedJobId) {
       const matchJob = jobs.find((j) => j.id === selectedJobId);
@@ -60,11 +83,15 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
         else setDifficulty('Medium');
       }
 
-      api.get(`/scheduling/candidates-list?job_id=${selectedJobId}`)
+      api.get(`/scheduling/candidates-list?job_id=${selectedJobId}&schedule_type=${scheduleMode}`)
         .then((res) => {
           const eligibleCands = res.data || [];
           setCandidates(eligibleCands);
-          setSelectedCandidateIds(eligibleCands.map((c: any) => c.candidate_id));
+          if (defaultCandidateId && eligibleCands.some((c: any) => c.candidate_id === defaultCandidateId || c.id === defaultCandidateId)) {
+            setSelectedCandidateIds([defaultCandidateId]);
+          } else {
+            setSelectedCandidateIds(eligibleCands.map((c: any) => c.candidate_id || c.id));
+          }
         })
         .catch((err) => {
           console.warn('Candidate list fetch error:', err);
@@ -72,7 +99,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
           setSelectedCandidateIds([]);
         });
     }
-  }, [isOpen, selectedJobId]);
+  }, [isOpen, selectedJobId, scheduleMode, defaultCandidateId]);
 
   if (!isOpen) return null;
 
@@ -88,18 +115,18 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
     if (selectedCandidateIds.length === candidates.length) {
       setSelectedCandidateIds([]);
     } else {
-      setSelectedCandidateIds(candidates.map(c => c.candidate_id));
+      setSelectedCandidateIds(candidates.map(c => c.candidate_id || c.id));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedJobId) {
-      setErrorMsg('Please select a job requisition to schedule interviews for.');
+      setErrorMsg('Please select a job requisition to schedule.');
       return;
     }
     if (selectedCandidateIds.length === 0) {
-      setErrorMsg('Please select at least one shortlisted candidate for this interview invitation.');
+      setErrorMsg(`Please select at least one eligible candidate to schedule ${scheduleMode === 'assessment' ? 'Online Assessment' : 'Interview'}.`);
       return;
     }
 
@@ -107,23 +134,36 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
     setErrorMsg('');
 
     try {
-      const fullIsoDate = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
-      await api.post('/scheduling/create', {
-        job_id: selectedJobId,
-        candidate_ids: selectedCandidateIds,
-        round_type: roundType,
-        scheduled_date: fullIsoDate,
-        duration_minutes: durationMinutes,
-        difficulty: difficulty,
-        instructions: instructions
-      });
-
+      if (scheduleMode === 'assessment') {
+        const topicsList = assessmentTopics.split(',').map(t => t.trim()).filter(Boolean);
+        await api.post('/scheduling/create-assessment', {
+          job_id: selectedJobId,
+          candidate_ids: selectedCandidateIds,
+          title: assessmentTitle || 'Online Aptitude & Technical Assessment',
+          topics: topicsList.length > 0 ? topicsList : ['Quantitative Aptitude', 'Logical Reasoning', 'Software Concepts'],
+          difficulty: difficulty,
+          question_count: questionCount || 10,
+          duration_minutes: durationMinutes || 15,
+          passing_score: passingScore || 70.0
+        });
+      } else {
+        const fullIsoDate = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+        await api.post('/scheduling/create', {
+          job_id: selectedJobId,
+          candidate_ids: selectedCandidateIds,
+          round_type: roundType,
+          scheduled_date: fullIsoDate,
+          duration_minutes: durationMinutes,
+          difficulty: difficulty,
+          instructions: instructions
+        });
+      }
       setIsSubmitting(false);
       onSuccess();
       onClose();
     } catch (err: any) {
-      console.error('Schedule interview error:', err);
-      setErrorMsg(err.response?.data?.detail || 'Failed to schedule interview. Ensure candidate is registered.');
+      console.error('Schedule error:', err);
+      setErrorMsg(err.response?.data?.detail || 'Failed to complete schedule creation.');
       setIsSubmitting(false);
     }
   };
@@ -139,12 +179,40 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-slate-900">Schedule Interview Invitation</h3>
-              <p className="text-xs text-slate-400 font-semibold">Job-First Requisition Workflow · Single Source of Truth</p>
+              <h3 className="text-lg font-extrabold text-slate-900">
+                {scheduleMode === 'assessment' ? 'Schedule Online Assessment Test' : 'Schedule Technical Interview Invitation'}
+              </h3>
+              <p className="text-xs text-slate-400 font-semibold">Sequential Hiring Pipeline Workflow · Single Source of Truth</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg">
             <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Schedule Mode Selector Tabs */}
+        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl text-xs font-extrabold">
+          <button
+            type="button"
+            onClick={() => setScheduleMode('assessment')}
+            className={`py-2.5 rounded-xl transition-all ${
+              scheduleMode === 'assessment'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            1. Online Assessment (ATS ≥80%)
+          </button>
+          <button
+            type="button"
+            onClick={() => setScheduleMode('interview')}
+            className={`py-2.5 rounded-xl transition-all ${
+              scheduleMode === 'interview'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            2. Technical Interview (Assessment Passed)
           </button>
         </div>
 
@@ -185,7 +253,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
               <div className="flex items-center justify-between font-extrabold text-slate-900">
                 <span>Role: {selectedJob.title}</span>
                 <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">
-                  {selectedJob.experience_level}
+                  {selectedJob.experience_level || 'Mid-Senior'}
                 </span>
               </div>
               {selectedJob.required_skills && selectedJob.required_skills.length > 0 && (
@@ -200,7 +268,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-slate-700">
-                2. Select Shortlisted Candidates for {selectedJob?.title || 'Position'} ({selectedCandidateIds.length} selected)
+                2. Select {scheduleMode === 'assessment' ? 'ATS Passed (≥80%)' : 'Assessment Passed (≥70%)'} Candidates for {selectedJob?.title || 'Position'} ({selectedCandidateIds.length} selected)
               </label>
               {candidates.length > 0 && (
                 <button
@@ -216,18 +284,24 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
             <div className="border border-slate-200 rounded-2xl p-3 max-h-44 overflow-y-auto space-y-2 bg-slate-50/50">
               {candidates.length === 0 ? (
                 <div className="p-4 text-center space-y-1">
-                  <p className="text-xs font-bold text-slate-700">No Eligible Shortlisted Candidates for this Job</p>
+                  <p className="text-xs font-bold text-slate-700">
+                    No Eligible Candidates Found for {scheduleMode === 'assessment' ? 'Online Assessment' : 'Interview'}
+                  </p>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    Only candidates who applied for this position with ATS match score ≥ 80% and status 'Shortlisted' will appear.
+                    {scheduleMode === 'assessment'
+                      ? "Only candidates who applied for this position with ATS match score ≥ 80% will appear."
+                      : "Only candidates who completed and passed the Online Assessment test (Score ≥ 70%) will appear here for Interview Scheduling."}
                   </p>
                 </div>
               ) : (
                 candidates.map((c) => {
-                  const isSelected = selectedCandidateIds.includes(c.candidate_id);
+                  const candId = c.candidate_id || c.id || c.application_id;
+                  const isSelected = selectedCandidateIds.includes(candId);
+
                   return (
                     <div
-                      key={c.candidate_id}
-                      onClick={() => toggleCandidateSelect(c.candidate_id)}
+                      key={candId}
+                      onClick={() => toggleCandidateSelect(candId)}
                       className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
                         isSelected 
                           ? 'bg-indigo-50/90 border-indigo-300 text-indigo-950 font-bold shadow-xs' 
@@ -252,8 +326,8 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
                         }`}>
                           {c.ats_score}% ATS Match
                         </span>
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                          {c.status || 'Shortlisted'}
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                          {c.eligibility || c.status || 'Assessment Passed'}
                         </span>
                       </div>
                     </div>
@@ -263,86 +337,205 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
             </div>
           </div>
 
-          {/* STEP 3: Round Type & Difficulty */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Round Type</label>
-              <select
-                value={roundType}
-                onChange={(e) => setRoundType(e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              >
-                <option>Technical</option>
-                <option>HR</option>
-                <option>Behavioral</option>
-                <option>Aptitude</option>
-                <option>Coding</option>
-              </select>
-            </div>
+          {/* STEP 3: Config Controls (Distinct between Assessment vs Interview) */}
+          {scheduleMode === 'assessment' ? (
+            <div className="space-y-4 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-indigo-600">
+                <Sparkles className="w-4 h-4" />
+                <span>3. Online Assessment Configuration</span>
+              </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Difficulty Level (Auto-Inferred)</label>
-              <select
-                value={difficulty}
-                onChange={(e) => setDifficulty(e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              >
-                <option>Easy</option>
-                <option>Medium</option>
-                <option>Hard</option>
-              </select>
-            </div>
-          </div>
+              {/* Assessment Title */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Assessment Test Title</label>
+                <input
+                  type="text"
+                  value={assessmentTitle}
+                  onChange={(e) => setAssessmentTitle(e.target.value)}
+                  required
+                  placeholder="e.g. Senior Full Stack Technical & Aptitude Test"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
 
-          {/* Date, Time & Duration */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Date</label>
-              <input
-                type="date"
-                value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
-                required
-                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+              {/* Assessment Topics (Comma-Separated) */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">
+                  Topics / Required Skills (Separated by Commas)
+                </label>
+                <input
+                  type="text"
+                  value={assessmentTopics}
+                  onChange={(e) => setAssessmentTopics(e.target.value)}
+                  required
+                  placeholder="e.g. React, TypeScript, FastAPI, PostgreSQL, Data Structures"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <p className="text-[10px] text-slate-400 font-medium mt-1">
+                  AI will generate questions tailored to these specific skill tags.
+                </p>
+              </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Time</label>
-              <input
-                type="time"
-                value={scheduledTime}
-                onChange={(e) => setScheduledTime(e.target.value)}
-                required
-                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+              {/* Difficulty & Question Count */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Difficulty Level</label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="Easy">Easy (Graduate / Junior)</option>
+                    <option value="Medium">Medium (Mid-Level Standard)</option>
+                    <option value="Hard">Hard (Senior / Lead Architect)</option>
+                  </select>
+                </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Duration</label>
-              <select
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              >
-                <option value={15}>15 Mins</option>
-                <option value={30}>30 Mins</option>
-                <option value={45}>45 Mins</option>
-                <option value={60}>60 Mins</option>
-              </select>
-            </div>
-          </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Total Questions</label>
+                  <select
+                    value={questionCount}
+                    onChange={(e) => setQuestionCount(Number(e.target.value))}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value={10}>10 Questions (Short Screening)</option>
+                    <option value={20}>20 Questions (Standard Test)</option>
+                    <option value={25}>25 Questions (Comprehensive)</option>
+                    <option value={30}>30 Questions (In-Depth Technical)</option>
+                  </select>
+                </div>
+              </div>
 
-          {/* Interview Instructions */}
-          <div>
-            <label className="text-xs font-bold text-slate-500 block mb-1">Interview Instructions for Candidate</label>
-            <textarea
-              rows={2}
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              className="w-full p-3 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
+              {/* Duration & Passing Cutoff Score */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Time Duration (Minutes)</label>
+                  <select
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value={15}>15 Mins</option>
+                    <option value={30}>30 Mins</option>
+                    <option value={45}>45 Mins</option>
+                    <option value={60}>60 Mins</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Passing Cutoff Score (%)</label>
+                  <input
+                    type="number"
+                    min="40"
+                    max="100"
+                    value={passingScore}
+                    onChange={(e) => setPassingScore(Number(e.target.value))}
+                    required
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Assessment Instructions */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Assessment Test Instructions</label>
+                <textarea
+                  rows={2}
+                  value={assessmentInstructions}
+                  onChange={(e) => setAssessmentInstructions(e.target.value)}
+                  className="w-full p-3 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-purple-600">
+                <Video className="w-4 h-4" />
+                <span>3. Technical Interview Configuration</span>
+              </div>
+
+              {/* Round Type & Difficulty */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">Round Type</label>
+                  <select
+                    value={roundType}
+                    onChange={(e) => setRoundType(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option>Technical</option>
+                    <option>HR</option>
+                    <option>Behavioral</option>
+                    <option>Aptitude</option>
+                    <option>Coding</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">Difficulty Level (Auto-Inferred)</label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option>Easy</option>
+                    <option>Medium</option>
+                    <option>Hard</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Date, Time & Duration */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">Time</label>
+                  <input
+                    type="time"
+                    value={scheduledTime}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">Duration</label>
+                  <select
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value={15}>15 Mins</option>
+                    <option value={30}>30 Mins</option>
+                    <option value={45}>45 Mins</option>
+                    <option value={60}>60 Mins</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Interview Instructions */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">Interview Instructions for Candidate</label>
+                <textarea
+                  rows={2}
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  className="w-full p-3 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
@@ -356,7 +549,9 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({ isOpen, o
             <button
               type="submit"
               disabled={isSubmitting || candidates.length === 0}
-              className="py-2.5 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all transform active:scale-95 disabled:opacity-50"
+              className={`py-2.5 px-6 font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all transform active:scale-95 disabled:opacity-50 text-white ${
+                scheduleMode === 'assessment' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-purple-600 hover:bg-purple-700'
+              }`}
             >
               <Send className="w-3.5 h-3.5" />
               {isSubmitting ? 'Scheduling...' : `Send Invitation (${selectedCandidateIds.length})`}

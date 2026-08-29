@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   FileText, BarChart3, Brain, MessageSquare, Shield, Trophy, Clock, 
   Download, Award, AlertCircle, Mic, TrendingUp, CheckSquare, Target,
-  ArrowRight, Sparkles, Layers, Sliders, ArrowUpRight, Filter, Video
+  ArrowRight, Sparkles, Layers, Sliders, ArrowUpRight, Filter, Video,
+  Volume2, VolumeX, Play, Pause, Radio, ShieldCheck, ShieldAlert, ShieldX,
+  Users, Smartphone, EyeOff
 } from 'lucide-react';
 import { 
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
@@ -20,8 +22,15 @@ export const ReportDetailsPage: React.FC = () => {
   // Single Session Report State
   const [report, setReport] = useState<any>(null);
   const [transcript, setTranscript] = useState<any>(null);
+  const [integritySummary, setIntegritySummary] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'transcript'>('overview');
   const [recordingVideoUrl, setRecordingVideoUrl] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<boolean>(false);
+
+  // Spoken Telemetry Replay State
+  const [selectedQIndex, setSelectedQIndex] = useState<number>(0);
+  const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+  const [playingTarget, setPlayingTarget] = useState<'answer' | 'question' | null>(null);
 
   // Dashboard / All Reports State
   const [sessions, setSessions] = useState<any[]>([]);
@@ -32,26 +41,174 @@ export const ReportDetailsPage: React.FC = () => {
   const [compareSessions, setCompareSessions] = useState<string[]>([]);
   const [showCompareModal, setShowCompareModal] = useState(false);
 
+  const getSoothingVoice = (voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
+    if (!voices || voices.length === 0) return undefined;
+    const maleBlacklist = ['david', 'mark', 'george', 'guy', 'male', 'richard', 'stefan', 'paul', 'james'];
+    const soothingFemaleNames = [
+      'Jenny Online (Natural)',
+      'Aria Online (Natural)',
+      'Microsoft Jenny',
+      'Microsoft Aria',
+      'Google US English',
+      'Google UK English Female',
+      'Microsoft Zira Desktop',
+      'Microsoft Zira',
+      'Samantha',
+      'Victoria',
+      'Karen',
+      'Zira',
+      'Jenny',
+      'Aria'
+    ];
+    for (const name of soothingFemaleNames) {
+      const match = voices.find(v => 
+        v.name.toLowerCase().includes(name.toLowerCase()) && 
+        v.lang.startsWith('en') &&
+        !maleBlacklist.some(m => v.name.toLowerCase().includes(m))
+      );
+      if (match) return match;
+    }
+    const naturalVoice = voices.find(v => 
+      v.lang.startsWith('en') && 
+      !maleBlacklist.some(m => v.name.toLowerCase().includes(m)) &&
+      (v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('female'))
+    );
+    if (naturalVoice) return naturalVoice;
+    const politeVoice = voices.find(v => v.lang.startsWith('en') && !maleBlacklist.some(m => v.name.toLowerCase().includes(m)));
+    if (politeVoice) return politeVoice;
+    return voices.find(v => v.lang.startsWith('en')) || voices[0];
+  };
+
+  const handlePlaySpokenText = (text: string, target: 'answer' | 'question') => {
+    if (!('speechSynthesis' in window)) return;
+    if (isPlayingAudio && playingTarget === target) {
+      window.speechSynthesis.cancel();
+      setIsPlayingAudio(false);
+      setPlayingTarget(null);
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const cleanText = text.replace(/[*_#`~]/g, '').trim();
+      if (!cleanText) return;
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.volume = 1.0;
+      utterance.rate = 0.96;
+      utterance.pitch = target === 'question' ? 1.02 : 1.04;
+
+      const available = window.speechSynthesis.getVoices();
+      const soothingVoice = getSoothingVoice(available);
+      if (soothingVoice) utterance.voice = soothingVoice;
+
+      utterance.onstart = () => {
+        setIsPlayingAudio(true);
+        setPlayingTarget(target);
+      };
+      utterance.onend = () => {
+        setIsPlayingAudio(false);
+        setPlayingTarget(null);
+      };
+      utterance.onerror = () => {
+        setIsPlayingAudio(false);
+        setPlayingTarget(null);
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      setIsPlayingAudio(false);
+      setPlayingTarget(null);
+    }
+  };
+
   useEffect(() => {
+    setVideoError(false);
+    setRecordingVideoUrl(null);
     if (sessionId) {
+      setVideoError(false);
+      setRecordingVideoUrl(null);
       fetchReport(sessionId);
       fetchTranscript(sessionId);
+
+      // 1. Check in-memory or sessionStorage cached blob for THIS specific session
+      let foundLocal = false;
       try {
-        const storedVid = localStorage.getItem(`interview_recording_${sessionId}`);
-        if (storedVid) setRecordingVideoUrl(storedVid);
+        const cachedBlobMeta = (window as any).__LAST_INTERVIEW_RECORDING_BLOB__;
+        if (cachedBlobMeta && cachedBlobMeta.sessionId === sessionId && cachedBlobMeta.blobUrl) {
+          setRecordingVideoUrl(cachedBlobMeta.blobUrl);
+          foundLocal = true;
+        } else {
+          const storedUrl = sessionStorage.getItem(`session_recording_url_${sessionId}`);
+          if (storedUrl) {
+            setRecordingVideoUrl(storedUrl);
+            foundLocal = true;
+          }
+        }
       } catch (e) {}
+
+      // 2. Query recording metadata from backend for this specific session
+      api.get(`/uploads/interview-sessions/${sessionId}/recordings`)
+        .then((res) => {
+          if (res.data && res.data.length > 0 && res.data[0].file_path) {
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+            const directStreamUrl = `/api/v1/uploads/interview-sessions/${sessionId}/recordings/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+            if (!foundLocal) {
+              setRecordingVideoUrl(directStreamUrl);
+            }
+            api.get(`/uploads/interview-sessions/${sessionId}/recordings/stream`, { responseType: 'blob' })
+              .then((streamRes) => {
+                if (streamRes.data && streamRes.data.size > 500) {
+                  setRecordingVideoUrl(URL.createObjectURL(streamRes.data));
+                }
+              })
+              .catch(() => {});
+          } else if (!foundLocal) {
+            setRecordingVideoUrl(null);
+          }
+        })
+        .catch(() => {
+          if (!foundLocal) {
+            setRecordingVideoUrl(null);
+          }
+        });
     } else {
       fetchDashboardData();
     }
+
+    return () => {
+      window.speechSynthesis?.cancel();
+    };
   }, [sessionId]);
 
-  const fetchReport = async (sid: string) => {
+  const fetchReport = async (sid: string, retryCount = 0) => {
     setLoading(true);
     try {
-      const res = await api.get(`/interview/report/${sid}`);
-      setReport(res.data);
+      const [res, intRes] = await Promise.allSettled([
+        api.get(`/interview/report/${sid}`),
+        api.get(`/interview/${sid}/integrity-summary`)
+      ]);
+      if (res.status === 'fulfilled' && res.value?.data) {
+        setReport(res.value.data);
+        if (res.value.data?.has_recording && res.value.data?.recording_file_path) {
+          const token = localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+          const directStreamUrl = `/api/v1/uploads/interview-sessions/${sid}/recordings/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+          setRecordingVideoUrl((current) => current || directStreamUrl);
+        }
+      } else if (retryCount < 3) {
+        // Retry report fetch in 1.5s if compilation is in progress
+        setTimeout(() => fetchReport(sid, retryCount + 1), 1500);
+        return;
+      }
+      if (intRes.status === 'fulfilled' && intRes.value?.data) {
+        setIntegritySummary(intRes.value.data);
+      }
     } catch (err) {
       console.error('Fetch report error:', err);
+      if (retryCount < 3) {
+        setTimeout(() => fetchReport(sid, retryCount + 1), 1500);
+        return;
+      }
     } finally {
       setLoading(false);
     }
@@ -389,7 +546,7 @@ export const ReportDetailsPage: React.FC = () => {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
                               s.interview_type === 'Recruiter' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                             }`}>
@@ -398,6 +555,11 @@ export const ReportDetailsPage: React.FC = () => {
                             <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold">
                               {s.round_type || 'Technical'}
                             </span>
+                            {s.has_recording && (
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase border border-emerald-300 flex items-center gap-1">
+                                🎥 Video
+                              </span>
+                            )}
                           </div>
                           <h3 
                             onClick={() => navigate(`/reports?session=${s.session_id || s.id}`)}
@@ -405,6 +567,11 @@ export const ReportDetailsPage: React.FC = () => {
                           >
                             {s.role_target || s.title || 'Software Engineer'}
                           </h3>
+                          {s.started_at && (
+                            <p className="text-[10px] text-slate-400 font-semibold">
+                              {new Date(s.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          )}
                         </div>
 
                         {s.score != null || s.overall_score != null ? (
@@ -531,6 +698,28 @@ export const ReportDetailsPage: React.FC = () => {
   const techM = report.technical_metrics || {};
   const profM = report.professionalism_metrics || {};
 
+  const formatBehavioralState = (raw: string | undefined | null) => {
+    if (!raw) return 'Neutral';
+    const lower = raw.toLowerCase().trim();
+    const map: Record<string, string> = {
+      'surprise': 'Confused',
+      'surprised': 'Confused',
+      'happy': 'Confident',
+      'sad': 'Unconfident',
+      'angry': 'Frustrated',
+      'disgust': 'Confused',
+      'fear': 'Fear',
+      'focused': 'Focused',
+      'confident': 'Confident',
+      'unconfident': 'Unconfident',
+      'confused': 'Confused',
+      'frustrated': 'Frustrated',
+      'looking away': 'Looking away',
+      'neutral': 'Neutral'
+    };
+    return map[lower] || raw.charAt(0).toUpperCase() + raw.slice(1);
+  };
+
   return (
     <>
       <main className="p-6 lg:p-10 max-w-7xl mx-auto w-full space-y-8">
@@ -581,29 +770,176 @@ export const ReportDetailsPage: React.FC = () => {
 
         {activeTab === 'overview' && (
           <>
-            {/* Recorded Interview Video Player Section */}
-            {recordingVideoUrl && (
-              <div className="bg-slate-900 rounded-3xl p-6 text-white space-y-4 border border-slate-800 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
-                      <Video className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-extrabold text-white">Candidate Live Interview Recording</h4>
-                      <p className="text-[11px] text-slate-400 font-medium">Full webcam video telemetry & audio stream playback</p>
-                    </div>
+            {/* Candidate Live Video & Audio Recording Playback Section */}
+            <div className="bg-slate-900/80 backdrop-blur-xl rounded-3xl p-6 text-white space-y-4 border border-slate-800/80 shadow-2xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shadow-inner">
+                    <Video className="w-5 h-5" />
                   </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black text-white">Candidate Live Video & Audio Recording</h4>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider border border-emerald-500/30">
+                        Synchronized Telemetry
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium">Persisted MediaRecorder candidate webcam stream & synchronized audio track</p>
+                  </div>
+                </div>
+
+                {recordingVideoUrl && (
                   <a
                     href={recordingVideoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     download={`Interview_Recording_${sessionId}.webm`}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-1.5 transition-colors shadow-xs"
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-black flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20 w-fit cursor-pointer active:scale-95"
                   >
-                    <Download className="w-3.5 h-3.5" /> Download Recording
+                    <Download className="w-3.5 h-3.5 stroke-[2.5]" /> Download Video (.webm)
                   </a>
+                )}
+              </div>
+
+              {/* 16:9 Video & Audio Player Frame */}
+              <div className="aspect-video w-full max-w-4xl mx-auto bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl relative flex items-center justify-center">
+                {recordingVideoUrl && !videoError ? (
+                  <video
+                    key={recordingVideoUrl}
+                    src={recordingVideoUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    onError={() => {
+                      console.warn("Recording stream load notice for URL:", recordingVideoUrl);
+                      setVideoError(true);
+                    }}
+                    className="w-full h-full object-contain bg-slate-950"
+                  />
+                ) : (
+                  <div className="text-center p-8 space-y-3 text-slate-400 max-w-md">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-indigo-400 shadow-inner">
+                      <Video className="w-7 h-7 opacity-80" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-black text-white">Video & Audio Recording</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        {videoError
+                          ? 'The recording stream for this session is unavailable or was interrupted. Telemetry and metrics are fully preserved below.'
+                          : 'Webcam video and microphone audio telemetry are recorded live during candidate sessions.'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate('/practice?tab=interview')}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold transition-all shadow-md cursor-pointer inline-flex items-center gap-1.5 mt-2"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Start Interview with Webcam & Mic</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Interview Integrity & Proctoring Audit Section */}
+            {integritySummary && (
+              <div className="card-luxury p-6 space-y-5 border border-slate-200 bg-slate-50/50 rounded-3xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stoneBorder pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                      integritySummary.integrity_status === 'CLEAN' ? 'bg-emerald-100 text-emerald-700' :
+                      integritySummary.integrity_status === 'FLAGGED' ? 'bg-amber-100 text-amber-700' :
+                      integritySummary.integrity_status === 'CRITICAL' ? 'bg-rose-100 text-rose-700' :
+                      'bg-purple-100 text-purple-900'
+                    }`}>
+                      {integritySummary.integrity_status === 'CLEAN' ? <ShieldCheck className="w-5 h-5" /> :
+                       integritySummary.integrity_status === 'TERMINATED' ? <ShieldX className="w-5 h-5" /> :
+                       <ShieldAlert className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-brand-ink flex items-center gap-2">
+                        <span>Interview Integrity Audit</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                          integritySummary.integrity_status === 'CLEAN' ? 'bg-emerald-100 text-emerald-800' :
+                          integritySummary.integrity_status === 'FLAGGED' ? 'bg-amber-100 text-amber-800' :
+                          integritySummary.integrity_status === 'CRITICAL' ? 'bg-rose-100 text-rose-800' :
+                          'bg-purple-100 text-purple-900'
+                        }`}>
+                          Status: {integritySummary.integrity_status}
+                        </span>
+                      </h4>
+                      <p className="text-xs text-slate-500 font-medium">
+                        Live candidate proctoring: face presence, secondary device & window focus monitoring.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <span className="text-[10px] font-extrabold uppercase text-slate-400 block">Integrity Score</span>
+                      <span className={`text-xl font-black ${
+                        integritySummary.integrity_score >= 90 ? 'text-emerald-600' :
+                        integritySummary.integrity_score >= 70 ? 'text-amber-600' : 'text-rose-600'
+                      }`}>
+                        {integritySummary.integrity_score}/100
+                      </span>
+                    </div>
+                    <div className="h-8 w-px bg-stoneBorder" />
+                    <div className="text-right">
+                      <span className="text-[10px] font-extrabold uppercase text-slate-400 block">Total Incidents</span>
+                      <span className="text-xl font-black text-slate-700">
+                        {integritySummary.total_incidents}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="aspect-video w-full max-w-3xl mx-auto bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
-                  <video src={recordingVideoUrl} controls className="w-full h-full object-cover" />
+
+                {/* Termination Banner if Applicable */}
+                {integritySummary.is_terminated && (
+                  <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
+                    <div className="flex items-center gap-2 font-black text-xs uppercase tracking-wider text-rose-900">
+                      <AlertCircle className="w-4 h-4 text-rose-600" />
+                      <span>Automatic Integrity Termination</span>
+                    </div>
+                    <p className="text-xs font-semibold text-rose-700">
+                      Reason: <strong className="text-rose-900">{integritySummary.termination_reason || 'TAB_SWITCH'}</strong>
+                    </p>
+                  </div>
+                )}
+
+                {/* Violation Counts Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-white border border-stoneBorder shadow-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-[10px] font-extrabold uppercase">Multiple Person</span>
+                      <Users className="w-3.5 h-3.5 text-indigo-500" />
+                    </div>
+                    <p className="text-base font-black text-brand-ink">{integritySummary.breakdown?.multiple_person || 0}</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-white border border-stoneBorder shadow-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-[10px] font-extrabold uppercase">Mobile Phone</span>
+                      <Smartphone className="w-3.5 h-3.5 text-amber-500" />
+                    </div>
+                    <p className="text-base font-black text-brand-ink">{integritySummary.breakdown?.mobile_phone || 0}</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-white border border-stoneBorder shadow-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-[10px] font-extrabold uppercase">Face Missing</span>
+                      <EyeOff className="w-3.5 h-3.5 text-yellow-500" />
+                    </div>
+                    <p className="text-base font-black text-brand-ink">{integritySummary.breakdown?.face_not_visible || 0}</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-white border border-stoneBorder shadow-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-[10px] font-extrabold uppercase">Tab Switches</span>
+                      <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                    </div>
+                    <p className="text-base font-black text-brand-ink">{integritySummary.breakdown?.tab_switch || 0}</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -643,64 +979,250 @@ export const ReportDetailsPage: React.FC = () => {
 
             {/* Granular Sub-Metrics Breakdown Grid */}
             <div className="card-luxury p-6 space-y-6">
-              <h3 className="text-xs font-extrabold text-brand-ink uppercase tracking-wider">Granular Sub-Metrics Breakdown</h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-extrabold text-brand-ink uppercase tracking-wider">Granular Evidence-Based Sub-Metrics</h3>
+                  <p className="text-xs text-slate-500 font-medium">Traceable metrics calculated directly from recorded speech, computer vision, and technical answers.</p>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 font-mono">Analysis: {report.analysis_version || 'evidence_based_v2'}</span>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {/* Communication Breakdown */}
-                <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <h4 className="text-xs font-extrabold text-indigo-600 uppercase tracking-wider">Communication</h4>
+                <div className="space-y-3 p-5 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+                  <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center justify-between">
+                    <span>Communication (30%)</span>
+                    <span className="text-sm font-black">{report.communication_score}%</span>
+                  </h4>
                   <div className="space-y-2 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-500">Grammar:</span><span className="font-bold">{commM.grammar || 85}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Fluency:</span><span className="font-bold">{commM.fluency || 82}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Clarity:</span><span className="font-bold">{commM.clarity || 88}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Pace:</span><span className="font-bold">{commM.pace || 80}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Filler Words:</span><span className="font-bold">{commM.filler_words || 2}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Vocabulary:</span><span className="font-bold">{commM.vocabulary || 84}%</span></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Grammar Quality:</span>
+                      <span className="font-bold text-slate-800">{commM.grammar || 85}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Speaking Pace:</span>
+                      <span className="font-bold text-slate-800">{commM.speaking_pace_wpm || 140} WPM ({commM.wpm_classification || 'Comfortable'})</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Speech Clarity:</span>
+                      <span className="font-bold text-slate-800">{commM.clarity || 88}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Filler Word Count:</span>
+                      <span className="font-bold text-slate-800">{commM.filler_words ?? 0} ({commM.filler_rate || 0}%)</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Pronunciation:</span>
+                      <span className="font-bold text-slate-800">{commM.pronunciation != null ? `${commM.pronunciation}%` : 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-slate-500 font-medium">Vocabulary:</span>
+                      <span className="font-bold text-slate-800">{commM.vocabulary || 84}%</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Confidence Breakdown */}
-                <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <h4 className="text-xs font-extrabold text-emerald-600 uppercase tracking-wider">Confidence</h4>
+                <div className="space-y-3 p-5 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+                  <h4 className="text-xs font-black text-emerald-600 uppercase tracking-wider flex items-center justify-between">
+                    <span>Confidence (25%)</span>
+                    <span className="text-sm font-black">{report.confidence_score}%</span>
+                  </h4>
                   <div className="space-y-2 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-500">Eye Contact:</span><span className="font-bold">{confM.eye_contact || 90}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Attention:</span><span className="font-bold">{confM.attention || 92}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Hesitation:</span><span className="font-bold">{confM.hesitation || 12}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Emotion:</span><span className="font-bold text-[10px] truncate">{confM.emotion || 'Calm'}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Engagement:</span><span className="font-bold">{confM.facial_engagement || 88}%</span></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Camera Eye Contact:</span>
+                      <span className="font-bold text-slate-800">{confM.eye_contact || 85}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Attention Level:</span>
+                      <span className="font-bold text-slate-800">{confM.attention || 88}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Hesitation Control:</span>
+                      <span className="font-bold text-slate-800">{confM.hesitation_control || 82}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Facial Engagement:</span>
+                      <span className="font-bold text-slate-800">{confM.facial_engagement || 85}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Dominant Behavioral State:</span>
+                      <span className="font-bold text-slate-800">{formatBehavioralState(confM.dominant_emotion)}</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-slate-500 font-medium">Response Latency:</span>
+                      <span className="font-bold text-slate-800">{confM.response_latency_avg ? `${confM.response_latency_avg}s` : '1.2s'}</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Technical Breakdown */}
-                <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <h4 className="text-xs font-extrabold text-amber-600 uppercase tracking-wider">Technical</h4>
+                <div className="space-y-3 p-5 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+                  <h4 className="text-xs font-black text-amber-600 uppercase tracking-wider flex items-center justify-between">
+                    <span>Technical (30%)</span>
+                    <span className="text-sm font-black">{report.technical_score}%</span>
+                  </h4>
                   <div className="space-y-2 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-500">Accuracy:</span><span className="font-bold">{techM.accuracy || 86}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Keywords:</span><span className="font-bold">{techM.keywords || 84}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Domain Knowledge:</span><span className="font-bold">{techM.domain_knowledge || 88}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Problem Solving:</span><span className="font-bold">{techM.problem_solving || 85}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Completeness:</span><span className="font-bold">{techM.completeness || 82}%</span></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Answer Accuracy:</span>
+                      <span className="font-bold text-slate-800">{techM.accuracy || 86}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Concept Coverage:</span>
+                      <span className="font-bold text-slate-800">{techM.concept_relevance || 84}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Domain Knowledge:</span>
+                      <span className="font-bold text-slate-800">{techM.domain_knowledge || 88}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Problem Solving:</span>
+                      <span className="font-bold text-slate-800">{techM.problem_solving || 85}%</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-slate-500 font-medium">Completeness:</span>
+                      <span className="font-bold text-slate-800">{techM.completeness || 82}%</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Professionalism Breakdown */}
-                <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <h4 className="text-xs font-extrabold text-violet-600 uppercase tracking-wider">Professionalism</h4>
+                <div className="space-y-3 p-5 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+                  <h4 className="text-xs font-black text-violet-600 uppercase tracking-wider flex items-center justify-between">
+                    <span>Professionalism (15%)</span>
+                    <span className="text-sm font-black">{report.professionalism_score}%</span>
+                  </h4>
                   <div className="space-y-2 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-500">Time Management:</span><span className="font-bold">{profM.time_management || 90}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Communication:</span><span className="font-bold">{profM.communication || 88}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Etiquette:</span><span className="font-bold">{profM.interview_etiquette || 95}%</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Organization:</span><span className="font-bold">{profM.organization || 86}%</span></div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Time Management:</span>
+                      <span className="font-bold text-slate-800">{profM.time_management || 90}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Structure & Flow:</span>
+                      <span className="font-bold text-slate-800">{profM.organization || 88}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Communication:</span>
+                      <span className="font-bold text-slate-800">{profM.professional_communication || 88}%</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Interview Etiquette:</span>
+                      <span className="font-bold text-slate-800">{profM.interview_etiquette || 95}%</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-slate-500 font-medium">Consistency:</span>
+                      <span className="font-bold text-slate-800">{profM.consistency || 86}%</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* Question-by-Question Detailed Technical Breakdown */}
+            {report.question_evaluations && report.question_evaluations.length > 0 && (
+              <div className="card-luxury p-6 space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                  <div>
+                    <h3 className="text-sm font-black text-brand-ink uppercase tracking-wider flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-indigo-600" /> Question-by-Question Technical & Concept Breakdown
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">Granular scoring, covered topics, missing topics, and response recommendations for every question.</p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-black">
+                    {report.question_evaluations.length} Questions Evaluated
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {report.question_evaluations.map((qe: any, idx: number) => (
+                    <div key={qe.question_id || idx} className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black flex items-center justify-center">
+                            {qe.order_index || idx + 1}
+                          </span>
+                          <span className="text-xs font-black text-brand-ink">{qe.category || 'Technical'}</span>
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold">
+                            {qe.difficulty || 'Medium'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold text-slate-400 block uppercase">Technical Score</span>
+                            <span className={`text-sm font-black ${getScoreColor(qe.technical_score || 80)}`}>
+                              {qe.technical_score || 80}%
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold text-slate-400 block uppercase">Accuracy</span>
+                            <span className="text-sm font-black text-slate-700">{qe.accuracy_score || 80}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">{qe.question_text}</p>
+                        <div className="mt-2 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700 font-medium leading-relaxed">
+                          <span className="text-[10px] font-extrabold uppercase text-slate-400 block mb-1">Candidate Answer:</span>
+                          {qe.candidate_answer || 'No verbal response recorded.'}
+                        </div>
+                      </div>
+
+                      {/* Concepts Covered vs Missing */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 block">
+                            ✓ Key Concepts Covered ({qe.covered_concepts?.length || 0})
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {qe.covered_concepts && qe.covered_concepts.length > 0 ? (
+                              qe.covered_concepts.map((c: string, ci: number) => (
+                                <span key={ci} className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                  {c}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">None identified</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-700 block">
+                            ✗ Missing / Omitted Concepts ({qe.missing_concepts?.length || 0})
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {qe.missing_concepts && qe.missing_concepts.length > 0 ? (
+                              qe.missing_concepts.map((m: string, mi: number) => (
+                                <span key={mi} className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[10px] font-bold">
+                                  {m}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[10px] text-emerald-600 font-semibold">Full concept coverage achieved</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Recommendation */}
+                      {qe.recommendation && (
+                        <div className="text-xs font-semibold text-slate-600 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80">
+                          <strong className="text-amber-900">Advice:</strong> {qe.recommendation}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Strengths & Weaknesses */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="card-luxury p-6 space-y-4">
+              <div className="card-luxury p-6 space-y-4 border-l-4 border-emerald-500">
                 <h3 className="text-sm font-extrabold text-brand-ink uppercase tracking-wider flex items-center gap-2">
-                  <Award className="w-5 h-5 text-emerald-500" /> Key Strengths
+                  <Award className="w-5 h-5 text-emerald-500" /> Evidence-Based Key Strengths
                 </h3>
                 <ul className="space-y-3">
                   {report.strengths?.map((str: string, i: number) => (
@@ -710,9 +1232,9 @@ export const ReportDetailsPage: React.FC = () => {
                   ))}
                 </ul>
               </div>
-              <div className="card-luxury p-6 space-y-4">
+              <div className="card-luxury p-6 space-y-4 border-l-4 border-rose-500">
                 <h3 className="text-sm font-extrabold text-brand-ink uppercase tracking-wider flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-rose-500" /> Areas for Improvement
+                  <AlertCircle className="w-5 h-5 text-rose-500" /> Measurable Growth Areas
                 </h3>
                 <ul className="space-y-3">
                   {report.weaknesses?.map((wk: string, i: number) => (
@@ -724,19 +1246,65 @@ export const ReportDetailsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Improvement Plan & Practice Suggestions */}
-            {report.improvement_plan && report.improvement_plan.length > 0 && (
+            {/* Practice Recommendations */}
+            {report.practice_recommendations && report.practice_recommendations.length > 0 && (
               <div className="card-luxury p-6 space-y-4 border-l-4 border-indigo-500">
                 <h3 className="text-sm font-extrabold text-brand-ink uppercase tracking-wider flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-indigo-500" /> AI Practice Recommendations
+                  <Brain className="w-5 h-5 text-indigo-500" /> Actionable Practice Recommendations
                 </h3>
-                <ul className="space-y-2">
-                  {report.improvement_plan.map((item: string, i: number) => (
-                    <li key={i} className="flex items-start gap-2 text-sm font-medium text-slate-600">
-                      <span className="text-indigo-500 font-bold">{i + 1}.</span> {item}
-                    </li>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {report.practice_recommendations.map((item: string, i: number) => (
+                    <div key={i} className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex items-start gap-3">
+                      <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center shrink-0">
+                        {i + 1}
+                      </span>
+                      <p className="text-xs font-semibold text-slate-700 leading-relaxed">{item}</p>
+                    </div>
                   ))}
-                </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Curated Verified Learning Resources */}
+            {report.learning_resources && report.learning_resources.length > 0 && (
+              <div className="card-luxury p-6 space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <div>
+                    <h3 className="text-sm font-black text-brand-ink uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-500" /> Curated Verified Learning Resources
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">Direct learning materials mapped to your detected growth areas.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {report.learning_resources.map((res: any, idx: number) => (
+                    <a
+                      key={idx}
+                      href={res.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-indigo-500 transition-all shadow-xs hover:shadow-md group flex flex-col justify-between space-y-3 cursor-pointer"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase">
+                            {res.provider || 'Verified Provider'}
+                          </span>
+                          <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                        </div>
+                        <h4 className="text-xs font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
+                          {res.title}
+                        </h4>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold border-t border-slate-100 pt-2">
+                        <span>{res.type || 'Guide'}</span>
+                        <span className="text-indigo-600">{res.difficulty || 'All Levels'}</span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
           </>

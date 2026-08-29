@@ -593,16 +593,23 @@ export const PracticeHubPage: React.FC = () => {
                   <div key={i.session_id || i.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between space-y-4 hover:border-indigo-300 transition-all">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="px-2.5 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-extrabold uppercase">
                             {i.round_type || 'Technical'}
                           </span>
                           <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">
                             {i.difficulty || 'Medium'}
                           </span>
+                          {i.has_recording && (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase border border-emerald-300 flex items-center gap-1">
+                              🎥 Video
+                            </span>
+                          )}
                         </div>
                         <h4 className="text-sm font-extrabold text-slate-900 mt-2">{i.title || 'AI Technical Interview'}</h4>
-                        <p className="text-[11px] text-slate-500 font-medium">{i.role_target} · {i.date || 'Recent'}</p>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          {i.role_target} {i.started_at ? `· ${new Date(i.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                        </p>
                       </div>
 
                       <div className="text-right shrink-0">

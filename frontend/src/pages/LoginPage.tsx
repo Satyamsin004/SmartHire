@@ -260,35 +260,35 @@ export const LoginPage: React.FC = () => {
   const isFormDisabled = loading || googleLoading;
 
   return (
-    <div className="min-h-screen bg-brand-bg flex items-center justify-center p-4 lg:p-8 font-sans relative">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B0F19] flex items-center justify-center p-4 lg:p-8 font-sans relative transition-colors duration-300">
       
       {/* Success Toast Notification Banner - Visible for 2.5s */}
       {successToast && (
         <div className="fixed top-6 right-6 z-50 p-4 rounded-2xl bg-indigo-600 text-white shadow-2xl border border-indigo-400 flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
-          <CheckCircle2 className="w-5 h-5 text-brand-accent shrink-0" />
+          <CheckCircle2 className="w-5 h-5 text-indigo-300 shrink-0" />
           <span className="text-xs font-extrabold">{successToast}</span>
         </div>
       )}
 
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 bg-white rounded-5xl shadow-floating border border-stoneBorder overflow-hidden min-h-[700px]">
+      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 bg-white dark:bg-[#111827] rounded-3xl lg:rounded-5xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden min-h-[700px] transition-colors duration-300">
         
         {/* Left Side: Deep indigo Storytelling Hero */}
-        <div className="lg:col-span-6 bg-gradient-to-br from-brand-primary via-sb-800 to-brand-ink p-8 lg:p-12 text-brand-bg flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-brand-secondary/20 rounded-full blur-3xl" />
+        <div className="lg:col-span-6 bg-gradient-to-br from-indigo-950 via-slate-900 to-[#0B0F19] p-8 lg:p-12 text-white flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
           
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-8">
-              <div className="w-10 h-10 rounded-2xl bg-brand-accent text-brand-primary flex items-center justify-center font-extrabold shadow-luxury">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-500 text-white flex items-center justify-center font-extrabold shadow-lg shadow-indigo-500/40">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <span className="text-xl font-extrabold tracking-tight text-white">SmartHire AI</span>
+              <span className="text-xl font-black tracking-tight text-white">SmartHire AI</span>
             </div>
 
-            <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight mb-4">
-              Enterprise Talent Acquisition Powered by Gemini 1.5 Pro
+            <h1 className="text-3xl lg:text-4xl font-black tracking-tight text-white leading-tight mb-4">
+              Enterprise Talent Acquisition Powered by Intelligence
             </h1>
             <p className="text-sm text-slate-300 font-medium leading-relaxed max-w-md">
-              Automated ATS screening, voice-enabled AI interviews, and deterministic candidate evaluation reports — all powered by real data.
+              Automated ATS screening, voice-enabled AI interviews, and deterministic candidate evaluation reports — all powered by real telemetry data.
             </p>
           </div>
 
@@ -298,30 +298,30 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Trust Highlights */}
-          <div className="relative z-10 grid grid-cols-2 gap-4 pt-6 border-t border-sb-700/60">
+          <div className="relative z-10 grid grid-cols-2 gap-4 pt-6 border-t border-slate-800/80">
             <div className="flex items-center gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-brand-accent shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
               <span className="text-xs font-bold text-slate-200">Zero Fabricated Data</span>
             </div>
             <div className="flex items-center gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-brand-accent shrink-0" />
+              <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
               <span className="text-xs font-bold text-slate-200">PostgreSQL Verified</span>
             </div>
           </div>
         </div>
 
-        {/* Right Side: Auth Glass Card */}
-        <div className="lg:col-span-6 p-8 lg:p-12 flex flex-col justify-center bg-white">
+        {/* Right Side: Auth Card */}
+        <div className="lg:col-span-6 p-8 lg:p-12 flex flex-col justify-center bg-white dark:bg-[#111827] transition-colors duration-300">
           <div className="max-w-md mx-auto w-full space-y-6">
             
             {/* Tabbed Auth Switch */}
-            <div className="flex bg-cream-200 p-1.5 rounded-3xl border border-stoneBorder">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
                 disabled={isFormDisabled}
                 onClick={() => { setIsSignup(false); }}
-                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all disabled:opacity-50 ${
-                  !isSignup ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink hover:text-brand-primary'
+                className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all disabled:opacity-50 cursor-pointer ${
+                  !isSignup ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
                 }`}
               >
                 Sign In
@@ -330,8 +330,8 @@ export const LoginPage: React.FC = () => {
                 type="button"
                 disabled={isFormDisabled}
                 onClick={() => { setIsSignup(true); }}
-                className={`flex-1 py-2.5 text-xs font-extrabold rounded-2xl transition-all disabled:opacity-50 ${
-                  isSignup ? 'bg-brand-primary text-white shadow-soft' : 'text-brand-ink hover:text-brand-primary'
+                className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all disabled:opacity-50 cursor-pointer ${
+                  isSignup ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
                 }`}
               >
                 Create Account
@@ -340,24 +340,23 @@ export const LoginPage: React.FC = () => {
 
             {/* Success Banner Message */}
             {successMsg && (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2.5 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2.5 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>{successMsg}</span>
               </div>
             )}
 
-            {/* Persistent Banner Error Message (Stays visible until input edit) */}
+            {/* Persistent Banner Error Message */}
             {error && (
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2.5 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 text-xs font-bold flex items-start gap-2.5 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
 
-
             {/* Role Selector Cards */}
             <div>
-              <label className="block text-[11px] font-extrabold text-brand-ink mb-2 uppercase tracking-wider">Select Portal Workspace</label>
+              <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wider">Select Portal Workspace</label>
               <div className="grid grid-cols-3 gap-2.5">
                 {(['candidate', 'recruiter', 'admin'] as const).map((r) => (
                   <button
@@ -365,10 +364,10 @@ export const LoginPage: React.FC = () => {
                     type="button"
                     disabled={isFormDisabled}
                     onClick={() => { setRole(r); }}
-                    className={`py-2.5 px-3 rounded-2xl text-xs font-extrabold border transition-all capitalize disabled:opacity-50 ${
+                    className={`py-2.5 px-3 rounded-2xl text-xs font-black border transition-all capitalize disabled:opacity-50 cursor-pointer ${
                       role === r
-                        ? 'bg-brand-primary text-white border-brand-primary shadow-soft'
-                        : 'bg-cream-100 text-brand-ink border-stoneBorder hover:bg-cream-200'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/30'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
                     {r}

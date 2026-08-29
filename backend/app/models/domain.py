@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, Integer, Float, ForeignKey, JSON, Enum, Text, Index, UniqueConstraint
+    Column, String, Boolean, DateTime, Integer, Float, BigInteger, ForeignKey, JSON, Enum, Text, Index, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.core.db import Base
@@ -85,6 +85,9 @@ class Candidate(Base):
     user = relationship("User", back_populates="candidate_profile")
     resumes = relationship("Resume", back_populates="candidate")
     sessions = relationship("InterviewSession", back_populates="candidate")
+    recordings = relationship("InterviewRecording", back_populates="candidate")
+    transcripts = relationship("InterviewTranscript", back_populates="candidate")
+    vision_analyses = relationship("InterviewVisionAnalysis", back_populates="candidate")
     achievements = relationship("Achievement", back_populates="candidate")
     resume_views = relationship("ResumeView", back_populates="candidate")
 
@@ -348,7 +351,13 @@ class InterviewSession(Base):
     interview_type = Column(String(50), default="Recruiter")
     config_json = Column(JSON, default=dict)
     fsm_state = Column(String(50), default="WAITING_FOR_QUESTION")
-    status = Column(String(50), default="completed") # scheduled, active, completed
+    status = Column(String(50), default="completed") # scheduled, active, completed, terminated
+    recording_status = Column(String(50), default="PENDING") # PENDING, UPLOADING, AVAILABLE, FAILED
+    integrity_status = Column(String(50), default="CLEAN") # CLEAN, FLAGGED, CRITICAL, TERMINATED
+    integrity_score = Column(Float, default=100.0)
+    total_integrity_incidents = Column(Integer, default=0)
+    termination_reason = Column(String(255), nullable=True)
+    terminated_at = Column(DateTime, nullable=True)
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
     started_at = Column(DateTime, default=datetime.utcnow)
@@ -357,6 +366,108 @@ class InterviewSession(Base):
     candidate = relationship("Candidate", back_populates="sessions")
     questions = relationship("InterviewQuestion", back_populates="session", cascade="all, delete-orphan")
     scoring_report = relationship("ScoringReport", back_populates="session", uselist=False)
+    recordings = relationship("InterviewRecording", back_populates="session", cascade="all, delete-orphan")
+    transcripts = relationship("InterviewTranscript", back_populates="session", cascade="all, delete-orphan")
+    transcript_segments = relationship("InterviewTranscriptSegment", back_populates="session", cascade="all, delete-orphan")
+    speech_metrics = relationship("InterviewSpeechMetric", back_populates="session", uselist=False, cascade="all, delete-orphan")
+    filler_events = relationship("InterviewFillerEvent", back_populates="session", cascade="all, delete-orphan")
+    visual_metrics = relationship("InterviewVisualMetric", back_populates="session", uselist=False, cascade="all, delete-orphan")
+    visual_observations = relationship("InterviewVisualObservation", back_populates="session", cascade="all, delete-orphan")
+    vision_analyses = relationship("InterviewVisionAnalysis", back_populates="session", cascade="all, delete-orphan")
+    integrity_events = relationship("InterviewIntegrityEvent", back_populates="session", cascade="all, delete-orphan")
+
+class InterviewRecording(Base):
+    __tablename__ = "interview_recordings"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False, index=True)
+    recording_type = Column(String(50), default="VIDEO_AUDIO") # VIDEO, AUDIO, VIDEO_AUDIO
+    file_path = Column(String(500), nullable=False)
+    storage_key = Column(String(500), nullable=True)
+    mime_type = Column(String(100), default="video/webm")
+    file_size = Column(BigInteger, default=0)
+    duration = Column(Float, default=0.0)
+    status = Column(String(50), default="available", index=True) # pending, uploading, available, failed
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    session = relationship("InterviewSession", back_populates="recordings")
+    candidate = relationship("Candidate", back_populates="recordings")
+    transcripts = relationship("InterviewTranscript", back_populates="recording", cascade="all, delete-orphan")
+    vision_analyses = relationship("InterviewVisionAnalysis", back_populates="recording", cascade="all, delete-orphan")
+
+class InterviewTranscript(Base):
+    __tablename__ = "interview_transcripts"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    recording_id = Column(String(36), ForeignKey("interview_recordings.id"), nullable=False, index=True)
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False, index=True)
+    status = Column(String(50), default="PENDING", index=True) # PENDING, PROCESSING, COMPLETED, FAILED
+    transcript_text = Column(Text, nullable=True)
+    language = Column(String(50), default="en")
+    provider = Column(String(50), default="groq_whisper")
+    duration = Column(Float, default=0.0)
+    error_message = Column(Text, nullable=True)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    recording = relationship("InterviewRecording", back_populates="transcripts")
+    session = relationship("InterviewSession", back_populates="transcripts")
+    candidate = relationship("Candidate", back_populates="transcripts")
+
+class InterviewVisionAnalysis(Base):
+    __tablename__ = "interview_vision_analysis"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    recording_id = Column(String(36), ForeignKey("interview_recordings.id"), nullable=False, index=True)
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False, index=True)
+    status = Column(String(50), default="PENDING", index=True) # PENDING, PROCESSING, COMPLETED, FAILED
+    provider = Column(String(50), default="gemini_vision")
+    duration = Column(Float, default=0.0)
+    frames_analyzed = Column(Integer, default=0)
+    face_presence_percentage = Column(Float, nullable=True)
+    eye_contact_percentage = Column(Float, nullable=True)
+    attention_score = Column(Float, nullable=True)
+    confidence_percentage = Column(Float, nullable=True)
+    multiple_person_percentage = Column(Float, nullable=True)
+    multiple_faces_detected = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    recording = relationship("InterviewRecording", back_populates="vision_analyses")
+    session = relationship("InterviewSession", back_populates="vision_analyses")
+    candidate = relationship("Candidate", back_populates="vision_analyses")
+
+class InterviewIntegrityEvent(Base):
+    __tablename__ = "interview_integrity_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
+    event_type = Column(String(50), nullable=False, index=True) # MULTIPLE_PERSON, MOBILE_PHONE, FACE_NOT_VISIBLE, TAB_SWITCH
+    severity = Column(String(20), default="MEDIUM", index=True) # LOW, MEDIUM, HIGH, CRITICAL
+    status = Column(String(20), default="ACTIVE", index=True) # ACTIVE, RESOLVED, TERMINATED
+    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    ended_at = Column(DateTime, nullable=True)
+    duration_seconds = Column(Float, default=0.0)
+    confidence = Column(Float, default=1.0)
+    metadata_json = Column(JSON, default=dict)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    session = relationship("InterviewSession", back_populates="integrity_events")
+    candidate = relationship("Candidate")
 
 class InterviewQuestion(Base):
     __tablename__ = "interview_questions"
@@ -428,11 +539,11 @@ class EmotionAnalysis(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     answer_id = Column(String(36), ForeignKey("interview_answers.id"), nullable=False)
-    dominant_emotion = Column(String(50), default="Focused / Calm")
+    dominant_emotion = Column(String(50), default="neutral")
     confidence_percentage = Column(Float, default=90.0)
     stress_level = Column(Float, default=12.0)
     smile_ratio = Column(Float, default=35.0)
-    emotions_breakdown = Column(JSON, default=lambda: {"neutral": 0.7, "happy": 0.2, "surprised": 0.1})
+    emotions_breakdown = Column(JSON, default=lambda: {"neutral": 0.6, "confident": 0.2, "focused": 0.2})
 
     answer = relationship("InterviewAnswer", back_populates="emotion_analysis")
 
@@ -441,6 +552,10 @@ class ScoringReport(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
+    transcript_id = Column(String(36), ForeignKey("interview_transcripts.id"), nullable=True, index=True)
+    vision_analysis_id = Column(String(36), ForeignKey("interview_vision_analysis.id"), nullable=True, index=True)
+    status = Column(String(50), default="COMPLETED", index=True)
     communication_score = Column(Float, default=82.0)
     confidence_score = Column(Float, default=80.0)
     technical_score = Column(Float, default=85.0)
@@ -460,20 +575,154 @@ class ScoringReport(Base):
     strengths = Column(JSON, default=lambda: [])
     weaknesses = Column(JSON, default=lambda: [])
     improvement_plan = Column(JSON, default=lambda: [])
+    practice_recommendations = Column(JSON, default=lambda: [])
     learning_resources = Column(JSON, default=lambda: [])
+    question_evaluations = Column(JSON, default=lambda: [])
     communication_metrics = Column(JSON, default=dict)
     confidence_metrics = Column(JSON, default=dict)
     technical_metrics = Column(JSON, default=dict)
     professionalism_metrics = Column(JSON, default=dict)
+    speech_timeline = Column(JSON, default=list)
+    gaze_timeline = Column(JSON, default=list)
+    emotion_timeline = Column(JSON, default=list)
     missing_topics = Column(JSON, default=list)
     ideal_answers = Column(JSON, default=list)
     practice_suggestions = Column(JSON, default=list)
+    model_version = Column(String(50), default="smart-hire-v2.0.0")
+    analysis_version = Column(String(50), default="evidence_based_v2")
     pdf_url = Column(String(500), nullable=True)
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("InterviewSession", back_populates="scoring_report")
+    candidate = relationship("Candidate")
+    transcript = relationship("InterviewTranscript")
+    vision_analysis = relationship("InterviewVisionAnalysis")
+
+class InterviewTranscriptSegment(Base):
+    __tablename__ = "interview_transcript_segments"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
+    question_id = Column(String(36), ForeignKey("interview_questions.id"), nullable=True, index=True)
+    speaker = Column(String(50), nullable=False, default="CANDIDATE") # CANDIDATE, AI_INTERVIEWER
+    text = Column(Text, nullable=False)
+    start_time = Column(Float, default=0.0)
+    end_time = Column(Float, default=0.0)
+    duration = Column(Float, default=0.0)
+    sequence_number = Column(Integer, default=1, index=True)
+    confidence = Column(Float, default=1.0)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    session = relationship("InterviewSession", back_populates="transcript_segments")
+    candidate = relationship("Candidate")
+    question = relationship("InterviewQuestion")
+
+class InterviewSpeechMetric(Base):
+    __tablename__ = "interview_speech_metrics"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, unique=True, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
+    total_words = Column(Integer, default=0)
+    speaking_duration = Column(Float, default=0.0)
+    average_wpm = Column(Float, default=0.0)
+    min_wpm = Column(Float, default=0.0)
+    max_wpm = Column(Float, default=0.0)
+    wpm_classification = Column(String(50), default="Comfortable") # Comfortable, Fast, Very Fast, Slow
+    filler_count = Column(Integer, default=0)
+    filler_rate = Column(Float, default=0.0) # filler_count / total_words (percentage)
+    filler_breakdown = Column(JSON, default=dict)
+    grammar_error_count = Column(Integer, default=0)
+    grammar_error_rate = Column(Float, default=0.0) # error_count / total_words (percentage)
+    grammar_errors_sample = Column(JSON, default=list) # Concrete snippet evidence
+    pronunciation_score = Column(Float, nullable=True) # None when insufficient audio
+    pronunciation_status = Column(String(100), default="Available")
+    clarity_score = Column(Float, default=85.0)
+    pause_count = Column(Integer, default=0)
+    long_pause_count = Column(Integer, default=0)
+    average_pause_duration = Column(Float, default=0.0)
+    response_latency_avg = Column(Float, default=0.0)
+    vocabulary_richness = Column(Float, default=0.0)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("InterviewSession", back_populates="speech_metrics")
+    candidate = relationship("Candidate")
+
+class InterviewFillerEvent(Base):
+    __tablename__ = "interview_filler_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
+    transcript_segment_id = Column(String(36), ForeignKey("interview_transcript_segments.id"), nullable=True)
+    word = Column(String(50), nullable=False) # e.g. "um", "like", "basically"
+    timestamp = Column(Float, default=0.0)
+    sequence_number = Column(Integer, default=1)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    session = relationship("InterviewSession", back_populates="filler_events")
+    candidate = relationship("Candidate")
+
+class InterviewVisualMetric(Base):
+    __tablename__ = "interview_visual_metrics"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, unique=True, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
+    face_presence_ratio = Column(Float, default=0.0)
+    eye_contact_ratio = Column(Float, default=0.0)
+    camera_facing_ratio = Column(Float, default=0.0)
+    attention_score = Column(Float, default=0.0)
+    engagement_score = Column(Float, default=0.0)
+    dominant_emotion = Column(String(50), default="neutral")
+    emotion_distribution = Column(JSON, default=dict) # {neutral: 62, confident: 21, ...}
+    emotion_timeline = Column(JSON, default=list) # [{start, end, dominant_emotion, confidence}]
+    model_version = Column(String(50), default="smart-hire-behavior-v2.0")
+    head_pose_stability = Column(Float, default=0.0)
+    long_away_periods = Column(Integer, default=0)
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("InterviewSession", back_populates="visual_metrics")
+    candidate = relationship("Candidate")
+
+class InterviewVisualObservation(Base):
+    __tablename__ = "interview_visual_observations"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
+    timestamp = Column(Float, default=0.0)
+    face_detected = Column(Boolean, default=True)
+    face_confidence = Column(Float, default=1.0)
+    head_yaw = Column(Float, default=0.0)
+    head_pitch = Column(Float, default=0.0)
+    head_roll = Column(Float, default=0.0)
+    gaze_horizontal = Column(Float, default=0.0)
+    gaze_vertical = Column(Float, default=0.0)
+    eye_contact_state = Column(String(50), default="LOOKING_AT_CAMERA") # LOOKING_AT_CAMERA, LOOKING_LEFT, LOOKING_RIGHT, LOOKING_UP, LOOKING_DOWN, UNCERTAIN
+    emotion = Column(String(50), default="neutral")
+    emotion_confidence = Column(Float, default=1.0)
+    attention_state = Column(String(50), default="FOCUSED")
+    model_version = Column(String(50), default="smart-hire-behavior-v2.0")
+    probability_distribution = Column(JSON, default=dict)
+    observation_status = Column(String(50), default="VALID")
+    is_test_data = Column(Boolean, default=False, index=True)
+    environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    session = relationship("InterviewSession", back_populates="visual_observations")
+    candidate = relationship("Candidate")
 
 class Achievement(Base):
     __tablename__ = "achievements"
@@ -670,7 +919,36 @@ class AssessmentQuestion(Base):
     correct_option = Column(Integer, nullable=False, default=0) # 0-indexed int
     explanation = Column(Text, nullable=True)
     negative_marks = Column(Float, default=0.25)
+    is_repeated = Column(Boolean, default=False, index=True)
+    passage_text = Column(Text, nullable=True)
+    dataset_json = Column(JSON, nullable=True)
+    test_cases = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class CandidateQuestionHistory(Base):
+    """Production-grade candidate question history tracking ledger."""
+    __tablename__ = "candidate_question_history"
+    __table_args__ = (
+        Index("ix_cqh_candidate_topic_diff", "candidate_id", "topic", "difficulty"),
+        Index("ix_cqh_candidate_question", "candidate_id", "question_id"),
+        Index("ix_cqh_candidate_fingerprint", "candidate_id", "question_fingerprint"),
+        Index("ix_cqh_candidate_served", "candidate_id", "served_at"),
+        Index("ix_cqh_candidate_category", "candidate_id", "category"),
+        Index("ix_cqh_candidate_difficulty", "candidate_id", "difficulty"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), index=True, nullable=True)
+    question_id = Column(String(36), index=True, nullable=False)
+    assessment_id = Column(String(36), ForeignKey("assessment_sessions.id"), index=True, nullable=False)
+    attempt_number = Column(Integer, nullable=False, default=1)
+    category = Column(String(100), nullable=True, index=True)
+    subcategory = Column(String(100), nullable=True, index=True)
+    topic = Column(String(100), nullable=True, index=True)
+    difficulty = Column(String(50), nullable=True, index=True)
+    question_fingerprint = Column(String(64), index=True, nullable=False)
+    is_repeated = Column(Boolean, default=False, index=True)
+    served_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 class AssessmentQuestionHistory(Base):
     """Immutable candidate question ledger used to prevent repeat assessment items."""
@@ -750,6 +1028,9 @@ class MasterQuestionBank(Base):
     explanation = Column(Text, nullable=True)
     code_snippet = Column(Text, nullable=True)
     language = Column(String(50), nullable=True)
+    passage_text = Column(Text, nullable=True)
+    dataset_json = Column(JSON, nullable=True)
+    test_cases = Column(JSON, nullable=True)
     created_by = Column(String(100), default="ai_factory") # system, ai_factory, recruiter_id
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     question_fingerprint = Column(String(64), nullable=False, index=True)

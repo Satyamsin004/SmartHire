@@ -53,14 +53,62 @@ class AIEngine:
         context: Dict[str, Any],
         num_questions: int = 1
     ) -> List[Dict[str, Any]]:
-        """Generates the initial interview question using comprehensive context."""
+        """Generates the initial interview question using comprehensive context with strict non-repetition guarantees."""
+        import time, random
         
         skills_raw = context.get('resume_skills', [])
         skills_clean = [s.get("skill_name", str(s)) if isinstance(s, dict) else str(s) for s in skills_raw]
         
+        prev_asked = context.get('previously_asked_questions', [])
+        recent_prev = prev_asked[-10:] if len(prev_asked) > 10 else prev_asked
+        prev_asked_str = "\n".join([f"- {q}" for q in recent_prev if q]) if recent_prev else "None"
+        session_entropy = f"Seed-{time.time_ns()}-{random.randint(1000, 9999)}"
+
+        # Extract topic keywords from recently asked questions to forbid semantically similar topics
+        topic_keywords_found = set()
+        topic_detection_map = {
+            "concurrency": ["concurrency", "concurrent", "multithreading", "multi-threaded", "thread", "threading", "synchronized", "lock", "deadlock"],
+            "api_design": ["api", "rest", "restful", "graphql", "grpc", "endpoint", "api versioning"],
+            "database": ["database", "sql", "postgresql", "mysql", "indexing", "query optimization", "sharding", "replication"],
+            "caching": ["caching", "redis", "memcached", "cache invalidation", "cache strategy"],
+            "microservices": ["microservices", "microservice", "service mesh", "circuit breaker", "saga pattern"],
+            "testing": ["testing", "unit test", "integration test", "tdd", "test-driven", "junit", "pytest"],
+            "ci_cd": ["ci/cd", "cicd", "pipeline", "deployment", "docker", "kubernetes", "containerization"],
+            "design_patterns": ["design pattern", "singleton", "factory", "observer", "strategy pattern", "solid"],
+            "security": ["security", "authentication", "authorization", "oauth", "jwt", "encryption", "xss", "csrf"],
+            "performance": ["performance", "profiling", "load testing", "optimization", "benchmarking", "latency"],
+            "system_design": ["system design", "scalability", "distributed system", "load balancing", "fault tolerance"],
+            "data_structures": ["data structure", "algorithm", "sorting", "binary tree", "hash map", "linked list", "graph"],
+            "messaging": ["message queue", "kafka", "rabbitmq", "event-driven", "pub/sub", "event streaming"],
+            "logging": ["logging", "monitoring", "observability", "tracing", "alerting", "metrics"],
+        }
+        
+        prev_text_combined = " ".join(recent_prev).lower()
+        for topic_name, keywords in topic_detection_map.items():
+            for kw in keywords:
+                if kw in prev_text_combined:
+                    topic_keywords_found.add(topic_name)
+                    break
+        
+        forbidden_topics_str = ", ".join(topic_keywords_found) if topic_keywords_found else "None"
+        
+        # Build a list of topics NOT yet covered to suggest to the LLM
+        all_topics = list(topic_detection_map.keys())
+        available_topics = [t for t in all_topics if t not in topic_keywords_found]
+        if not available_topics:
+            available_topics = all_topics  # reset if all covered
+        random.shuffle(available_topics)
+        suggested_topic = available_topics[0] if available_topics else "software architecture"
+        
+        # Pick a target skill/project to focus on if multiple exist to guarantee question variance
+        primary_skill = random.choice(skills_clean) if skills_clean else "software architecture"
+        projects_list = context.get('resume_projects', [])
+        primary_project = random.choice(projects_list) if isinstance(projects_list, list) and len(projects_list) > 0 else None
+        project_name = primary_project.get('project_name', str(primary_project)) if isinstance(primary_project, dict) else str(primary_project or "")
+
         prompt = f"""
         You are a Chief Technical Recruiter and Principal AI Interviewer conducting an enterprise-grade interview.
-        You must generate the FIRST question of the interview. Do NOT generate follow-ups here.
+        You must generate unique opening questions for this interview session.
 
         ========================================================================
         CANDIDATE CONTEXT:
@@ -72,14 +120,25 @@ class AIEngine:
         Parsed Resume Projects: {context.get('resume_projects')}
         Parsed Resume Experience: {context.get('resume_experience')}
         Job Description: {context.get('job_description')}
+        Session Randomization Token: {session_entropy}
+
+        PREVIOUSLY ASKED QUESTIONS (Across All Past Sessions - DO NOT REPEAT):
+        {prev_asked_str}
+        
+        PREVIOUSLY COVERED TOPIC AREAS (DO NOT ask about these topics again):
+        {forbidden_topics_str}
+        
+        SUGGESTED NEW TOPIC AREA FOR THIS SESSION:
+        {suggested_topic.replace('_', ' ').title()}
         ========================================================================
 
-        RESUME-AWARE PERSONALIZATION MANDATE:
-        If the candidate's parsed resume details (skills, projects, experience) are available above:
-        - Actively personalize the question by explicitly referencing their specific projects, skills, or experience!
-        - Examples:
-          - "I noticed you worked on {context.get('resume_projects', ['your past project'])[0] if context.get('resume_projects') else 'a key project'}. Tell me about your architecture decisions and trade-offs."
-          - "I see you have experience with {skills_clean[0] if skills_clean else 'software design'}. How did you apply that in your production systems?"
+        CRITICAL DIVERSITY & NON-REPETITION MANDATES:
+        1. NEVER repeat any question or variant present in the PREVIOUSLY ASKED QUESTIONS list above!
+        2. NEVER ask about any topic area listed in PREVIOUSLY COVERED TOPIC AREAS! Choose a COMPLETELY DIFFERENT technical domain!
+        3. Focus this session on the SUGGESTED NEW TOPIC AREA: {suggested_topic.replace('_', ' ').title()}
+        4. Pick a DIFFERENT project (e.g. {project_name or 'a key project'}), skill (e.g. {primary_skill}), or architectural focus area each session!
+        5. If candidate details are available, actively personalize the opening question by explicitly referencing candidate's specific project or skills.
+        6. Two questions about the same technical concept (e.g. both about "concurrency") count as DUPLICATE even if worded differently!
 
         STRICT ROUND DOMAIN BOUNDARY RULES:
         1. If Interview Round is "Technical" or "Coding": Ask ONLY technical, coding, or algorithmic questions. NEVER ask HR or behavioral questions.
@@ -92,10 +151,20 @@ class AIEngine:
         Instructions:
         1. Generate exactly {num_questions} opening interview question following the strict rules above.
         2. Set a professional, conversational, and direct tone.
-        3. Make the question contextual to their stated experience.
+        3. Make the question contextual and distinct from previous sessions.
 
-        Return ONLY a JSON array of {num_questions} objects with keys: "question_text", "category", "difficulty", "expected_keywords".
-        Do NOT include markdown formatting or quotes around JSON. Pure JSON array only.
+        Return ONLY a valid JSON object matching this exact structure:
+        {{
+            "questions": [
+                {{
+                    "question_text": "Detailed question text here",
+                    "category": "Technical",
+                    "difficulty": "Medium",
+                    "expected_keywords": ["keyword1", "keyword2"]
+                }}
+            ]
+        }}
+        Do NOT include markdown formatting or quotes around JSON. Pure JSON object only.
         """
 
         raw_text = await self._call_gemini_with_fallback(prompt, json_mode=True, task=self._interview_task(context))
@@ -103,44 +172,57 @@ class AIEngine:
             try:
                 text = self._clean_json_str(raw_text)
                 data = json.loads(text)
-                if isinstance(data, list) and len(data) > 0:
-                    return data
-                elif isinstance(data, dict) and "questions" in data:
+                if isinstance(data, dict) and "questions" in data:
                     return data["questions"]
+                elif isinstance(data, list) and len(data) > 0:
+                    return data
             except Exception as parse_err:
-                logger.error(f"Gemini response parse error: {parse_err}")
+                logger.error(f"AI response parse error: {parse_err}")
 
-        # Dynamic, round-type aware fallback question if Gemini API is rate-limited
+        # Dynamic, round-type aware non-repeating fallback pool
         role = context.get('role', 'Software Engineer')
         round_type = (context.get('round_type') or 'Technical').lower()
-        skill_name = skills_clean[0] if skills_clean else "software engineering"
+        
+        prev_set = {q.strip().lower() for q in prev_asked if q}
 
         if "behavioral" in round_type or "star" in round_type:
-            q_text = f"Welcome! To start off, could you walk me through a challenging situation in a previous project where you had to manage tight deadlines or team conflicts, and how you resolved it?"
-            cat = "Behavioral & STAR"
-            kws = ["conflict", "deadlines", "STAR method", "resolution", "teamwork"]
+            fallbacks = [
+                ("Welcome! To start off, could you walk me through a challenging situation in a previous project where you had to manage tight deadlines or team conflicts, and how you resolved it?", "Behavioral & STAR", ["conflict", "deadlines", "STAR method", "resolution"]),
+                ("Welcome! Could you share an instance where you took initiative to solve a major workflow bottleneck or team technical debt?", "Behavioral & STAR", ["initiative", "bottleneck", "workflow", "ownership"]),
+                ("Welcome! Tell me about a time when you received constructive feedback on a design decision and how you adapted your approach?", "Behavioral & STAR", ["feedback", "adaptability", "collaboration", "growth"])
+            ]
         elif "hr" in round_type:
-            q_text = f"Welcome! To begin, tell me about your professional journey as a {role}, your key career aspirations, and why this opportunity aligns with your goals?"
-            cat = "HR & Cultural Fit"
-            kws = ["career goals", "motivation", "company fit", "strengths"]
+            fallbacks = [
+                (f"Welcome! To begin, tell me about your professional journey as a {role}, your key career aspirations, and why this opportunity aligns with your goals?", "HR & Cultural Fit", ["career goals", "motivation", "company fit"]),
+                (f"Welcome! What key values and team dynamics do you look for in a company when taking on a new {role} role?", "HR & Cultural Fit", ["values", "team dynamics", "culture"]),
+                (f"Welcome! Looking ahead, what key technical skills or leadership milestones do you aim to achieve over the next 2 years as a {role}?", "HR & Cultural Fit", ["milestones", "growth", "career plan"])
+            ]
         elif "system" in round_type or "design" in round_type or "architecture" in round_type:
-            q_text = f"Welcome! To kick things off, how would you approach designing a high-throughput, fault-tolerant distributed system for a core {role} service?"
-            cat = "System Design & Scalability"
-            kws = ["system design", "scalability", "caching", "load balancing", "fault tolerance"]
-        elif "managerial" in round_type or "leadership" in round_type:
-            q_text = f"Welcome! Could you share an example where you led a technical initiative, mentored team members, and made critical trade-off decisions under uncertainty?"
-            cat = "Leadership & Management"
-            kws = ["leadership", "mentoring", "planning", "decision making"]
+            fallbacks = [
+                (f"Welcome! To kick things off, how would you approach designing a high-throughput, fault-tolerant distributed system for a core {role} service?", "System Design & Scalability", ["system design", "scalability", "caching", "load balancing"]),
+                (f"Welcome! How do you handle database sharding, connection pooling, and multi-region replication for high-availability {role} applications?", "System Design & Scalability", ["sharding", "replication", "high availability"]),
+                (f"Welcome! Walk me through how you implement asynchronous event streaming and message queues using Kafka or Redis in modern {role} platforms.", "System Design & Scalability", ["event streaming", "Kafka", "Redis", "decoupling"])
+            ]
         else:
-            q_text = f"Welcome! To start off, could you walk me through a complex {role} project where you utilized {skill_name}, focusing on key architectural decisions and performance optimizations?"
-            cat = "Technical Architecture"
-            kws = [skill_name, "architecture", "design", "performance", "scalability"]
+            fallbacks = [
+                (f"Welcome! To start off, could you walk me through a complex {role} project where you utilized {primary_skill}, focusing on key architectural decisions and performance optimizations?", "Technical Architecture", [primary_skill, "architecture", "design", "performance"]),
+                (f"Welcome! How do you handle API versioning, error schemas, and backward compatibility when exposing REST/gRPC services in {role} applications?", "API Design", ["REST", "gRPC", "versioning", "backward compatibility"]),
+                (f"Welcome! Could you describe your strategy for query optimization, indexing, and transaction isolation levels in PostgreSQL or relational databases?", "Database Engineering", ["PostgreSQL", "indexing", "query optimization", "transactions"]),
+                (f"Welcome! How do you implement robust CI/CD pipelines, containerization with Docker, and automated unit/integration testing for {role} codebases?", "DevOps & Testing", ["Docker", "CI/CD", "automated testing", "pipeline"])
+            ]
+
+        # Select first fallback that hasn't been asked yet
+        chosen_fb = fallbacks[0]
+        for fb in fallbacks:
+            if fb[0].strip().lower() not in prev_set:
+                chosen_fb = fb
+                break
 
         return [{
-            "question_text": q_text,
-            "category": cat,
+            "question_text": chosen_fb[0],
+            "category": chosen_fb[1],
             "difficulty": context.get('difficulty', 'Medium'),
-            "expected_keywords": kws
+            "expected_keywords": chosen_fb[2]
         }]
 
     async def generate_followup_question(
@@ -155,7 +237,8 @@ class AIEngine:
                 history_str += f"\n[Q{idx+1}]: {qa['question']}\n[A{idx+1}]: {qa['answer']}\n"
 
         prev_asked = context.get('previously_asked_questions', [])
-        prev_asked_str = "\n".join([f"- {q}" for q in prev_asked]) if prev_asked else "None"
+        recent_prev = prev_asked[-10:] if len(prev_asked) > 10 else prev_asked
+        prev_asked_str = "\n".join([f"- {q}" for q in recent_prev]) if recent_prev else "None"
 
         skills_raw = context.get('resume_skills', [])
         skills_clean = [s.get("skill_name", str(s)) if isinstance(s, dict) else str(s) for s in skills_raw]
@@ -295,49 +378,51 @@ class AIEngine:
         is_transition: bool = False,
         next_topic: Optional[str] = None
     ) -> str:
-        """Generates a natural, human-like 1-3 sentence interviewer reaction remark with optional natural transition (never exposes numeric scores)."""
+        """Generates an enthusiastic spoken 1-3 sentence interviewer verbal reaction remark starting with out-loud praise like 'Well done!' or 'Good answer!'."""
         transition_instruction = ""
         if is_transition:
             transition_instruction = f"""
-            Since we are moving to the next main question/topic ({next_topic or 'next topic'}), end your remark with a natural human transition phrase.
+            Since we are moving to the next question/topic ({next_topic or 'next topic'}), finish your spoken remark with a natural verbal transition.
             Examples of natural transitions:
-            - "Great, let's move to the next question."
-            - "Thanks for explaining that. Let me switch to another topic."
-            - "Now I'd like to ask you about your technical experience."
-            - "Good reasoning. Let me move on to the next question."
+            - "Great, let's proceed to the next question."
+            - "Thank you for explaining that. Let's move on to the next question."
+            - "Now, let's move to our next technical topic."
             """
 
         prompt = f"""
-        You are a Senior HR & Technical Interviewer at an elite tech enterprise.
-        React naturally to the candidate's answer as a real human interviewer speaking face-to-face.
+        You are a Senior Technical Interviewer conducting a live spoken voice interview for a {role} position.
+        React out loud to the candidate's answer as a warm, professional human interviewer speaking directly to them.
 
         Question Asked: {question_text}
-        Candidate Answer: {candidate_answer}
+        Candidate Answer Spoken: {candidate_answer}
         Target Role: {role}
         {transition_instruction}
 
         Rules:
-        - Write a natural, conversational 1-3 sentence interviewer response (15-35 words).
-        - Acknowledge what they did well, or gently point out what was missed or could be expanded.
+        - MANDATORY: Begin your response with enthusiastic verbal praise such as "Well done!", "Good answer!", "Great explanation!", "Excellent response!", or "Nice approach!".
+        - Keep the entire spoken remark concise (15 to 30 words), clear, and natural for speech synthesis.
         - Examples:
-          "Good explanation! You covered state management well, though you missed Virtual DOM diffing. Great, let's move to the next question."
-          "That's a solid answer. I like how you explained the approach. Thanks for explaining that, let's switch to another topic."
-          "You correctly identified the main idea. Consider talking about scalability as well."
-        - CRITICAL MANDATE: NEVER expose numerical scores, percentages, ratings, or robotic boilerplate ("Answer quality: 74%").
-        - Return ONLY pure text string.
+          "Well done! You clearly explained state management and state hooks. Great, let's proceed to the next question."
+          "Good answer! I like how you articulated the API rate limiting strategy. Now, let's move to our next technical topic."
+          "Great explanation! You highlighted database indexing effectively. Let's move on to the next question."
+        - CRITICAL MANDATE: NEVER expose numerical scores, percentages, ratings, or robotic jargon.
+        - Output pure text string only.
         """
         try:
             raw_text = await self._call_gemini_with_fallback(prompt, task="interview")
             if raw_text:
-                return raw_text.strip().replace('"', '')
+                res_clean = raw_text.strip().replace('"', '')
+                if not any(res_clean.startswith(prefix) for prefix in ["Well done!", "Good answer!", "Great explanation!", "Excellent response!", "Nice approach!", "Solid answer!"]):
+                    res_clean = f"Well done! {res_clean}"
+                return res_clean
             if is_transition:
-                return "Good explanation! Thanks for sharing. Great, let's move to the next question."
-            return "Good response! Let me ask a follow-up question on that."
+                return "Well done! Great explanation. Let me move to the next question for you."
+            return "Good answer! That's a solid explanation. Let me ask a quick follow-up on that."
         except Exception as e:
             logger.error(f"Evaluation feedback error: {e}")
             if is_transition:
-                return "Nice explanation! Thanks for explaining that. Let's move to the next question."
-            return "Good response! Let's probe further into that."
+                return "Well done! Thanks for explaining that clearly. Let's move to the next question."
+            return "Good answer! Let's probe a bit further into that topic."
 
     async def parse_resume_to_json(self, resume_text: str) -> Dict[str, Any]:
         """Extracts complete 12-section structured profile & skills from resume using Gemini AI, with regex fallback."""
@@ -800,20 +885,28 @@ class AIEngine:
         }
 
     def _fast_evaluate_transcript(self, transcript: str, expected_keywords: List[Any]) -> float:
-        """Fast, sub-millisecond evaluation of answer technical quality based on keyword coverage and length."""
+        """Fast, authentic evaluation of candidate answer technical quality based on keyword coverage and length."""
         if not transcript or not transcript.strip():
-            return 45.0
-        txt_lower = transcript.lower()
+            return 0.0
+
+        txt_lower = transcript.lower().strip()
         words = txt_lower.split()
         word_count = len(words)
+
+        if word_count == 0:
+            return 0.0
+        if word_count <= 3:
+            return 10.0
 
         clean_kws = [k.get("skill_name", str(k)) if isinstance(k, dict) else str(k) for k in (expected_keywords or [])]
         matched_kws = [k for k in clean_kws if k.lower() in txt_lower]
 
-        kw_coverage = (len(matched_kws) / max(1, len(clean_kws))) * 35.0
-        length_score = min(45.0, word_count * 0.7)
-        base_score = 35.0 + kw_coverage + length_score
-        return round(min(98.0, max(40.0, base_score)), 1)
+        kw_ratio = (len(matched_kws) / max(1, len(clean_kws)))
+        kw_coverage = kw_ratio * 55.0
+        length_score = min(35.0, word_count * 0.7)
+        base_score = kw_coverage + length_score + (10.0 if matched_kws else 0.0)
+
+        return round(min(98.0, max(0.0, base_score)), 1)
 
     async def evaluate_transcript(self, transcript: str, expected_keywords: List[Any]) -> float:
         """Evaluates technical depth of candidate answer transcript (sub-10ms performance)."""
@@ -822,7 +915,7 @@ class AIEngine:
     async def evaluate_interview_session(self, session_context: str) -> Dict[str, Any]:
         """Evaluates an entire interview session context and generates a 9-category structured evaluation report."""
         if not session_context or not session_context.strip():
-            return self._get_fallback_session_report("No session context provided.")
+            return self._get_fallback_session_report("No session context provided.", is_silent=True)
             
         prompt = f"""
         You are a Principal AI Evaluation Engineer evaluating a candidate's complete interview transcript and performance telemetry.
@@ -872,7 +965,7 @@ class AIEngine:
         Rules:
         - Return ONLY pure JSON. No markdown ticks (```json).
         - Evaluate scores strictly out of 100.0 based on actual spoken answers in the transcript.
-        - Never generate zeros unless the transcript is completely empty or candidate refused to answer.
+        - If candidate provided no spoken answers or transcript is empty, assign 0.0 score and recommendation "Reject".
         - Provide actionable, specific feedback referring directly to concepts discussed in the interview.
         """
         raw = await self._call_gemini_with_fallback(prompt, json_mode=True, task="report")
@@ -898,8 +991,44 @@ class AIEngine:
 
         return self._get_fallback_session_report("AI evaluation completed based on transcript analysis.")
 
-    def _get_fallback_session_report(self, reason: str) -> Dict[str, Any]:
-        """Intelligent fallback that calculates fair non-zero evaluation scores if Gemini API call is limited."""
+    def _get_fallback_session_report(self, reason: str, is_silent: bool = False) -> Dict[str, Any]:
+        """Authentic evaluation report fallback for silent/empty or system limited sessions."""
+        if is_silent or "no spoken response" in reason.lower() or "empty" in reason.lower():
+            return {
+                "communication_score": 0.0,
+                "confidence_score": 0.0,
+                "technical_score": 0.0,
+                "professionalism_score": 10.0,
+                "grammar_score": 0.0,
+                "problem_solving_score": 0.0,
+                "behavior_score": 0.0,
+                "leadership_score": 0.0,
+                "overall_score": 1.5,
+                "rating_rubric": "Not Recommended",
+                "recommendation": "Reject",
+                "overall_summary": "No spoken or written responses were provided by the candidate during this interview session. All question evaluations reflect 0.0% due to absence of answer telemetry.",
+                "technical_analysis": "Zero technical responses provided. Unanswered candidate assessment.",
+                "communication_analysis": "No verbal communication or transcript text recorded.",
+                "behavioral_analysis": "Unable to evaluate behavioral competence due to lack of candidate responses.",
+                "grammar_analysis": "No spoken transcript recorded.",
+                "confidence_analysis": "No confidence telemetry recorded.",
+                "strengths": [
+                    "Joined interview session room"
+                ],
+                "weaknesses": [
+                    "Candidate did not provide answers to any interview questions",
+                    "Missing technical, communication, and confidence telemetry"
+                ],
+                "improvement_plan": [
+                    "Ensure microphone and speech recognition are active before joining",
+                    "Provide detailed, spoken technical answers for each question presented"
+                ],
+                "learning_resources": [
+                    "Interview Preparation Guide",
+                    "Technical Communication Best Practices"
+                ]
+            }
+
         return {
             "communication_score": 78.0,
             "confidence_score": 75.0,

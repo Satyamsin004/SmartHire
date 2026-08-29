@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import text
 
 from app.core.db import get_db
 from app.models.domain import (
@@ -431,6 +432,44 @@ async def apply_for_job(
 
     await db.commit()
 
+    # Emit Real-Time Domain Events (Post DB Commit)
+    try:
+        from app.core.events import session_event_publisher, SessionEventPayload, SessionEventType
+        await session_event_publisher.publish(SessionEventPayload(
+            event_type=SessionEventType.APPLICATION_SUBMITTED,
+            event="APPLICATION_SUBMITTED",
+            entity="application",
+            entity_id=new_app.id,
+            candidate_id=candidate.id,
+            recruiter_id=job.recruiter_id,
+            job_application_id=new_app.id,
+            job_id=job.id,
+            status=new_app.status,
+            metadata={
+                "job_title": job.title,
+                "candidate_name": user.full_name,
+                "ats_score": ats_score,
+                "status": new_app.status
+            }
+        ))
+        await session_event_publisher.publish(SessionEventPayload(
+            event_type=SessionEventType.ATS_EVALUATION_UPDATED,
+            event="ATS_EVALUATION_UPDATED",
+            entity="ats_evaluation",
+            entity_id=new_app.id,
+            candidate_id=candidate.id,
+            recruiter_id=job.recruiter_id,
+            job_application_id=new_app.id,
+            job_id=job.id,
+            status=new_app.status,
+            metadata={
+                "ats_score": ats_score,
+                "ai_recommendation": decision.get("ai_recommendation")
+            }
+        ))
+    except Exception as event_err:
+        pass
+
     logger.info("Recruiter statistics updated & candidate application history updated. Response returned.")
 
     return {
@@ -516,6 +555,11 @@ async def get_my_applications(
                 "overall_score": round(scoring_report.overall_score, 1) if scoring_report else None,
                 "recommendation": scoring_report.recommendation if scoring_report else None
             }
+
+            # Enforce sequential prerequisite: if Online Assessment not passed, do not expose interview details
+            is_assess_passed = (recruiter_assessment and recruiter_assessment.get("score") is not None and recruiter_assessment.get("score") >= 70.0) or app.status in ["Assessment Passed", "Interview Scheduled", "Interview Passed", "Interview Failed", "Selected", "Hired"]
+            if not is_assess_passed:
+                recruiter_interview = None
 
         # 3. Check offer status
         res_o = await db.execute(select(OfferLetter).where(OfferLetter.job_application_id == app.id))
@@ -746,4 +790,42 @@ async def get_saved_jobs(
                 "status": job.status
             })
     return out
+
+@router.delete("/purge-all", summary="Purge All Job Data (Admin/Recruiter)")
+async def purge_all_jobs(
+    user: User = Depends(require_role(["recruiter", "admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Purges all job postings, applications, saved jobs, and associated interview/assessment activity."""
+    tables_to_clear = [
+        "scoring_reports",
+        "interview_answers",
+        "speech_analysis",
+        "eye_tracking",
+        "emotion_analysis",
+        "interview_transcripts",
+        "interview_vision_analysis",
+        "interview_recordings",
+        "interview_questions",
+        "interview_sessions",
+        "candidate_question_history",
+        "assessment_question_history",
+        "assessment_questions",
+        "assessment_sessions",
+        "job_applications",
+        "saved_jobs",
+        "scheduled_interviews",
+        "notifications",
+        "offer_letters",
+        "job_postings"
+    ]
+    for table in tables_to_clear:
+        try:
+            await db.execute(text(f"DELETE FROM {table}"))
+        except Exception as e:
+            logger.warning(f"Error purging table {table}: {e}")
+
+    await db.commit()
+    return {"status": "success", "message": "All job postings and job application data purged successfully."}
+
 

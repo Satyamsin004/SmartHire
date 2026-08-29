@@ -64,7 +64,8 @@ Context & Randomization:
 - Pass: {pass_num}
 
 Guidelines:
-- CRITICAL DIVERSITY MANDATE: Write completely novel, scenario-driven enterprise questions with unique system architecture problems or real-world code scenarios.
+- CRITICAL TOPIC STRICTNESS: Every generated question MUST be strictly and exclusively testing the specified Topic of its slot (e.g. if Topic='JavaScript & TypeScript', the question MUST be about JavaScript / TypeScript code, syntax, Promises, DOM, closures, interfaces, async/await, etc. - NEVER generate Python, FastAPI, SQL, or Docker questions for a JavaScript/TypeScript slot).
+- CRITICAL DIVERSITY MANDATE: Write completely novel, scenario-driven enterprise questions with unique code scenarios.
 - Do NOT generate generic textbook questions like 'What is the primary benefit of multi-stage Dockerfile' or 'What is a context manager'.
 - Options must be 4 plausible technical distractors.
 - Distribute correct answer indices (0, 1, 2, 3) evenly across options.
@@ -74,15 +75,15 @@ Guidelines:
 OUTPUT MANDATE:
 Return ONLY a JSON array of exactly {requested_count} question objects. Each object MUST match this schema:
 {{
-  "topic": "Topic",
+  "topic": "Assigned Slot Topic",
   "subtopic": "Subtopic",
   "concept": "Concept",
   "difficulty": "Difficulty",
   "bloom_taxonomy": "Bloom Level",
   "question_type": "Question Type",
   "scenario_type": "{random_domain}",
-  "technology": "Topic",
-  "question_text": "Clear, detailed question statement",
+  "technology": "Assigned Slot Topic",
+  "question_text": "Clear, detailed question statement strictly on the assigned Topic",
   "code_snippet": null,
   "options": ["Option A", "Option B", "Option C", "Option D"],
   "correct_option": 0,
@@ -317,6 +318,9 @@ Return ONLY a JSON array of exactly {requested_count} question objects. Each obj
                         correct_option=new_correct_idx,
                         explanation=q_payload.get("explanation") or "Enterprise technical explanation.",
                         code_snippet=q_payload.get("code_snippet"),
+                        passage_text=q_payload.get("passage_text"),
+                        dataset_json=q_payload.get("dataset_json"),
+                        test_cases=q_payload.get("test_cases"),
                         language=q_payload.get("language"),
                         created_by=created_by,
                         question_fingerprint=fp,

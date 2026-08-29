@@ -43,20 +43,90 @@ async def get_scheduling_jobs_list(
 @router.get("/candidates-list")
 async def get_candidates_list(
     job_id: Optional[str] = None,
+    schedule_type: Optional[str] = "interview",
     user: User = Depends(require_role(["recruiter", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
-    """Returns ONLY candidates who applied successfully for selected job posting, have ATS score >= 80%, status Shortlisted, and no active pending scheduled interview.
-    Uses RecruitmentPipelineService as the single source of truth.
-    """
-    logger.info("[Interview Scheduler Query Executed] User %s requested candidate list for Job ID: %s", user.email, job_id)
+    """Returns candidates for selected job posting based on scheduling phase (assessment vs interview)."""
+    logger.info("[Scheduler Query Executed] User %s requested candidate list for Job ID: %s, type: %s", user.email, job_id, schedule_type)
     if job_id:
-        cands = await RecruitmentPipelineService.get_eligible_candidates_for_scheduler(db, recruiter_user_id=user.id, job_id=job_id)
+        cands = await RecruitmentPipelineService.get_eligible_candidates_for_scheduler(
+            db, recruiter_user_id=user.id, job_id=job_id, schedule_type=schedule_type or "interview"
+        )
     else:
         cands = await RecruitmentPipelineService.get_shortlisted_candidates(db, recruiter_user_id=user.id, is_admin=(user.role == "admin"))
     
-    logger.info("[Candidates Returned] Outputting %d candidate(s) for interview scheduling.", len(cands))
+    logger.info("[Candidates Returned] Outputting %d candidate(s) for scheduling.", len(cands))
     return cands
+
+class CreateAssessmentScheduleRequest(BaseModel):
+    job_id: str
+    candidate_ids: List[str]
+    title: Optional[str] = "Online Aptitude & Technical Assessment"
+    topics: Optional[List[str]] = ["Quantitative Aptitude", "Logical Reasoning", "Software Concepts"]
+    difficulty: Optional[str] = "Medium"
+    question_count: Optional[int] = 10
+    duration_minutes: Optional[int] = 15
+    passing_score: Optional[float] = 70.0
+
+@router.post("/create-assessment")
+async def create_scheduled_assessment(
+    body: CreateAssessmentScheduleRequest,
+    user: User = Depends(require_role(["recruiter", "admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Schedules Online Assessment for selected ATS Passed candidates and updates application status to Assessment Scheduled."""
+    from app.models.domain import AssessmentSession, Candidate, JobApplication, Notification, Recruiter
+    
+    res_rec = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
+    rec = res_rec.scalar_one_or_none()
+    recruiter_id = rec.id if rec else None
+
+    scheduled_sessions = []
+    for cand_id in body.candidate_ids:
+        res_c = await db.execute(select(Candidate).where(Candidate.id == cand_id))
+        cand = res_c.scalar_one_or_none()
+        if not cand:
+            continue
+
+        res_app = await db.execute(
+            select(JobApplication)
+            .where(JobApplication.candidate_id == cand.id, JobApplication.job_id == body.job_id)
+            .order_by(JobApplication.applied_at.desc())
+        )
+        app = res_app.scalars().first()
+
+        session = AssessmentSession(
+            candidate_id=cand.id,
+            recruiter_id=recruiter_id,
+            job_id=body.job_id,
+            job_application_id=app.id if app else None,
+            title=body.title or "Online Aptitude & Technical Assessment",
+            topics=body.topics or ["Quantitative Aptitude", "Logical Reasoning", "Software Concepts"],
+            difficulty=body.difficulty or "Medium",
+            question_count=body.question_count or 10,
+            duration_minutes=body.duration_minutes or 15,
+            passing_score=body.passing_score or 70.0,
+            status="scheduled"
+        )
+        db.add(session)
+
+        if app:
+            app.status = "Assessment Scheduled"
+
+        if cand.user_id:
+            notif = Notification(
+                user_id=cand.user_id,
+                title="Online Assessment Scheduled",
+                message=f"Recruiter has scheduled an Online Assessment for your job application. Duration: {body.duration_minutes} Mins.",
+                notification_type="assessment_scheduled"
+            )
+            db.add(notif)
+
+        scheduled_sessions.append(session)
+
+    await db.commit()
+    return {"status": "success", "message": f"Online assessment scheduled for {len(scheduled_sessions)} candidates."}
 
 @router.post("/create")
 async def create_scheduled_interview(
@@ -214,6 +284,22 @@ async def create_scheduled_interview(
         })
 
     await db.commit()
+
+    # Emit Real-Time Domain Events (Post DB Commit)
+    try:
+        from app.core.events import session_event_publisher, SessionEventPayload, SessionEventType
+        for sch_info in created_schedules:
+            await session_event_publisher.publish(SessionEventPayload(
+                event_type=SessionEventType.INTERVIEW_SCHEDULED,
+                event="INTERVIEW_SCHEDULED",
+                interview_id=sch_info.get("id"),
+                candidate_id=sch_info.get("candidate_id"),
+                recruiter_id=recruiter_db.id if 'recruiter_db' in locals() else None,
+                status="Scheduled",
+                metadata=sch_info
+            ))
+    except Exception as event_err:
+        logger.error("Failed to publish interview scheduled event: %s", event_err)
 
     return {
         "status": "success",

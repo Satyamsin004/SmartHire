@@ -13,7 +13,7 @@ from sqlalchemy.future import select
 
 from app.models.domain import (
     AssessmentAnswer, AssessmentQuestion, AssessmentQuestionHistory,
-    AssessmentResult, AssessmentSession, JobApplication,
+    AssessmentResult, AssessmentSession, JobApplication, Candidate, Notification,
 )
 from app.services.ai_engine import ai_engine
 from app.services.paper_builder import paper_builder
@@ -260,8 +260,59 @@ Each object MUST match this schema:
         if session.job_application_id:
             application = (await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))).scalar_one_or_none()
             if application:
-                application.status = "Assessment Completed" if recommendation == "Pass" else "Rejected"
+                new_status = "Assessment Passed" if recommendation == "Pass" else "Assessment Failed"
+                application.status = new_status
+                
+                # Notify Candidate
+                if session.candidate_id:
+                    res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
+                    cand = res_c.scalar_one_or_none()
+                    if cand and cand.user_id:
+                        notif = Notification(
+                            user_id=cand.user_id,
+                            title=f"Online Assessment {new_status}",
+                            message=f"You scored {overall_score}% on your online assessment. Status: {new_status}.",
+                            notification_type="assessment_completed"
+                        )
+                        db.add(notif)
+
         await db.commit()
+
+        # Emit Real-Time Domain Events (Post DB Commit)
+        try:
+            from app.core.events import session_event_publisher, SessionEventPayload, SessionEventType
+            await session_event_publisher.publish(SessionEventPayload(
+                event_type=SessionEventType.ASSESSMENT_SUBMITTED,
+                event="ASSESSMENT_SUBMITTED",
+                session_id=session.id,
+                candidate_id=session.candidate_id,
+                recruiter_id=session.recruiter_id,
+                job_application_id=session.job_application_id,
+                job_id=session.job_id,
+                status=session.status,
+                metadata={
+                    "overall_score": overall_score,
+                    "hiring_recommendation": recommendation,
+                    "passing_score": session.passing_score
+                }
+            ))
+            await session_event_publisher.publish(SessionEventPayload(
+                event_type=SessionEventType.ASSESSMENT_COMPLETED,
+                event="ASSESSMENT_COMPLETED",
+                session_id=session.id,
+                candidate_id=session.candidate_id,
+                recruiter_id=session.recruiter_id,
+                job_application_id=session.job_application_id,
+                job_id=session.job_id,
+                status="completed",
+                metadata={
+                    "overall_score": overall_score,
+                    "hiring_recommendation": recommendation
+                }
+            ))
+        except Exception as event_err:
+            logger.error("Failed to publish assessment event: %s", event_err)
+
         return result
 
 

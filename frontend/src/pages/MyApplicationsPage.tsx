@@ -88,32 +88,54 @@ export const MyApplicationsPage: React.FC = () => {
       return { text: 'Pipeline Stopped', color: 'bg-slate-100 text-slate-300 border-slate-200', isUpcoming: true };
     }
 
-    // Stage 3: Online Assessment (Controlled ONLY by recruiter assessment)
+    const isAssessmentPassed = status.includes('assessment passed') || status.includes('interview') || (recAssess && recAssess.score !== null && recAssess.score >= 70);
+    const isAssessmentFailed = status.includes('assessment failed') || (recAssess && recAssess.score !== null && recAssess.score < 70);
+
+    // Stage 3: Online Assessment (Controlled by assessment score & application status)
     if (stageIdx === 2) {
-      if (!recAssess) {
-        return { text: 'Not Scheduled', color: 'bg-slate-100 text-slate-400 border-slate-200', isUpcoming: true };
+      if (isAssessmentFailed) {
+        return { text: 'Failed (<70%)', color: 'bg-rose-500 text-white border-rose-500', isFailed: true };
       }
-      if (recAssess.status === 'Completed') {
-        return { text: 'Completed', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
+      if (isAssessmentPassed) {
+        return { text: 'Passed (>=70%)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       }
-      if (recAssess.status === 'Failed') {
-        return { text: 'Failed', color: 'bg-rose-500 text-white border-rose-500', isFailed: true };
+      if (status === 'assessment scheduled') {
+        return { text: 'Assessment Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
       }
-      return { text: 'Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
+      return { text: 'Assessment Pending', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
     }
 
-    // Stage 4: Technical Interview (Controlled ONLY by recruiter interview)
+    // If Online Assessment is NOT passed yet, block Stages 4 through 8
+    if (!isAssessmentPassed) {
+      if (isAssessmentFailed) {
+        return { text: 'Pipeline Stopped', color: 'bg-slate-100 text-slate-300 border-slate-200', isUpcoming: true };
+      }
+      return { text: 'Upcoming (Prerequisite: Online Assessment)', color: 'bg-slate-100 text-slate-300 border-slate-200', isUpcoming: true };
+    }
+
+    const isInterviewPassed = status.includes('interview passed') || status.includes('selected') || (recInt && recInt.technical_score !== null && recInt.technical_score >= 70);
+    const isInterviewFailed = status.includes('interview failed') || (recInt && recInt.technical_score !== null && recInt.technical_score < 70);
+
+    // Stage 4: Technical Interview (Controlled by interview score & application status)
     if (stageIdx === 3) {
-      if (!recInt) {
-        return { text: 'Not Scheduled', color: 'bg-slate-100 text-slate-400 border-slate-200', isUpcoming: true };
+      if (isInterviewFailed) {
+        return { text: 'Failed (<70%)', color: 'bg-rose-500 text-white border-rose-500', isFailed: true };
       }
-      if (recInt.status === 'Completed') {
-        return { text: 'Completed', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
+      if (isInterviewPassed) {
+        return { text: 'Passed (>=70%)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       }
-      if (recInt.status === 'Failed') {
-        return { text: 'Failed', color: 'bg-rose-500 text-white border-rose-500', isFailed: true };
+      if (status.includes('interview scheduled')) {
+        return { text: 'Interview Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
       }
-      return { text: 'Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
+      return { text: 'Interview Pending', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
+    }
+
+    // If Technical Interview is NOT passed yet, block Stages 5 through 8
+    if (!isInterviewPassed) {
+      if (isInterviewFailed) {
+        return { text: 'Pipeline Stopped', color: 'bg-slate-100 text-slate-300 border-slate-200', isUpcoming: true };
+      }
+      return { text: 'Upcoming (Prerequisite: Technical Interview)', color: 'bg-slate-100 text-slate-300 border-slate-200', isUpcoming: true };
     }
 
     // Stage 5: Behavioral Interview (Recruiter Controlled)

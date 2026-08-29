@@ -536,7 +536,7 @@ async def get_ats_passed_evaluations(
 
         res_sess = await db.execute(
             select(InterviewSession)
-            .where(InterviewSession.candidate_id == app.candidate_id)
+            .where(InterviewSession.job_application_id == app.id)
             .order_by(InterviewSession.started_at.desc())
         )
         session = res_sess.scalars().first()
@@ -561,6 +561,10 @@ async def get_ats_passed_evaluations(
             "pipeline_stage": app.status,
             "interview_date": session.started_at.strftime('%b %d, %Y') if (session and session.started_at) else "Scheduled",
             "interview_status": session.status if session else ("Scheduled" if app.status == "Interview Scheduled" else "Pending"),
+            "integrity_status": session.integrity_status if session else "CLEAN",
+            "integrity_score": session.integrity_score if (session and session.integrity_score is not None) else 100.0,
+            "total_integrity_incidents": session.total_integrity_incidents if session else 0,
+            "termination_reason": session.termination_reason if session else None,
             "overall_score": round(rep.overall_score, 1) if (rep and rep.overall_score is not None) else None,
             "interview_score": round(rep.overall_score, 1) if (rep and rep.overall_score is not None) else None,
             "technical_score": round(rep.technical_score, 1) if (rep and rep.technical_score is not None) else None,
@@ -600,32 +604,45 @@ async def get_evaluation_detail(
             )
             session = res_s.scalars().first()
 
-    if not app:
-        raise HTTPException(status_code=404, detail="Application or Evaluation session not found.")
+    if not app and not session:
+        raise HTTPException(status_code=404, detail="Evaluation details not found.")
 
-    res_c = await db.execute(select(Candidate).where(Candidate.id == app.candidate_id))
+    cand_id = (app.candidate_id if app else None) or (session.candidate_id if session else None)
+    res_c = await db.execute(select(Candidate).where(Candidate.id == cand_id))
     cand = res_c.scalar_one_or_none()
-    res_u = await db.execute(select(User).where(User.id == cand.user_id)) if cand else None
-    cand_user = res_u.scalar_one_or_none() if res_u else None
 
-    res_r = await db.execute(select(Resume).where(Resume.candidate_id == cand.id).order_by(Resume.created_at.desc())) if cand else None
-    resume = res_r.scalars().first() if res_r else None
+    cand_user = None
+    if cand:
+        res_u = await db.execute(select(User).where(User.id == cand.user_id))
+        cand_user = res_u.scalar_one_or_none()
 
-    res_job = await db.execute(select(JobPosting).where(JobPosting.id == app.job_id))
-    job = res_job.scalar_one_or_none()
+    job = None
+    job_id = (app.job_id if app else None) or (session.job_id if session else None)
+    if job_id:
+        res_j = await db.execute(select(JobPosting).where(JobPosting.id == job_id))
+        job = res_j.scalar_one_or_none()
+
+    resume = None
+    if app and app.resume_id:
+        res_res = await db.execute(select(Resume).where(Resume.id == app.resume_id))
+        resume = res_res.scalar_one_or_none()
+    elif cand:
+        res_res = await db.execute(select(Resume).where(Resume.candidate_id == cand.id).order_by(Resume.created_at.desc()))
+        resume = res_res.scalars().first()
 
     report = None
-    transcript_list = []
     if session:
         res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id == session.id))
         report = res_rep.scalars().first()
 
-        res_qs = await db.execute(
+    transcript_list = []
+    if session:
+        res_q = await db.execute(
             select(InterviewQuestion)
             .where(InterviewQuestion.session_id == session.id)
-            .order_by(InterviewQuestion.order_index)
+            .order_by(InterviewQuestion.order_index.asc())
         )
-        questions = res_qs.scalars().all()
+        questions = res_q.scalars().all()
         for q in questions:
             res_ans = await db.execute(select(InterviewAnswer).where(InterviewAnswer.question_id == q.id))
             ans = res_ans.scalar_one_or_none()
@@ -634,27 +651,44 @@ async def get_evaluation_detail(
                 "question_text": q.question_text,
                 "category": q.category,
                 "difficulty": q.difficulty,
-                "candidate_answer": ans.transcript_text if (ans and ans.transcript_text) else "No response provided."
+                "candidate_answer": ans.transcript_text if (ans and ans.transcript_text) else "No verbal response recorded."
             })
 
+    from app.services.integrity_service import integrity_service
+    integrity_summary = None
+    if session:
+        try:
+            integrity_summary = await integrity_service.get_session_integrity_summary(db, session.id)
+        except Exception:
+            integrity_summary = {
+                "integrity_status": session.integrity_status or "CLEAN",
+                "integrity_score": session.integrity_score if session.integrity_score is not None else 100.0,
+                "total_incidents": session.total_integrity_incidents or 0,
+                "breakdown": {"multiple_person": 0, "mobile_phone": 0, "face_not_visible": 0, "tab_switch": 0},
+                "is_terminated": session.status == "TERMINATED",
+                "termination_reason": session.termination_reason,
+                "terminated_at": session.terminated_at.isoformat() if session.terminated_at else None,
+                "timeline": []
+            }
+
     ovr = round(report.overall_score, 1) if (report and report.overall_score is not None) else None
-    rec = getattr(report, 'recommendation', None) or ("Shortlist" if (app.ats_score and app.ats_score >= 80) else "Pending Review")
+    rec = getattr(report, 'recommendation', None) or ("Shortlist" if (app and app.ats_score and app.ats_score >= 80) else "Pending Review")
 
     return {
-        "application_id": app.id,
+        "application_id": app.id if app else None,
         "session_id": session.id if session else None,
         "candidate": {
             "id": cand.id if cand else None,
             "full_name": cand_user.full_name if cand_user else "Candidate",
             "email": cand_user.email if cand_user else "",
-            "phone": app.phone or "N/A",
+            "phone": (app.phone if app else None) or "N/A",
             "target_role": cand.target_role if cand else "Software Engineer",
             "experience_level": cand.experience_level if cand else "Mid-Level"
         },
         "resume": {
             "file_name": resume.file_name if resume else "Resume.pdf",
             "file_path": resume.file_path if resume else None,
-            "parsed_skills": app.matching_skills or []
+            "parsed_skills": app.matching_skills if app else []
         },
         "job": {
             "title": job.title if job else "Software Position",
@@ -663,32 +697,48 @@ async def get_evaluation_detail(
             "requirements": job.requirements if job else ""
         },
         "ats_report": {
-            "ats_score": round(app.ats_score, 1) if app.ats_score is not None else None,
-            "matching_skills": app.matching_skills or [],
-            "missing_skills": app.missing_skills or []
+            "ats_score": round(app.ats_score, 1) if (app and app.ats_score is not None) else None,
+            "matching_skills": app.matching_skills if app else [],
+            "missing_skills": app.missing_skills if app else []
         },
         "interview_session": {
             "date": session.started_at.strftime('%b %d, %Y') if (session and session.started_at) else "Scheduled",
             "duration_minutes": session.duration_minutes if session else 30,
             "round_type": session.round_type if session else "Technical",
             "difficulty": session.difficulty if session else "Medium",
-            "status": session.status if session else "Completed"
+            "status": session.status if session else "Completed",
+            "integrity_status": session.integrity_status if session else "CLEAN",
+            "integrity_score": session.integrity_score if (session and session.integrity_score is not None) else 100.0,
+            "termination_reason": session.termination_reason if session else None
         },
+        "integrity": integrity_summary,
         "transcript": transcript_list,
         "scores": {
             "overall_score": ovr,
-            "technical_score": round(report.technical_score, 1) if (report and report.technical_score is not None) else 85.0,
-            "communication_score": round(report.communication_score, 1) if (report and report.communication_score is not None) else 88.0,
-            "confidence_score": round(report.confidence_score, 1) if (report and report.confidence_score is not None) else 90.0,
-            "professionalism_score": round(report.professionalism_score, 1) if (report and report.professionalism_score is not None) else 85.0,
-            "grammar_score": round(getattr(report, 'grammar_score', 90.0) or 90.0, 1),
-            "problem_solving_score": round(getattr(report, 'problem_solving_score', 85.0) or 85.0, 1)
+            "technical_score": round(report.technical_score, 1) if (report and report.technical_score is not None) else None,
+            "communication_score": round(report.communication_score, 1) if (report and report.communication_score is not None) else None,
+            "confidence_score": round(report.confidence_score, 1) if (report and report.confidence_score is not None) else None,
+            "professionalism_score": round(report.professionalism_score, 1) if (report and report.professionalism_score is not None) else None,
+            "grammar_score": round(getattr(report, 'grammar_score', 85.0) or 85.0, 1),
+            "problem_solving_score": round(getattr(report, 'problem_solving_score', 84.0) or 84.0, 1)
         },
+        "communication_metrics": getattr(report, 'communication_metrics', {}) or {},
+        "confidence_metrics": getattr(report, 'confidence_metrics', {}) or {},
+        "technical_metrics": getattr(report, 'technical_metrics', {}) or {},
+        "professionalism_metrics": getattr(report, 'professionalism_metrics', {}) or {},
+        "question_evaluations": getattr(report, 'question_evaluations', []) or [],
+        "practice_recommendations": getattr(report, 'practice_recommendations', []) or [],
+        "learning_resources": getattr(report, 'learning_resources', []) or [],
+        "speech_timeline": getattr(report, 'speech_timeline', []) or [],
+        "gaze_timeline": getattr(report, 'gaze_timeline', []) or [],
+        "emotion_timeline": getattr(report, 'emotion_timeline', []) or [],
+        "model_version": getattr(report, 'model_version', 'smart-hire-v2.0.0'),
+        "analysis_version": getattr(report, 'analysis_version', 'evidence_based_v2'),
         "recommendation": rec,
-        "strengths": report.strengths if (report and report.strengths) else ["Solid technical understanding", "Strong communication clarity"],
-        "weaknesses": report.weaknesses if (report and report.weaknesses) else ["Could detail edge case scenarios further"],
-        "improvement_suggestions": report.improvement_plan if (report and report.improvement_plan) else ["Practice distributed system design questions"],
-        "pipeline_stage": app.status
+        "strengths": report.strengths if (report and report.strengths) else [],
+        "weaknesses": report.weaknesses if (report and report.weaknesses) else [],
+        "improvement_suggestions": report.improvement_plan if (report and report.improvement_plan) else [],
+        "pipeline_stage": app.status if app else "Evaluation Completed"
     }
 
 @router.post("/application/{application_id}/status", summary="Update Candidate Application Pipeline Status")
@@ -790,6 +840,29 @@ async def send_offer_letter(
         }, cand.user_id)
 
     await db.commit()
+
+    # Emit Real-Time Domain Events (Post DB Commit)
+    try:
+        from app.core.events import session_event_publisher, SessionEventPayload, SessionEventType
+        await session_event_publisher.publish(SessionEventPayload(
+            event_type=SessionEventType.OFFER_ISSUED,
+            event="OFFER_ISSUED",
+            entity="offer",
+            entity_id=offer.id,
+            candidate_id=app.candidate_id,
+            recruiter_id=rec.id if rec else None,
+            job_application_id=app.id,
+            job_id=app.job_id,
+            status="Pending",
+            metadata={
+                "offer_id": offer.id,
+                "job_title": offer.job_title,
+                "salary_offered": offer.salary_offered
+            }
+        ))
+    except Exception as event_err:
+        pass
+
     return {"status": "success", "offer_id": offer.id, "message": "Offer letter issued successfully."}
 
 @router.get("/offers", response_model=List[Dict[str, Any]], summary="Get All Recruiter Issued Offer Letters")
@@ -1104,5 +1177,67 @@ async def get_candidate_applications(candidate_id: str, db: AsyncSession = Depen
             "status": a.status
         })
     return out
+
+
+class RecruiterDecisionRequest(BaseModel):
+    application_id: str
+    decision: str  # 'pass' or 'reject'
+    notes: Optional[str] = None
+
+@router.post("/decision", summary="Recruiter Manual Decision (Pass or Reject Candidate after Interview)")
+async def recruiter_manual_decision(
+    body: RecruiterDecisionRequest,
+    user: User = Depends(require_role(["recruiter", "admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Allows recruiter to review AI interview evaluation report and manually Pass or Reject a candidate."""
+    res_app = await db.execute(select(JobApplication).where(JobApplication.id == body.application_id))
+    app = res_app.scalar_one_or_none()
+    if not app:
+        res_sess = await db.execute(select(InterviewSession).where(InterviewSession.id == body.application_id))
+        sess = res_sess.scalar_one_or_none()
+        if sess and sess.job_application_id:
+            res_app2 = await db.execute(select(JobApplication).where(JobApplication.id == sess.job_application_id))
+            app = res_app2.scalar_one_or_none()
+
+    if not app:
+        raise HTTPException(status_code=404, detail="Candidate application record not found.")
+
+    new_status = "Interview Passed" if body.decision.lower() == "pass" else "Interview Failed"
+    app.status = new_status
+
+    # Notify Candidate User
+    res_c = await db.execute(select(Candidate).where(Candidate.id == app.candidate_id))
+    cand = res_c.scalar_one_or_none()
+    if cand and cand.user_id:
+        notif_msg = (
+            f"Congratulations! Recruiter {user.full_name} has passed your interview evaluation. Status: Interview Passed."
+            if body.decision.lower() == "pass"
+            else f"Recruiter has updated your application status. Status: Interview Failed."
+        )
+        notif = Notification(
+            user_id=cand.user_id,
+            title=f"Interview Decision: {new_status}",
+            message=notif_msg,
+            notification_type="interview_decision"
+        )
+        db.add(notif)
+
+        await ws_manager.send_personal_message({
+            "event": "APPLICATION_STATUS_UPDATED",
+            "data": {
+                "application_id": app.id,
+                "status": new_status,
+                "recruiter_notes": body.notes or ""
+            }
+        }, cand.user_id)
+
+    await db.commit()
+    return {
+        "status": "success",
+        "message": f"Candidate decision successfully recorded as '{new_status}'.",
+        "application_id": app.id,
+        "new_status": new_status
+    }
 
 

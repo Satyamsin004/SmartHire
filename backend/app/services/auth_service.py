@@ -134,12 +134,16 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token.")
 
         user_id = payload.get("sub")
+        email = payload.get("email")
         user = await self.user_repo.get_by_id(user_id)
+        if not user and email:
+            user = await self.user_repo.get_by_email(email)
+
         if not user or not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account inactive or not found.")
 
-        # Invalidate old refresh token
-        await blacklist_token(refresh_token, expire_seconds=604800)
+        # Old refresh token remains valid until expiry or explicit logout to allow parallel request refresh
+        # await blacklist_token(refresh_token, expire_seconds=604800)
 
         new_access_token = create_access_token(subject=user.id, email=user.email, role=user.role)
         new_refresh_token = create_refresh_token(subject=user.id, email=user.email, role=user.role)

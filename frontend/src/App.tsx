@@ -91,13 +91,13 @@ const AppRoutes: React.FC = () => {
         
         {/* Recruiter Portal Routes */}
         <Route path="/recruiter" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard /></ProtectedRoute>} />
-        <Route path="/recruiter/candidates" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="candidates" /></ProtectedRoute>} />
+        <Route path="/recruiter/candidates" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="applications" /></ProtectedRoute>} />
         <Route path="/recruiter/posted-jobs" element={<ProtectedRoute allowedRoles={['recruiter']}><PostedJobsPage /></ProtectedRoute>} />
         <Route path="/recruiter/shortlisted" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="shortlisted" /></ProtectedRoute>} />
         <Route path="/recruiter/applications" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="applications" /></ProtectedRoute>} />
         <Route path="/recruiter/interviews" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="evaluations" /></ProtectedRoute>} />
         <Route path="/recruiter/analytics" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="requisitions" /></ProtectedRoute>} />
-        <Route path="/recruiter/offers" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="requisitions" /></ProtectedRoute>} />
+        <Route path="/recruiter/offers" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard defaultTab="offers" /></ProtectedRoute>} />
         <Route path="/recruiter/company" element={<ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
@@ -113,15 +113,19 @@ const AppRoutes: React.FC = () => {
   );
 };
 
+import { ThemeProvider } from './context/ThemeContext';
+
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <WebSocketProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </WebSocketProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <WebSocketProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </WebSocketProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 };
 

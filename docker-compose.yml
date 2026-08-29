@@ -79,6 +79,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./archive:/app/archive:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,6 +94,8 @@ services:
     restart: always
     ports:
       - "3001:80"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html
     depends_on:
       - backend
 

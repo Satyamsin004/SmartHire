@@ -83,6 +83,29 @@ async def respond_to_offer(
 
     await db.commit()
 
+    # Emit Real-Time Domain Events (Post DB Commit)
+    try:
+        from app.core.events import session_event_publisher, SessionEventPayload, SessionEventType
+        event_type = SessionEventType.OFFER_ACCEPTED if new_status == "Accepted" else SessionEventType.OFFER_REJECTED
+        await session_event_publisher.publish(SessionEventPayload(
+            event_type=event_type,
+            event=str(event_type),
+            entity="offer",
+            entity_id=offer.id,
+            candidate_id=offer.candidate_id,
+            recruiter_id=offer.recruiter_id,
+            job_application_id=offer.job_application_id,
+            status=new_status,
+            metadata={
+                "offer_id": offer.id,
+                "candidate_name": user.full_name,
+                "job_title": offer.job_title,
+                "status": new_status
+            }
+        ))
+    except Exception as event_err:
+        pass
+
     # Broadcast WebSocket Event
     await ws_manager.broadcast({
         "event": "OFFER_RESPONSE",

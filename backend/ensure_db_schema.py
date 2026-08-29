@@ -73,6 +73,11 @@ ALTER_QUERIES = [
     "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS interview_type VARCHAR(50) DEFAULT 'Recruiter';",
     "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS config_json JSONB DEFAULT '{}'::jsonb;",
     "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS fsm_state VARCHAR(50) DEFAULT 'WAITING_FOR_QUESTION';",
+    "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS integrity_status VARCHAR(50) DEFAULT 'CLEAN';",
+    "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS integrity_score FLOAT DEFAULT 100.0;",
+    "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS total_integrity_incidents INTEGER DEFAULT 0;",
+    "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS termination_reason VARCHAR(255);",
+    "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS terminated_at TIMESTAMP;",
 
     # Scoring Reports
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS communication_metrics JSONB DEFAULT '{}'::jsonb;",
@@ -95,16 +100,28 @@ ALTER_QUERIES = [
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS strengths JSONB DEFAULT '[]'::jsonb;",
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS weaknesses JSONB DEFAULT '[]'::jsonb;",
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS improvement_plan JSONB DEFAULT '[]'::jsonb;",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS practice_recommendations JSONB DEFAULT '[]'::jsonb;",
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS learning_resources JSONB DEFAULT '[]'::jsonb;",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS question_evaluations JSONB DEFAULT '[]'::jsonb;",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS speech_timeline JSONB DEFAULT '[]'::jsonb;",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS gaze_timeline JSONB DEFAULT '[]'::jsonb;",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS emotion_timeline JSONB DEFAULT '[]'::jsonb;",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS model_version VARCHAR(50) DEFAULT 'smart-hire-v2.0.0';",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS analysis_version VARCHAR(50) DEFAULT 'evidence_based_v2';",
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS pdf_url VARCHAR(500);",
-    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS recommendation VARCHAR(50) DEFAULT 'Shortlist';"
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS recommendation VARCHAR(50) DEFAULT 'Shortlist';",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS candidate_id VARCHAR(36);",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS transcript_id VARCHAR(36);",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS vision_analysis_id VARCHAR(36);",
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'COMPLETED';"
 ]
 
 TABLES_FOR_ENV_COLUMNS = [
     "users", "candidates", "recruiters", "admins", "resumes", "job_descriptions",
     "saved_jobs", "interview_templates", "interview_sessions", "interview_questions",
     "interview_answers", "scoring_reports", "achievements", "activity_logs",
-    "scheduled_interviews", "notifications", "job_postings", "job_applications", "offer_letters", "resume_views"
+    "scheduled_interviews", "notifications", "job_postings", "job_applications", "offer_letters", "resume_views",
+    "interview_recordings", "interview_transcripts", "interview_vision_analysis"
 ]
 
 async def sync_database_schema():

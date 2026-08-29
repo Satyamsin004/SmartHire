@@ -26,13 +26,20 @@ class Settings(BaseSettings):
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     
     @property
+    def CANONICAL_SQLITE_PATH(self) -> str:
+        # Canonical location of primary SmartHire SQLite database with all historical sessions
+        backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        canonical_path = os.path.join(backend_dir, "smarthire.db")
+        return canonical_path.replace("\\", "/")
+
+    @property
     def DATABASE_URL(self) -> str:
         db_override = os.getenv("DATABASE_URL")
         if db_override:
             return db_override
         use_sqlite = os.getenv("USE_SQLITE", "true").lower() in ("true", "1")
         if use_sqlite:
-            return "sqlite+aiosqlite:///./smarthire.db"
+            return f"sqlite+aiosqlite:///{self.CANONICAL_SQLITE_PATH}"
 
         # Check if Postgres 5432 port is reachable
         import socket
@@ -41,11 +48,11 @@ class Settings(BaseSettings):
             s.close()
             return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         except Exception:
-            return "sqlite+aiosqlite:///./smarthire.db"
+            return f"sqlite+aiosqlite:///{self.CANONICAL_SQLITE_PATH}"
     
     @property
     def SYNC_DATABASE_URL(self) -> str:
-        return f"sqlite:///./smarthire.db"
+        return f"sqlite:///{self.CANONICAL_SQLITE_PATH}"
 
     REDIS_HOST: str = os.getenv("REDIS_HOST", "127.0.0.1")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
@@ -58,9 +65,9 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY_2: str = os.getenv("OPENROUTER_API_KEY_2", "")
     GROQ_API_KEY_1: str = os.getenv("GROQ_API_KEY_1", "")
     GROQ_API_KEY_2: str = os.getenv("GROQ_API_KEY_2", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
     # OAuth & SMTP Credentials
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")

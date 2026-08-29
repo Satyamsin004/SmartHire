@@ -146,7 +146,11 @@ async def get_assessment_questions(
             "question_text": q.question_text,
             "code_snippet": q.code_snippet,
             "options": q.options,
-            "negative_marks": q.negative_marks
+            "negative_marks": q.negative_marks,
+            "is_repeated": getattr(q, "is_repeated", False),
+            "passage_text": getattr(q, "passage_text", None),
+            "dataset_json": getattr(q, "dataset_json", None),
+            "test_cases": getattr(q, "test_cases", None),
         })
     return out
 
@@ -274,11 +278,16 @@ async def get_assessment_history(
     )
     sessions = res_sess.scalars().all()
 
+    if not sessions:
+        return []
+
+    session_ids = [s.id for s in sessions]
+    res_r = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id.in_(session_ids)))
+    results_map = {r.session_id: r for r in res_r.scalars().all()}
+
     out = []
     for s in sessions:
-        res_r = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == s.id))
-        res = res_r.scalar_one_or_none()
-
+        res = results_map.get(s.id)
         out.append({
             "session_id": s.id,
             "title": s.title,

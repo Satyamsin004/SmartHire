@@ -1,0 +1,172 @@
+{
+  "model_version": "smart-hire-behavior-v2.0",
+  "model_name": "SmartHireBehaviorCNN",
+  "epochs_trained": 15,
+  "best_epoch": 2,
+  "best_val_accuracy": 65.69,
+  "total_duration_seconds": 2304.9,
+  "classes": [
+    "Looking away",
+    "confident",
+    "confused",
+    "fear",
+    "focused",
+    "frustrated",
+    "neutral",
+    "unconfident"
+  ],
+  "device": "cpu",
+  "param_count": 5851464,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.38,
+      "train_acc": 25.33,
+      "val_loss": 0.9431,
+      "val_acc": 41.93,
+      "lr": 0.001,
+      "duration_seconds": 124.6,
+      "is_best": true
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.965,
+      "train_acc": 36.97,
+      "val_loss": 0.7942,
+      "val_acc": 65.69,
+      "lr": 0.001,
+      "duration_seconds": 156.1,
+      "is_best": true
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.7353,
+      "train_acc": 43.17,
+      "val_loss": 0.554,
+      "val_acc": 53.62,
+      "lr": 0.001,
+      "duration_seconds": 181.3,
+      "is_best": false
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.6316,
+      "train_acc": 48.58,
+      "val_loss": 0.5569,
+      "val_acc": 55.53,
+      "lr": 0.001,
+      "duration_seconds": 174.3,
+      "is_best": false
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.6097,
+      "train_acc": 46.85,
+      "val_loss": 0.5993,
+      "val_acc": 47.14,
+      "lr": 0.001,
+      "duration_seconds": 155.0,
+      "is_best": false
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.5398,
+      "train_acc": 49.07,
+      "val_loss": 0.5424,
+      "val_acc": 47.27,
+      "lr": 0.0005,
+      "duration_seconds": 125.5,
+      "is_best": false
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.5219,
+      "train_acc": 54.75,
+      "val_loss": 0.4982,
+      "val_acc": 62.26,
+      "lr": 0.0005,
+      "duration_seconds": 146.7,
+      "is_best": false
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.4591,
+      "train_acc": 56.83,
+      "val_loss": 0.4918,
+      "val_acc": 61.37,
+      "lr": 0.0005,
+      "duration_seconds": 137.1,
+      "is_best": false
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.4521,
+      "train_acc": 54.72,
+      "val_loss": 0.4822,
+      "val_acc": 58.58,
+      "lr": 0.00025,
+      "duration_seconds": 135.6,
+      "is_best": false
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.4388,
+      "train_acc": 56.27,
+      "val_loss": 0.4887,
+      "val_acc": 55.78,
+      "lr": 0.00025,
+      "duration_seconds": 124.3,
+      "is_best": false
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.416,
+      "train_acc": 57.46,
+      "val_loss": 0.47,
+      "val_acc": 63.02,
+      "lr": 0.00025,
+      "duration_seconds": 143.6,
+      "is_best": false
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.4089,
+      "train_acc": 61.11,
+      "val_loss": 0.4722,
+      "val_acc": 61.88,
+      "lr": 0.000125,
+      "duration_seconds": 385.7,
+      "is_best": false
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.4044,
+      "train_acc": 59.78,
+      "val_loss": 0.4743,
+      "val_acc": 60.36,
+      "lr": 0.000125,
+      "duration_seconds": 113.9,
+      "is_best": false
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.3837,
+      "train_acc": 61.98,
+      "val_loss": 0.4722,
+      "val_acc": 60.86,
+      "lr": 0.000125,
+      "duration_seconds": 101.9,
+      "is_best": false
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.3758,
+      "train_acc": 62.03,
+      "val_loss": 0.4631,
+      "val_acc": 64.55,
+      "lr": 6.25e-05,
+      "duration_seconds": 98.6,
+      "is_best": false
+    }
+  ]
+}

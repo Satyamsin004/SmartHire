@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Trophy, TrendingUp, AlertCircle, FileText, ArrowRight, Shield, Brain, MessageSquare } from 'lucide-react';
+import { Check, ArrowRight, Compass, Sparkles, ShieldCheck, Star } from 'lucide-react';
 import api from '../../services/api';
 
 export const ResultsScreen: React.FC = () => {
@@ -11,6 +11,9 @@ export const ResultsScreen: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<any>(null);
+  const [feedbackRating, setFeedbackRating] = useState<number>(5);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
+  const [feedbackText, setFeedbackText] = useState<string>('');
 
   useEffect(() => {
     if (!sessionId) {
@@ -18,165 +21,185 @@ export const ResultsScreen: React.FC = () => {
       return;
     }
 
-    api.get(`/interview/report/${sessionId}`)
-      .then((res) => {
-        setReport(res.data);
-      })
-      .catch((err) => {
-        console.error("Failed to fetch report:", err);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    let isMounted = true;
+    let attempts = 0;
+    const maxAttempts = 4;
+
+    const fetchReportData = () => {
+      api.get(`/interview/report/${sessionId}`)
+        .then((res) => {
+          if (isMounted && res.data) {
+            setReport(res.data);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          console.warn(`Report fetch attempt ${attempts + 1} notice:`, err);
+          attempts += 1;
+          if (isMounted) {
+            if (attempts < maxAttempts) {
+              setTimeout(fetchReportData, 2000);
+            } else {
+              setLoading(false);
+            }
+          }
+        });
+    };
+
+    fetchReportData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [sessionId, navigate]);
 
-  if (loading) {
-    return (
-      <>
-        <main className="flex-1 flex items-center justify-center">
-          <span className="text-sm font-bold text-slate-500">Loading your results...</span>
-        </main>
-      </>
-    );
-  }
-
-  if (!report) {
-    return (
-      <>
-        <main className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
-          <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
-          <h1 className="text-xl font-extrabold text-brand-ink">Report Generation Pending</h1>
-          <p className="text-sm font-medium text-slate-500 max-w-md mx-auto">
-            Your interview telemetry is still being processed by the AI engine. You can check back later in your Reports dashboard.
-          </p>
-          <button 
-            onClick={() => navigate('/reports')}
-            className="px-6 py-3 rounded-xl bg-brand-primary text-white text-xs font-extrabold mt-4"
-          >
-            Go to Reports
-          </button>
-        </main>
-      </>
-    );
-  }
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-emerald-500';
-    if (score >= 60) return 'text-amber-500';
-    return 'text-rose-500';
+  const handleFeedbackSubmit = () => {
+    setFeedbackSubmitted(true);
   };
 
   return (
-    <>
-        <main className="p-6 lg:p-10 max-w-5xl mx-auto w-full space-y-8">
-          
-          <div className="text-center space-y-3">
-            <div className="w-16 h-16 rounded-3xl bg-brand-accent/20 flex items-center justify-center mx-auto mb-4">
-              <Trophy className="w-8 h-8 text-brand-accent" />
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between relative overflow-hidden select-none">
+      
+      {/* Background Ambient Radial Glows */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-80 bg-gradient-to-t from-indigo-950/40 via-purple-950/20 to-transparent pointer-events-none" />
+
+      {/* TOP HEADER */}
+      <header className="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto w-full">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Sparkles className="w-4 h-4 text-slate-950 font-bold" />
             </div>
-            <h1 className="text-3xl font-extrabold text-brand-ink">Interview Completed!</h1>
-            <p className="text-sm font-medium text-slate-500">
-              Great job! The AI engine has analyzed your responses and compiled your evaluation.
-            </p>
-            {report.rating_rubric && (
-              <span className={`inline-block px-4 py-1.5 rounded-full text-xs font-extrabold ${
-                report.overall_score >= 80 ? 'bg-emerald-100 text-emerald-700' : 
-                report.overall_score >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
-              }`}>
-                {report.rating_rubric}
-              </span>
+            <span className="text-lg font-black tracking-tight text-white">SmartHire <span className="text-emerald-400">AI</span></span>
+          </div>
+          <span className="text-slate-600 font-bold">|</span>
+          <span className="text-sm font-extrabold text-slate-300">Interview</span>
+        </div>
+
+        {/* Connectivity Bars Indicator */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-xs font-bold text-emerald-400 shadow-inner">
+          <div className="flex items-end gap-0.5 h-3">
+            <span className="w-1 h-1.5 bg-emerald-400 rounded-xs"></span>
+            <span className="w-1 h-2 bg-emerald-400 rounded-xs"></span>
+            <span className="w-1 h-2.5 bg-emerald-400 rounded-xs"></span>
+            <span className="w-1 h-3 bg-emerald-400 rounded-xs"></span>
+          </div>
+          <span className="text-[11px] font-semibold text-slate-300">Connected</span>
+        </div>
+      </header>
+
+      {/* CENTER HERO SECTION (Imitating Unstop Pattern) */}
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 max-w-2xl mx-auto my-6 space-y-6">
+        
+        {/* Large Glowing Emerald Checkmark Circle */}
+        <div className="relative flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-emerald-500/20 blur-xl animate-pulse" />
+          <div className="w-24 h-24 rounded-full border-2 border-emerald-400/80 bg-emerald-950/40 backdrop-blur-md flex items-center justify-center shadow-[0_0_40px_rgba(16,185,129,0.35)] relative">
+            <Check className="w-12 h-12 text-emerald-400 stroke-[3]" />
+          </div>
+        </div>
+
+        {/* Title & Copy */}
+        <div className="space-y-3">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+            Thank you for taking the interview!
+          </h1>
+          <p className="text-sm sm:text-base font-medium text-slate-400 max-w-lg mx-auto leading-relaxed">
+            We appreciate your time and effort. Your responses have been recorded successfully.
+          </p>
+          <p className="text-xs text-slate-400">
+            You can now close this window or go back to SmartHire.
+          </p>
+        </div>
+
+        {/* Candidate Experience Feedback Rating Widget */}
+        <div className="p-4 bg-slate-900/80 rounded-2xl border border-slate-800/80 max-w-md w-full space-y-3 shadow-lg">
+          <span className="text-xs font-extrabold text-slate-300">Rate your AI Interview Experience</span>
+          
+          <div className="flex items-center justify-center gap-2">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                type="button"
+                onClick={() => setFeedbackRating(star)}
+                className="p-1 transition-transform hover:scale-125 cursor-pointer"
+              >
+                <Star
+                  className={`w-6 h-6 ${
+                    star <= feedbackRating
+                      ? 'text-amber-400 fill-amber-400'
+                      : 'text-slate-600'
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
+
+          {!feedbackSubmitted ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder="Optional feedback comment..."
+                className="flex-1 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+              <button
+                onClick={handleFeedbackSubmit}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-extrabold text-white border border-slate-700 cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          ) : (
+            <p className="text-[11px] font-bold text-emerald-400">Thank you for your feedback!</p>
+          )}
+        </div>
+
+        {/* Action Buttons (Unstop Pill Style) */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2 w-full max-w-md">
+          <button
+            onClick={() => navigate('/practice?tab=interview')}
+            className="w-full sm:w-auto px-7 py-3 rounded-full bg-slate-800/90 hover:bg-slate-700/90 text-white text-xs font-extrabold flex items-center justify-center gap-2 border border-slate-700 shadow-lg transition-all hover:scale-[1.02] cursor-pointer"
+          >
+            <div className="w-5 h-5 rounded-full bg-slate-900 flex items-center justify-center border border-slate-700">
+              <Compass className="w-3 h-3 text-slate-300" />
+            </div>
+            <span>Explore Practice Hub</span>
+          </button>
+
+          <button
+            onClick={() => navigate(`/reports?session=${sessionId}`)}
+            className="w-full sm:w-auto px-8 py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.4)] transition-all hover:scale-[1.02] cursor-pointer"
+          >
+            <span>View your report</span>
+            <ArrowRight className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+          </button>
+        </div>
+
+        {/* Quick evaluation preview badge if report is ready */}
+        {report && (
+          <div className="pt-2 flex items-center gap-4 text-xs font-bold text-slate-400">
+            <span className="flex items-center gap-1 text-emerald-400">
+              <ShieldCheck className="w-3.5 h-3.5" /> AI Evaluation Compiled
+            </span>
+            <span>•</span>
+            <span className="text-slate-300">{report.role_target || 'Technical Round'}</span>
+            {report.overall_score != null && (
+              <>
+                <span>•</span>
+                <span className="text-amber-400 font-extrabold">{report.overall_score}% Score</span>
+              </>
             )}
           </div>
+        )}
+      </main>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="rounded-3xl p-5 flex flex-col items-center justify-center text-center space-y-1.5 bg-gradient-to-br from-indigo-950 via-indigo-900 to-slate-900 text-white shadow-xl border border-indigo-500/30">
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-indigo-200">Overall Score</span>
-              <span className="text-3xl font-black text-white drop-shadow-md">{report.overall_score}%</span>
-            </div>
-            <div className="card-luxury p-5 flex flex-col items-center justify-center text-center space-y-1.5">
-              <Brain className="w-4 h-4 text-slate-400 mb-0.5" />
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Technical</span>
-              <span className={`text-2xl font-black ${getScoreColor(report.technical_score)}`}>{report.technical_score}%</span>
-            </div>
-            <div className="card-luxury p-5 flex flex-col items-center justify-center text-center space-y-1.5">
-              <MessageSquare className="w-4 h-4 text-slate-400 mb-0.5" />
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Communication</span>
-              <span className={`text-2xl font-black ${getScoreColor(report.communication_score)}`}>{report.communication_score}%</span>
-            </div>
-            <div className="card-luxury p-5 flex flex-col items-center justify-center text-center space-y-1.5">
-              <Shield className="w-4 h-4 text-slate-400 mb-0.5" />
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Confidence</span>
-              <span className={`text-2xl font-black ${getScoreColor(report.confidence_score)}`}>{report.confidence_score}%</span>
-            </div>
-            <div className="card-luxury p-5 flex flex-col items-center justify-center text-center space-y-1.5">
-              <Trophy className="w-4 h-4 text-slate-400 mb-0.5" />
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Professionalism</span>
-              <span className={`text-2xl font-black ${getScoreColor(report.professionalism_score)}`}>{report.professionalism_score}%</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="card-luxury p-6 space-y-4">
-              <div className="flex items-center gap-2 border-b border-stoneBorder pb-4">
-                <TrendingUp className="w-5 h-5 text-emerald-500" />
-                <h3 className="text-sm font-extrabold text-brand-ink uppercase tracking-wider">Key Strengths</h3>
-              </div>
-              <ul className="space-y-3">
-                {report.strengths?.map((str: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2 text-sm font-medium text-slate-600">
-                    <span className="text-emerald-500 mt-0.5">•</span> {str}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="card-luxury p-6 space-y-4">
-              <div className="flex items-center gap-2 border-b border-stoneBorder pb-4">
-                <AlertCircle className="w-5 h-5 text-rose-500" />
-                <h3 className="text-sm font-extrabold text-brand-ink uppercase tracking-wider">Areas for Improvement</h3>
-              </div>
-              <ul className="space-y-3">
-                {report.weaknesses?.map((wk: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2 text-sm font-medium text-slate-600">
-                    <span className="text-rose-500 mt-0.5">•</span> {wk}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {report.improvement_plan && report.improvement_plan.length > 0 && (
-            <div className="card-luxury p-6 space-y-4 border-l-4 border-indigo-500">
-              <h3 className="text-sm font-extrabold text-brand-ink uppercase tracking-wider flex items-center gap-2">
-                <Brain className="w-5 h-5 text-indigo-500" /> AI Improvement Recommendations
-              </h3>
-              <ul className="space-y-2">
-                {report.improvement_plan.map((item: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2 text-sm font-medium text-slate-600">
-                    <span className="text-indigo-500 mt-0.5 font-bold">{i + 1}.</span> {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
-            <button 
-              onClick={() => navigate('/dashboard')}
-              className="px-8 py-4 rounded-2xl bg-cream-200 hover:bg-cream-300 text-brand-ink font-extrabold text-sm transition-all"
-            >
-              Return to Dashboard
-            </button>
-            <button 
-              onClick={() => navigate(`/reports?session=${sessionId}`)}
-              className="px-8 py-4 rounded-2xl bg-brand-primary hover:bg-sb-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-luxury"
-            >
-              <span>View Full Technical Report</span>
-              <FileText className="w-4 h-4" />
-            </button>
-          </div>
-
-        </main>
-      </>
+      {/* FOOTER BAR */}
+      <footer className="relative z-10 py-6 text-center text-xs font-medium text-slate-600 border-t border-slate-900/60">
+        SmartHire AI Automated Telemetry & Mock Assessment Engine
+      </footer>
+    </div>
   );
 };

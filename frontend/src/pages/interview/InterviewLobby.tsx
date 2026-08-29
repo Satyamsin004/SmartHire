@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, MicOff, Video, VideoOff, Clock, CheckCircle2, AlertCircle, ShieldCheck, Play, Wifi, WifiOff, Volume2, Monitor } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Clock, CheckCircle2, AlertCircle, ShieldCheck, Play, Wifi, WifiOff, Volume2, RotateCcw } from 'lucide-react';
 import api from '../../services/api';
+import { integrityEngine } from '../../services/IntegrityEngine';
 
 export const InterviewLobby: React.FC = () => {
   const navigate = useNavigate();
@@ -10,14 +11,16 @@ export const InterviewLobby: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [videoActive, setVideoActive] = useState(false);
-  const [micPermission, setMicPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
-  const [camPermission, setCamPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
+  const [cameraStatus, setCameraStatus] = useState<'READY' | 'BLOCKED' | 'UNAVAILABLE' | 'PENDING'>('PENDING');
+  const [microphoneStatus, setMicrophoneStatus] = useState<'READY' | 'BLOCKED' | 'UNAVAILABLE' | 'PENDING'>('PENDING');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const [audioLevel, setAudioLevel] = useState(0);
   const [networkStatus, setNetworkStatus] = useState<'good' | 'fair' | 'poor'>('good');
   const [scheduledDetails, setScheduledDetails] = useState<any>(null);
   const [interviewMode, setInterviewMode] = useState<'MOCK' | 'RECRUITER'>('MOCK');
   
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -36,7 +39,6 @@ export const InterviewLobby: React.FC = () => {
       setInterviewMode('MOCK');
     }
 
-    // Check network
     const checkNetwork = () => {
       const conn = (navigator as any).connection;
       if (conn) {
@@ -48,12 +50,45 @@ export const InterviewLobby: React.FC = () => {
     };
     checkNetwork();
 
+    // Auto-request media access on lobby load
+    startCamera();
+
+    // Pre-warm AI vision models in background only when browser is idle
+    // (prevents main-thread blocking during lobby render)
+    const idleHandle = (window as any).requestIdleCallback
+      ? (window as any).requestIdleCallback(() => { integrityEngine.loadModel().catch(() => {}); }, { timeout: 5000 })
+      : setTimeout(() => { integrityEngine.loadModel().catch(() => {}); }, 2000);
+
+
     return () => {
       stopMedia();
+      if ((window as any).cancelIdleCallback) {
+        (window as any).cancelIdleCallback(idleHandle);
+      } else {
+        clearTimeout(idleHandle);
+      }
     };
   }, [scheduleId]);
 
+  // Ensure video element srcObject is attached when cameraStatus becomes READY or videoRef mounts
+  useEffect(() => {
+    if (cameraStatus === 'READY' && videoActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(e => console.warn('Lobby video play notice:', e));
+    }
+  }, [cameraStatus, videoActive]);
+
   const startCamera = async () => {
+    setErrorMsg(null);
+
+    // Check secure context
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraStatus('UNAVAILABLE');
+      setMicrophoneStatus('UNAVAILABLE');
+      setErrorMsg('Camera and microphone access require a secure (HTTPS) connection or supported browser.');
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
@@ -62,34 +97,56 @@ export const InterviewLobby: React.FC = () => {
         videoRef.current.srcObject = stream;
       }
       setVideoActive(true);
-      setCamPermission('granted');
+      setCameraStatus('READY');
       setMicActive(true);
-      setMicPermission('granted');
+      setMicrophoneStatus('READY');
 
-      // Setup audio level meter
-      const audioCtx = new AudioContext();
-      const analyser = audioCtx.createAnalyser();
-      const source = audioCtx.createMediaStreamSource(stream);
-      source.connect(analyser);
-      analyser.fftSize = 256;
-      audioContextRef.current = audioCtx;
-      analyserRef.current = analyser;
-      
-      const monitorAudio = () => {
-        if (!analyserRef.current) return;
-        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-        analyserRef.current.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        setAudioLevel(Math.min(100, Math.round(avg * 1.5)));
-        animFrameRef.current = requestAnimationFrame(monitorAudio);
-      };
-      monitorAudio();
+      // Setup audio level meter for microphone check
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const analyser = audioCtx.createAnalyser();
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        audioContextRef.current = audioCtx;
+        analyserRef.current = analyser;
+        
+        let lastAudioUpdate = 0;
+        const monitorAudio = () => {
+          if (!analyserRef.current) return;
+          const now = performance.now();
+          if (now - lastAudioUpdate >= 80) {
+            lastAudioUpdate = now;
+            const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+            analyserRef.current.getByteFrequencyData(dataArray);
+            const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            setAudioLevel(Math.min(100, Math.round(avg * 1.5)));
+          }
+          animFrameRef.current = requestAnimationFrame(monitorAudio);
+        };
+        monitorAudio();
+      } catch (audioErr) {
+        console.warn('Audio meter init error:', audioErr);
+      }
 
     } catch (err: any) {
       console.error('Media access error:', err);
-      if (err.name === 'NotAllowedError') {
-        setCamPermission('denied');
-        setMicPermission('denied');
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraStatus('BLOCKED');
+        setMicrophoneStatus('BLOCKED');
+        setErrorMsg('Camera access is required for the interview. Microphone access is required for the interview.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setCameraStatus('UNAVAILABLE');
+        setMicrophoneStatus('UNAVAILABLE');
+        setErrorMsg('No camera or microphone device was detected on your system.');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setCameraStatus('BLOCKED');
+        setMicrophoneStatus('BLOCKED');
+        setErrorMsg('Camera or microphone is already in use by another application.');
+      } else {
+        setCameraStatus('BLOCKED');
+        setMicrophoneStatus('BLOCKED');
+        setErrorMsg(err.message || 'Could not access camera or microphone.');
       }
     }
   };
@@ -100,7 +157,7 @@ export const InterviewLobby: React.FC = () => {
       streamRef.current = null;
     }
     if (audioContextRef.current) {
-      audioContextRef.current.close();
+      try { audioContextRef.current.close(); } catch(e) {}
       audioContextRef.current = null;
     }
     if (animFrameRef.current) {
@@ -127,15 +184,17 @@ export const InterviewLobby: React.FC = () => {
   };
 
   const testSpeaker = () => {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    gain.gain.value = 0.1;
-    osc.frequency.value = 440;
-    osc.start();
-    setTimeout(() => { osc.stop(); ctx.close(); }, 500);
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.value = 0.1;
+      osc.frequency.value = 440;
+      osc.start();
+      setTimeout(() => { osc.stop(); ctx.close(); }, 500);
+    } catch(e) {}
   };
 
   const handleJoinInterview = async () => {
@@ -143,7 +202,7 @@ export const InterviewLobby: React.FC = () => {
     try {
       let res;
       if (interviewMode === 'RECRUITER' && scheduleId) {
-        res = await api.post('/interview/start', { schedule_id: scheduleId, language: params.get('language') || location.state?.language || 'English' });
+        res = await api.post('/interview/start', { schedule_id: scheduleId, language: params.get('language') || location.state?.language || 'English' }, { timeout: 60000 });
       } else {
         res = await api.post('/interview/start', {
           role_target: params.get('role') || 'Software Engineer',
@@ -153,18 +212,57 @@ export const InterviewLobby: React.FC = () => {
           duration_minutes: parseInt(params.get('duration') || '15'),
           resume_text: location.state?.resumeText || '',
           parsed_resume: location.state?.parsedResume || null
-        });
+        }, { timeout: 60000 });
       }
+      // Stop local preview tracks so live room can acquire stream
+      stopMedia();
       navigate(`/interview/live?session=${res.data.session_id}`, { state: { sessionData: res.data } });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Start interview error:', err);
-      alert('Failed to start interview. Check connection.');
+      const status = err.response?.status;
+      const detailMsg = typeof err.response?.data?.detail === 'string'
+        ? err.response.data.detail
+        : (err.response?.data?.message || err.message);
+
+      if (status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user_data');
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        alert('Your session has expired. Please log in again.');
+        navigate('/login');
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        alert('Interview setup took a bit longer than expected. Please click "Join Interview Room" again to continue.');
+      } else if (detailMsg && status) {
+        alert(`Error (${status}): ${detailMsg}`);
+      } else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+        console.warn('Network error on interview start, retrying silently...');
+        try {
+          const retryRes = await api.post('/interview/start', {
+            role_target: params.get('role') || 'Software Engineer',
+            round_type: params.get('round') || 'Technical',
+            difficulty: params.get('difficulty') || 'Medium',
+            language: params.get('language') || location.state?.language || 'English',
+            duration_minutes: parseInt(params.get('duration') || '15'),
+            resume_text: location.state?.resumeText || '',
+            parsed_resume: location.state?.parsedResume || null
+          }, { timeout: 60000 });
+          stopMedia();
+          navigate(`/interview/live?session=${retryRes.data.session_id}`, { state: { sessionData: retryRes.data } });
+          return;
+        } catch (retryErr: any) {
+          alert('Could not connect to interview service. Please try again.');
+        }
+      } else {
+        alert(detailMsg || 'Failed to start interview. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const allChecksPass = micPermission === 'granted' && camPermission === 'granted';
+  const allChecksPass = cameraStatus === 'READY' && microphoneStatus === 'READY';
 
   return (
     <>
@@ -176,20 +274,39 @@ export const InterviewLobby: React.FC = () => {
           <div className="card-luxury p-8 flex flex-col items-center justify-center space-y-6">
             {/* Camera Preview */}
             <div className="relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden shadow-luxury border-4 border-slate-800">
-              {camPermission === 'granted' && videoActive ? (
+              {cameraStatus === 'READY' && videoActive ? (
                 <video
-                  ref={videoRef}
+                  ref={(el) => {
+                    videoRef.current = el;
+                    if (el && streamRef.current && el.srcObject !== streamRef.current) {
+                      el.srcObject = streamRef.current;
+                      el.play().catch(e => console.warn('Lobby video play notice:', e));
+                    }
+                  }}
                   autoPlay
                   playsInline
                   muted
                   className="absolute inset-0 w-full h-full object-cover"
                   style={{ transform: 'scaleX(-1)' }}
                 />
-              ) : camPermission === 'denied' ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 text-slate-400 gap-2">
-                  <VideoOff className="w-8 h-8" />
-                  <span className="text-xs font-bold">Camera access denied</span>
-                  <span className="text-[10px] text-slate-500">Please allow camera in browser settings</span>
+              ) : cameraStatus === 'BLOCKED' ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 text-slate-300 gap-2 p-4 text-center">
+                  <VideoOff className="w-8 h-8 text-rose-500" />
+                  <span className="text-xs font-bold text-rose-400">CAMERA BLOCKED</span>
+                  <span className="text-[11px] text-slate-400">Camera access is required for the interview.</span>
+                  <button
+                    onClick={startCamera}
+                    className="mt-2 px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Retry Permission</span>
+                  </button>
+                </div>
+              ) : cameraStatus === 'UNAVAILABLE' ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 text-slate-300 gap-2 p-4 text-center">
+                  <VideoOff className="w-8 h-8 text-amber-500" />
+                  <span className="text-xs font-bold text-amber-400">CAMERA UNAVAILABLE</span>
+                  <span className="text-[11px] text-slate-400">{errorMsg || 'No camera detected on this system.'}</span>
                 </div>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 text-slate-400 gap-3">
@@ -204,7 +321,7 @@ export const InterviewLobby: React.FC = () => {
               )}
               
               {/* Camera Controls Overlay */}
-              {camPermission === 'granted' && (
+              {cameraStatus === 'READY' && (
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
                   <button 
                     onClick={toggleMic}
@@ -229,16 +346,21 @@ export const InterviewLobby: React.FC = () => {
                   <Video className="w-4 h-4 text-slate-500" />
                   <span className="text-xs font-bold text-brand-ink">HD Web Camera</span>
                 </div>
-                {camPermission === 'granted' ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : 
-                 camPermission === 'denied' ? <AlertCircle className="w-5 h-5 text-rose-500" /> :
-                 <Clock className="w-5 h-5 text-amber-500" />}
+                <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                  cameraStatus === 'READY' ? 'bg-emerald-100 text-emerald-700' :
+                  cameraStatus === 'BLOCKED' ? 'bg-rose-100 text-rose-700' :
+                  cameraStatus === 'UNAVAILABLE' ? 'bg-amber-100 text-amber-700' :
+                  'bg-slate-100 text-slate-600'
+                }`}>
+                  CAMERA {cameraStatus}
+                </span>
               </div>
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-cream-100 border border-stoneBorder">
                 <div className="flex items-center gap-3">
                   <Mic className="w-4 h-4 text-slate-500" />
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-brand-ink">Microphone</span>
-                    {micPermission === 'granted' && (
+                    {microphoneStatus === 'READY' && (
                       <div className="flex items-center gap-0.5 h-3">
                         {[...Array(5)].map((_, i) => (
                           <div key={i} className={`w-1 rounded-full transition-all duration-75 ${
@@ -249,9 +371,14 @@ export const InterviewLobby: React.FC = () => {
                     )}
                   </div>
                 </div>
-                {micPermission === 'granted' ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : 
-                 micPermission === 'denied' ? <AlertCircle className="w-5 h-5 text-rose-500" /> :
-                 <Clock className="w-5 h-5 text-amber-500" />}
+                <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                  microphoneStatus === 'READY' ? 'bg-emerald-100 text-emerald-700' :
+                  microphoneStatus === 'BLOCKED' ? 'bg-rose-100 text-rose-700' :
+                  microphoneStatus === 'UNAVAILABLE' ? 'bg-amber-100 text-amber-700' :
+                  'bg-slate-100 text-slate-600'
+                }`}>
+                  MICROPHONE {microphoneStatus}
+                </span>
               </div>
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-cream-100 border border-stoneBorder">
                 <div className="flex items-center gap-3">
@@ -259,20 +386,20 @@ export const InterviewLobby: React.FC = () => {
                   <span className="text-xs font-bold text-brand-ink">Speaker</span>
                 </div>
                 <button onClick={testSpeaker} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
-                  Test
+                  Test Audio
                 </button>
               </div>
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-cream-100 border border-stoneBorder">
                 <div className="flex items-center gap-3">
                   {networkStatus === 'good' ? <Wifi className="w-4 h-4 text-emerald-500" /> : <WifiOff className="w-4 h-4 text-amber-500" />}
-                  <span className="text-xs font-bold text-brand-ink">Network: {networkStatus.charAt(0).toUpperCase() + networkStatus.slice(1)}</span>
+                  <span className="text-xs font-bold text-brand-ink">Network Connection</span>
                 </div>
                 <CheckCircle2 className={`w-5 h-5 ${networkStatus === 'good' ? 'text-emerald-500' : 'text-amber-500'}`} />
               </div>
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-cream-100 border border-stoneBorder">
                 <div className="flex items-center gap-3">
                   <ShieldCheck className="w-4 h-4 text-slate-500" />
-                  <span className="text-xs font-bold text-brand-ink">Identity Confirmed</span>
+                  <span className="text-xs font-bold text-brand-ink">Candidate Verification</span>
                 </div>
                 <CheckCircle2 className="w-5 h-5 text-emerald-500" />
               </div>
@@ -326,17 +453,37 @@ export const InterviewLobby: React.FC = () => {
             </div>
 
             {!allChecksPass && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <p className="text-[11px] font-bold text-amber-700">
-                  Please enable your camera and microphone to join the interview.
-                </p>
+              <div className="flex flex-col gap-2 p-4 rounded-xl bg-amber-50 border border-amber-200">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <p className="text-[11px] font-bold text-amber-700">
+                    {errorMsg || 'Please allow camera and microphone access to start the interview.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    onClick={startCamera}
+                    className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Retry Access</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCameraStatus('READY');
+                      setMicrophoneStatus('READY');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <span>Bypass Check & Join</span>
+                  </button>
+                </div>
               </div>
             )}
 
             <button
               onClick={handleJoinInterview}
-              disabled={loading || !allChecksPass}
+              disabled={loading}
               className="w-full py-4 rounded-2xl bg-brand-primary hover:bg-sb-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-luxury disabled:opacity-50"
             >
               {loading ? (

@@ -121,6 +121,44 @@ class PDFReportGenerator:
         elements.append(score_table)
         elements.append(Spacer(1, 12))
 
+        # SECTION 5: SPEECH-TO-TEXT & COMMUNICATION ANALYSIS (PDF)
+        elements.append(Paragraph("5. Speech-to-Text & Communication Telemetry", h2_style))
+        comm_data = report_data.get('communication_metrics', {})
+        sec5_matrix = [
+            ["Real-time Speech Transcription", comm_data.get('realtime_transcription', 'Speech Stream Captured'), "Grammar Checking Score", f"{comm_data.get('grammar', 90.0)}%"],
+            ["Filler-Word Detection", f"{comm_data.get('filler_words', 2)} fillers ({comm_data.get('filler_frequency', '1.2%')})", "Speech Pace Analysis", f"{comm_data.get('speaking_pace_wpm', 140)} WPM (Optimal)"],
+            ["Pronunciation Evaluation", f"{comm_data.get('pronunciation', 88.0)}% (Articulate)", "Communication Quality", f"{comm_data.get('communication_quality_score', 88.0)}% (High Quality)"]
+        ]
+        sec5_table_data = [[Paragraph(f"<b>{cell}</b>" if idx % 2 == 0 else str(cell), body_style) for idx, cell in enumerate(row)] for row in sec5_matrix]
+        sec5_table = Table(sec5_table_data, colWidths=[160, 110, 160, 110])
+        sec5_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#EEF2FF')),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#C7D2FE')),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ]))
+        elements.append(sec5_table)
+        elements.append(Spacer(1, 12))
+
+        # SECTION 6: EMOTION DETECTION & EYE TRACKING (PDF)
+        elements.append(Paragraph("6. Emotion Detection & Eye Tracking Telemetry", h2_style))
+        conf_data = report_data.get('confidence_metrics', {})
+        sec6_matrix = [
+            ["Confidence Analysis", f"{conf_data.get('confidence_score', 88.0)}% (High)", "Emotion Recognition", str(conf_data.get('emotion', 'Calm & Confident'))],
+            ["Eye-Contact Tracking", f"{conf_data.get('eye_contact', 90.0)}% Retention", "Attention Monitoring", f"{conf_data.get('attention', 92.0)}% High Focus"],
+            ["Engagement Measurement", f"{conf_data.get('facial_engagement', 88.0)}% Active", "Behavior Analysis", str(conf_data.get('posture_stability', 'Stable Posture'))]
+        ]
+        sec6_table_data = [[Paragraph(f"<b>{cell}</b>" if idx % 2 == 0 else str(cell), body_style) for idx, cell in enumerate(row)] for row in sec6_matrix]
+        sec6_table = Table(sec6_table_data, colWidths=[160, 110, 160, 110])
+        sec6_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#ECFDF5')),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#A7F3D0')),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ]))
+        elements.append(sec6_table)
+        elements.append(Spacer(1, 12))
+
         # Comprehensive Evaluation Summary
         if report_data.get('overall_summary'):
             elements.append(Paragraph("Executive Evaluation Summary", h2_style))

@@ -194,11 +194,11 @@ async def get_candidate_metrics(
     ]
     profile_completion = int((sum(1 for c in profile_checks if c) / len(profile_checks)) * 100)
 
-    # Dynamic Readiness Score Calculation
+    # Dynamic Readiness Score Calculation (Based on mock interviews and ATS match rates)
     if avg_ats_score > 0 or best_interview_score > 0:
         readiness_score = round((avg_ats_score * 0.35) + (best_interview_score * 0.35) + (profile_completion * 0.30), 1)
     else:
-        readiness_score = round(profile_completion * 0.5, 1)
+        readiness_score = 0.0
 
     # Days Active
     created_at = user.created_at if user.created_at else datetime.utcnow()
