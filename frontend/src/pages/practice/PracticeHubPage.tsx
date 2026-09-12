@@ -235,16 +235,16 @@ export const PracticeHubPage: React.FC = () => {
       {activeTab === 'assessment' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Config Card */}
-          <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-8 space-y-6 shadow-xs">
+          <div className="lg:col-span-7 bg-white dark:bg-[#111827] rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-6 shadow-xs">
             <div>
-              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Configure Practice Assessment</h2>
-              <p className="text-xs text-slate-500 font-semibold mt-1">Select target topics to generate dynamic MCQs using Gemini AI.</p>
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Configure Practice Assessment</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">Select target topics to generate dynamic MCQs using Gemini AI.</p>
             </div>
 
             {/* Topics Selection Grid */}
             <div className="space-y-3">
-              <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">Target Topics ({selectedTopics.length} selected)</label>
-              <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto p-3 bg-slate-50 rounded-2xl border border-slate-200/80">
+              <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block">Target Topics ({selectedTopics.length} selected)</label>
+              <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto p-3 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/80 dark:border-slate-800">
                 {topicsList.map((t) => {
                   const isSelected = selectedTopics.includes(t);
                   return (
@@ -254,7 +254,7 @@ export const PracticeHubPage: React.FC = () => {
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                         isSelected
                           ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-400'
+                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500'
                       }`}
                     >
                       {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -268,11 +268,11 @@ export const PracticeHubPage: React.FC = () => {
             {/* Assessment Options */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Difficulty</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Difficulty</label>
                 <select
                   value={assessDifficulty}
                   onChange={(e) => setAssessDifficulty(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 >
                   <option>Easy</option>
                   <option>Medium</option>
@@ -282,11 +282,11 @@ export const PracticeHubPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Questions</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Questions</label>
                 <select
                   value={assessQCount}
                   onChange={(e) => setAssessQCount(parseInt(e.target.value))}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 >
                   <option value={10}>10 Questions</option>
                   <option value={20}>20 Questions</option>
@@ -299,11 +299,11 @@ export const PracticeHubPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Time Limit</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Time Limit</label>
                 <select
                   value={assessDuration}
                   onChange={(e) => setAssessDuration(parseInt(e.target.value))}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 >
                   <option value={15}>15 Minutes</option>
                   <option value={30}>30 Minutes</option>
@@ -316,7 +316,7 @@ export const PracticeHubPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Custom Minutes</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Custom Minutes</label>
                 <input
                   type="number"
                   min={5}
@@ -326,10 +326,10 @@ export const PracticeHubPage: React.FC = () => {
                     const value = Number(e.target.value);
                     if (Number.isFinite(value)) setAssessDuration(Math.min(180, Math.max(5, value)));
                   }}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                   aria-label="Custom assessment duration in minutes"
                 />
-                <p className="mt-1 text-[10px] text-slate-500">5–180 minutes</p>
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">5–180 minutes</p>
               </div>
             </div>
 
@@ -375,30 +375,30 @@ export const PracticeHubPage: React.FC = () => {
       {/* TAB 2: MOCK INTERVIEW */}
       {activeTab === 'interview' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-8 space-y-6 shadow-xs">
+          <div className="lg:col-span-7 bg-white dark:bg-[#111827] rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-6 shadow-xs">
             <div>
-              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Configure Live AI Mock Interview</h2>
-              <p className="text-xs text-slate-500 font-semibold mt-1">Select your target role and round type for dynamic human-like questioning.</p>
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Configure Live AI Mock Interview</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">Select your target role and round type for dynamic human-like questioning.</p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Target Job Role</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Target Job Role</label>
                 <input
                   type="text"
                   value={interviewRole}
                   onChange={(e) => setInterviewRole(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                   placeholder="e.g. Senior Frontend Engineer"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Interview Round Type</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Interview Round Type</label>
                 <select
                   value={interviewRound}
                   onChange={(e) => setInterviewRound(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 >
                   <option>Technical</option>
                   <option>HR</option>
@@ -416,11 +416,11 @@ export const PracticeHubPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Difficulty</label>
+                  <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Difficulty</label>
                   <select
                     value={interviewDiff}
                     onChange={(e) => setInterviewDiff(e.target.value)}
-                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                    className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                   >
                     <option>Easy</option>
                     <option>Medium</option>
@@ -429,23 +429,23 @@ export const PracticeHubPage: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Duration (Mins)</label>
+                  <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2">Duration (Mins)</label>
                   <input
                     type="number"
                     value={interviewDuration}
                     onChange={(e) => setInterviewDuration(parseInt(e.target.value) || 15)}
                     min={5}
                     max={60}
-                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                    className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                   />
                 </div>
               </div>
 
               {/* Optional Resume Upload Section */}
               <div className="pt-1">
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2 flex items-center justify-between">
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block mb-2 flex items-center justify-between">
                   <span>Upload Resume (Optional)</span>
-                  <span className="text-[10px] text-indigo-600 font-extrabold">AI asks tailored resume questions</span>
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-extrabold">AI asks tailored resume questions</span>
                 </label>
                 <input
                   type="file"
@@ -456,11 +456,11 @@ export const PracticeHubPage: React.FC = () => {
                 />
                 
                 {uploadedFileName ? (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between shadow-2xs">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-800">
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex items-center justify-between shadow-2xs">
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-200">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                       <span className="truncate max-w-[200px]">{uploadedFileName}</span>
-                      <span className="text-[10px] bg-emerald-200/60 px-2 py-0.5 rounded-full text-emerald-900 font-extrabold">
+                      <span className="text-[10px] bg-emerald-200/60 dark:bg-emerald-900/60 px-2 py-0.5 rounded-full text-emerald-900 dark:text-emerald-200 font-extrabold">
                         {interviewParsedData?.skills?.length || 0} skills parsed
                       </span>
                     </div>
@@ -472,7 +472,7 @@ export const PracticeHubPage: React.FC = () => {
                         setInterviewParsedData(null);
                         if (fileInputRef.current) fileInputRef.current.value = '';
                       }}
-                      className="text-slate-400 hover:text-slate-600 p-1 transition-colors"
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 transition-colors"
                       title="Remove resume"
                     >
                       <X className="w-4 h-4" />
@@ -483,21 +483,21 @@ export const PracticeHubPage: React.FC = () => {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingResume}
-                    className="w-full p-4 border-2 border-dashed border-slate-200 hover:border-indigo-500 rounded-2xl bg-slate-50 hover:bg-indigo-50/40 transition-all flex items-center justify-center gap-3 group text-left cursor-pointer"
+                    className="w-full p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500 rounded-2xl bg-slate-50 dark:bg-slate-800/40 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30 transition-all flex items-center justify-center gap-3 group text-left cursor-pointer"
                   >
                     {uploadingResume ? (
                       <>
-                        <Loader2 className="w-5 h-5 text-indigo-600 animate-spin shrink-0" />
+                        <Loader2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400 animate-spin shrink-0" />
                         <div>
-                          <span className="text-xs font-bold text-indigo-600 block">Parsing Resume & Extracting Skills...</span>
+                          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 block">Parsing Resume & Extracting Skills...</span>
                           <span className="text-[10px] text-slate-400 block font-medium">Extracting tech stack, projects & work experience</span>
                         </div>
                       </>
                     ) : (
                       <>
-                        <Upload className="w-5 h-5 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+                        <Upload className="w-5 h-5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors shrink-0" />
                         <div>
-                          <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-600 block">Click to upload PDF / DOCX resume</span>
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 block">Click to upload PDF / DOCX resume</span>
                           <span className="text-[10px] text-slate-400 block font-medium">Max 5MB • Enables personalized AI interviewer questions from your resume</span>
                         </div>
                       </>
@@ -537,25 +537,25 @@ export const PracticeHubPage: React.FC = () => {
       {activeTab === 'progress' && (
         <div className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Assessments Completed</span>
-              <span className="text-2xl font-black text-slate-900 mt-1 block">{assessHistory.length}</span>
+            <div className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Assessments Completed</span>
+              <span className="text-2xl font-black text-slate-900 dark:text-white mt-1 block">{assessHistory.length}</span>
             </div>
-            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Interviews Completed</span>
-              <span className="text-2xl font-black text-indigo-600 mt-1 block">{interviewHistory.length}</span>
+            <div className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Interviews Completed</span>
+              <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1 block">{interviewHistory.length}</span>
             </div>
-            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Assessment Score</span>
-              <span className="text-2xl font-black text-emerald-600 mt-1 block">
+            <div className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Avg Assessment Score</span>
+              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 block">
                 {assessHistory.length > 0
                   ? `${Math.round(assessHistory.reduce((acc, curr) => acc + (curr.overall_score || 0), 0) / assessHistory.length)}%`
                   : 'N/A'}
               </span>
             </div>
-            <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Interview Score</span>
-              <span className="text-2xl font-black text-purple-600 mt-1 block">
+            <div className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Avg Interview Score</span>
+              <span className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1 block">
                 {interviewHistory.length > 0
                   ? `${Math.round(interviewHistory.reduce((acc, curr) => acc + (curr.overall_score || 0), 0) / interviewHistory.length)}%`
                   : 'N/A'}
@@ -564,25 +564,25 @@ export const PracticeHubPage: React.FC = () => {
           </div>
 
           {/* AI Interview Reports & History */}
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 space-y-4">
+          <div className="bg-white dark:bg-[#111827] p-8 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <Video className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Video className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                   AI Interview Reports ({interviewHistory.length})
                 </h3>
-                <p className="text-xs text-slate-500 font-medium">Detailed evaluations, sub-metrics, interviewer remarks, and downloadable PDF reports.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Detailed evaluations, sub-metrics, interviewer remarks, and downloadable PDF reports.</p>
               </div>
             </div>
 
             {loadingHistory ? (
               <div className="py-8 text-center text-xs font-bold text-slate-400">Loading interview evaluation reports...</div>
             ) : interviewHistory.length === 0 ? (
-              <div className="p-6 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
-                <p className="text-xs text-slate-500 font-semibold">No AI interview sessions completed yet.</p>
+              <div className="p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">No AI interview sessions completed yet.</p>
                 <button
                   onClick={() => setActiveTab('interview')}
-                  className="px-4 py-2 rounded-xl bg-indigo-50 text-indigo-600 text-xs font-extrabold hover:bg-indigo-100 transition-colors"
+                  className="px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-extrabold hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
                 >
                   Start Your First Mock Interview
                 </button>
@@ -590,44 +590,44 @@ export const PracticeHubPage: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {interviewHistory.map((i: any) => (
-                  <div key={i.session_id || i.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between space-y-4 hover:border-indigo-300 transition-all">
+                  <div key={i.session_id || i.id} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60 flex flex-col justify-between space-y-4 hover:border-indigo-300 dark:hover:border-indigo-500 transition-all">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="px-2.5 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-extrabold uppercase">
+                          <span className="px-2.5 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 text-[10px] font-extrabold uppercase">
                             {i.round_type || 'Technical'}
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
                             {i.difficulty || 'Medium'}
                           </span>
                           {i.has_recording && (
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase border border-emerald-300 flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black uppercase border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
                               🎥 Video
                             </span>
                           )}
                         </div>
-                        <h4 className="text-sm font-extrabold text-slate-900 mt-2">{i.title || 'AI Technical Interview'}</h4>
-                        <p className="text-[11px] text-slate-500 font-medium">
+                        <h4 className="text-sm font-extrabold text-slate-900 dark:text-white mt-2">{i.title || 'AI Technical Interview'}</h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                           {i.role_target} {i.started_at ? `· ${new Date(i.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                         </p>
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className="text-xl font-black text-indigo-600 block">
+                        <span className="text-xl font-black text-indigo-600 dark:text-indigo-400 block">
                           {i.overall_score !== undefined && i.overall_score !== null ? `${i.overall_score}%` : 'Pending'}
                         </span>
                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase mt-1 ${
                           (i.recommendation || '').toLowerCase().includes('shortlist') || (i.recommendation || '').toLowerCase().includes('hire') || (i.recommendation || '').toLowerCase().includes('pass')
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800'
+                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                            : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
                         }`}>
                           {i.recommendation || 'Evaluated'}
                         </span>
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                    <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" /> {i.duration_minutes || 15} Mins
                       </span>
                       <button
@@ -644,33 +644,33 @@ export const PracticeHubPage: React.FC = () => {
           </div>
 
           {/* Assessment History */}
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 space-y-4">
-            <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-              <CheckSquare className="w-5 h-5 text-emerald-600" />
+          <div className="bg-white dark:bg-[#111827] p-8 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <h3 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Assessment History ({assessHistory.length})
             </h3>
             {loadingHistory ? (
               <div className="py-8 text-center text-xs font-bold text-slate-400">Loading assessment history...</div>
             ) : assessHistory.length === 0 ? (
-              <p className="text-xs text-slate-500">No mock assessment sessions completed yet.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">No mock assessment sessions completed yet.</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {assessHistory.map((a) => (
-                  <div key={a.session_id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 flex items-center justify-between">
+                  <div key={a.session_id} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60 flex items-center justify-between">
                     <div>
-                      <span className="px-2.5 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-extrabold uppercase">
+                      <span className="px-2.5 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 text-[10px] font-extrabold uppercase">
                         {a.difficulty}
                       </span>
-                      <h4 className="text-sm font-bold text-slate-900 mt-1">{a.title}</h4>
-                      <p className="text-[11px] text-slate-500">{a.date || 'Recent'} · {a.duration_minutes} Mins</p>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">{a.title}</h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">{a.date || 'Recent'} · {a.duration_minutes} Mins</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-lg font-black text-slate-900 block">
+                      <span className="text-lg font-black text-slate-900 dark:text-white block">
                         {a.overall_score !== undefined && a.overall_score !== null ? `${a.overall_score}%` : 'N/A'}
                       </span>
                       <button
                         onClick={() => navigate(`/assessment/exam?session=${a.session_id}`)}
-                        className="text-[11px] font-extrabold text-indigo-600 hover:underline mt-1 block"
+                        className="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline mt-1 block"
                       >
                         Review Test
                       </button>

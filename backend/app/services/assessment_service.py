@@ -14,9 +14,11 @@ from sqlalchemy.future import select
 from app.models.domain import (
     AssessmentAnswer, AssessmentQuestion, AssessmentQuestionHistory,
     AssessmentResult, AssessmentSession, JobApplication, Candidate, Notification,
+    JobPosting, User
 )
 from app.services.ai_engine import ai_engine
 from app.services.paper_builder import paper_builder
+from app.services.email_service import email_service
 
 logger = logging.getLogger("smarthire.assessment")
 
@@ -257,24 +259,59 @@ Each object MUST match this schema:
         else:
             for field, value in fields.items():
                 setattr(result, field, value)
+        application = None
         if session.job_application_id:
             application = (await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))).scalar_one_or_none()
             if application:
                 new_status = "Assessment Passed" if recommendation == "Pass" else "Assessment Failed"
                 application.status = new_status
-                
-                # Notify Candidate
-                if session.candidate_id:
-                    res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
-                    cand = res_c.scalar_one_or_none()
-                    if cand and cand.user_id:
-                        notif = Notification(
-                            user_id=cand.user_id,
-                            title=f"Online Assessment {new_status}",
-                            message=f"You scored {overall_score}% on your online assessment. Status: {new_status}.",
-                            notification_type="assessment_completed"
+
+        # Candidate In-App Notification & Email Dispatch
+        if session.candidate_id:
+            res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
+            cand = res_c.scalar_one_or_none()
+            if cand and cand.user_id:
+                notif_status = "Assessment Passed" if recommendation == "Pass" else "Assessment Failed"
+                notif = Notification(
+                    user_id=cand.user_id,
+                    title=f"Online Assessment {notif_status}",
+                    message=f"You scored {overall_score}% on your online assessment. Status: {notif_status}.",
+                    notification_type="assessment_completed"
+                )
+                db.add(notif)
+
+                # Fetch candidate user for email
+                res_u = await db.execute(select(User).where(User.id == cand.user_id))
+                cand_user = res_u.scalar_one_or_none()
+
+                # Fetch Job details
+                target_job_id = session.job_id or (application.job_id if application else None)
+                job_title = "Technical Role"
+                company_name = "SmartHire Enterprise"
+                if target_job_id:
+                    res_j = await db.execute(select(JobPosting).where(JobPosting.id == target_job_id))
+                    job_obj = res_j.scalar_one_or_none()
+                    if job_obj:
+                        job_title = job_obj.title or job_title
+                        company_name = job_obj.company_name or company_name
+
+                if cand_user and cand_user.email:
+                    try:
+                        await email_service.send_assessment_result_email(
+                            db=db,
+                            candidate_email=cand_user.email,
+                            candidate_name=cand_user.full_name or "Candidate",
+                            job_title=job_title,
+                            score=overall_score,
+                            passing_score=session.passing_score,
+                            passed=(recommendation == "Pass"),
+                            company_name=company_name,
+                            section_scores=section_scores,
+                            session_id=session.id,
+                            candidate_user_id=cand.user_id
                         )
-                        db.add(notif)
+                    except Exception as e:
+                        logger.warning(f"Failed to dispatch assessment result email: {e}")
 
         await db.commit()
 

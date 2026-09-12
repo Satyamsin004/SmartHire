@@ -3,10 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import or_
 from typing import List, Dict, Any, Optional
 
 from app.core.db import get_db
-from app.models.domain import User, Candidate, Recruiter, AssessmentSession, AssessmentQuestion, AssessmentAnswer, AssessmentResult
+from app.models.domain import User, Candidate, Recruiter, JobPosting, JobApplication, AssessmentSession, AssessmentQuestion, AssessmentAnswer, AssessmentResult
 from app.dependencies.auth import get_current_user, require_role
 from app.services.assessment_service import assessment_service, AssessmentGenerationError
 
@@ -265,18 +266,43 @@ async def get_assessment_history(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches candidate assessment history cards."""
-    res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
-    cand = res_c.scalar_one_or_none()
-    if not cand:
+    """Fetches assessment history cards strictly isolated to current user."""
+    sessions = []
+    if current_user.role == "candidate":
+        res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
+        cand = res_c.scalar_one_or_none()
+        if not cand:
+            return []
+        res_sess = await db.execute(
+            select(AssessmentSession)
+            .where(AssessmentSession.candidate_id == cand.id)
+            .order_by(AssessmentSession.created_at.desc())
+        )
+        sessions = res_sess.scalars().all()
+    elif current_user.role == "recruiter":
+        res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == current_user.id))
+        rec = res_r.scalar_one_or_none()
+        if not rec:
+            return []
+        res_j = await db.execute(select(JobPosting.id).where(JobPosting.recruiter_id == rec.id))
+        job_ids = res_j.scalars().all()
+        if not job_ids:
+            return []
+        res_a = await db.execute(select(JobApplication.id).where(JobApplication.job_id.in_(job_ids)))
+        app_ids = res_a.scalars().all()
+        res_sess = await db.execute(
+            select(AssessmentSession)
+            .where(
+                or_(AssessmentSession.job_id.in_(job_ids), AssessmentSession.job_application_id.in_(app_ids))
+            )
+            .order_by(AssessmentSession.created_at.desc())
+        )
+        sessions = res_sess.scalars().all()
+    elif current_user.role == "admin":
+        res_sess = await db.execute(select(AssessmentSession).order_by(AssessmentSession.created_at.desc()))
+        sessions = res_sess.scalars().all()
+    else:
         return []
-
-    res_sess = await db.execute(
-        select(AssessmentSession)
-        .where(AssessmentSession.candidate_id == cand.id)
-        .order_by(AssessmentSession.created_at.desc())
-    )
-    sessions = res_sess.scalars().all()
 
     if not sessions:
         return []

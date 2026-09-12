@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Moon, Sun, User as UserIcon, LogOut, CheckCheck, X, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Search, Bell, Moon, Sun, User as UserIcon, LogOut, CheckCheck, X, Sparkles, BarChart3, Camera } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
+import { useWebSocket } from '../../context/WebSocketContext';
 
 export const Navbar: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { lastMessage } = useWebSocket();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('candidate');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -15,21 +18,95 @@ export const Navbar: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarImgError, setAvatarImgError] = useState(false);
 
   useEffect(() => {
-    let parsedUser: any = null;
-    const raw = localStorage.getItem('user_data') || localStorage.getItem('user');
-    if (raw) {
-      try {
-        parsedUser = JSON.parse(raw);
-        setUser(parsedUser);
-        setUserRole(parsedUser.role || 'candidate');
-      } catch (e) {
-        console.error(e);
+    const loadUserData = () => {
+      const raw = localStorage.getItem('user_data') || localStorage.getItem('user');
+      if (raw) {
+        try {
+          const parsedUser = JSON.parse(raw);
+          setUser(parsedUser);
+          setUserRole(parsedUser.role || 'candidate');
+          setAvatarImgError(false);
+        } catch (e) {
+          console.error(e);
+        }
       }
-    }
+    };
+
+    loadUserData();
     fetchNotifications();
+
+    // Listen for cross-component avatar or profile updates
+    window.addEventListener('user_profile_updated', loadUserData);
+    window.addEventListener('storage', loadUserData);
+
+    // Sync authoritative user profile from backend
+    api.get('/users/me').then(res => {
+      if (res.data) {
+        const raw = localStorage.getItem('user_data') || localStorage.getItem('user');
+        const curr = raw ? JSON.parse(raw) : {};
+        const fresh = {
+          ...curr,
+          ...res.data,
+          profile_image: res.data.profile_image || res.data.avatar_url || curr.profile_image,
+          avatar_url: res.data.profile_image || res.data.avatar_url || curr.avatar_url
+        };
+        setUser(fresh);
+        localStorage.setItem('user_data', JSON.stringify(fresh));
+        localStorage.setItem('user', JSON.stringify(fresh));
+        setAvatarImgError(false);
+      }
+    }).catch(() => {});
+
+    return () => {
+      window.removeEventListener('user_profile_updated', loadUserData);
+      window.removeEventListener('storage', loadUserData);
+    };
   }, []);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingAvatar(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post('/uploads/avatar', formData);
+      const newUrl = res.data?.profile_image || res.data?.avatar_url || res.data?.url;
+      if (newUrl) {
+        setAvatarImgError(false);
+        const updated = {
+          ...user,
+          profile_image: newUrl,
+          avatar_url: newUrl
+        };
+        setUser(updated);
+        localStorage.setItem('user_data', JSON.stringify(updated));
+        localStorage.setItem('user', JSON.stringify(updated));
+        window.dispatchEvent(new Event('user_profile_updated'));
+      }
+    } catch (err) {
+      console.warn('Avatar upload error:', err);
+    } finally {
+      setUploadingAvatar(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const avatarUrl = !avatarImgError ? (user?.profile_image || user?.avatar_url || null) : null;
+
+  // Re-fetch notifications in real-time when WebSocket message arrives
+  useEffect(() => {
+    if (lastMessage) {
+      fetchNotifications();
+    }
+  }, [lastMessage]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -83,10 +160,45 @@ export const Navbar: React.FC = () => {
     ? user.full_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
     : 'U';
 
+  const handleNotificationClick = (notif: any) => {
+    if (!notif.is_read) {
+      handleMarkRead(notif.id);
+    }
+    setShowNotifications(false);
+    if (notif.link) {
+      navigate(notif.link);
+      return;
+    }
+    if (notif.notification_type === 'interview_completed' || notif.notification_type === 'interview_evaluation_ready') {
+      if (notif.interview_id) {
+        navigate(`/report/${notif.interview_id}`);
+      } else {
+        navigate('/reports');
+      }
+    } else if (
+      notif.notification_type === 'interview_scheduled' ||
+      notif.notification_type === 'interview_reminder' ||
+      notif.notification_type === 'interview_rescheduled'
+    ) {
+      if (notif.interview_id) {
+        navigate(`/interview-lobby?schedule_id=${notif.interview_id}`);
+      } else {
+        navigate(userRole === 'recruiter' ? '/recruiter-scheduling' : '/interview/config');
+      }
+    } else if (notif.notification_type === 'assessment_scheduled') {
+      navigate('/assessment-lobby');
+    }
+  };
+
   const getNotifIcon = (type: string) => {
     switch (type) {
       case 'application_status_update': return '📋';
       case 'interview_scheduled': return '🎯';
+      case 'interview_rescheduled': return '🔄';
+      case 'interview_cancelled': return '❌';
+      case 'interview_reminder': return '⏰';
+      case 'interview_completed': return '📊';
+      case 'interview_evaluation_ready': return '🏆';
       case 'resume_updated': return '📄';
       case 'recruiter_action_required': return '⚡';
       case 'offer_received': return '🎉';
@@ -112,9 +224,31 @@ export const Navbar: React.FC = () => {
       </div>
 
       {/* Action Tools & Profile Circle */}
-      <div className="flex items-center gap-3 md:gap-4">
+      <div className="flex items-center gap-2.5 sm:gap-3 md:gap-4">
+        {/* Progress & Reports Dedicated Navigation Button (Candidates & Recruiters only) */}
+        {userRole !== 'admin' && (
+          <button
+            onClick={() => navigate(userRole === 'recruiter' ? '/recruiter/reports' : '/reports')}
+            id="navbar-reports-btn"
+            className={`flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border shadow-xs cursor-pointer ${
+              location.pathname === '/reports' || location.pathname === '/recruiter/reports' || location.pathname.startsWith('/report')
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-500/20'
+                : 'bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-400 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30'
+            }`}
+            title="Progress & Reports Dashboard"
+          >
+            <BarChart3 className={`w-3.5 h-3.5 shrink-0 ${
+              location.pathname === '/reports' || location.pathname === '/recruiter/reports' || location.pathname.startsWith('/report')
+                ? 'text-white'
+                : 'text-indigo-600 dark:text-indigo-400'
+            }`} />
+            <span className="hidden md:inline font-black tracking-tight">Reports & Analytics</span>
+            <span className="inline md:hidden text-[11px] font-black">Reports</span>
+          </button>
+        )}
+
         {/* Search Bar */}
-        <div className="relative w-48 md:w-72 hidden sm:block">
+        <div className="relative w-40 md:w-64 hidden lg:block">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -161,8 +295,8 @@ export const Navbar: React.FC = () => {
                   notifications.slice(0, 15).map((notif) => (
                     <button
                       key={notif.id}
-                      onClick={() => { if (!notif.is_read) handleMarkRead(notif.id); }}
-                      className={`w-full text-left px-4 py-3 border-b border-slate-50 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${
+                      onClick={() => handleNotificationClick(notif)}
+                      className={`w-full text-left px-4 py-3 border-b border-slate-50 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${
                         !notif.is_read ? 'bg-indigo-50/50 dark:bg-indigo-950/30' : ''
                       }`}
                     >
@@ -206,19 +340,86 @@ export const Navbar: React.FC = () => {
 
         {/* User Avatar Circle Dropdown */}
         <div className="relative" ref={profileRef}>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleAvatarUpload}
+          />
+
           <button
             onClick={() => { setShowProfileMenu(!showProfileMenu); setShowNotifications(false); }}
-            className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-slate-900 dark:from-indigo-500 dark:to-purple-700 text-white font-extrabold text-xs flex items-center justify-center shadow-xs cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all"
+            className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-slate-900 dark:from-indigo-500 dark:to-purple-700 text-white font-extrabold text-xs flex items-center justify-center shadow-xs cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all overflow-hidden"
+            title={user?.full_name || 'User Profile'}
           >
-            {initials}
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={user?.full_name || 'User'}
+                className="w-full h-full object-cover rounded-full"
+                onError={() => setAvatarImgError(true)}
+              />
+            ) : (
+              initials
+            )}
           </button>
 
           {showProfileMenu && (
-            <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-[#111827] rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50">
-              <div className="p-3 border-b border-slate-100 dark:border-slate-800 mb-1">
-                <p className="text-xs font-extrabold text-slate-900 dark:text-white">{user?.full_name || 'User'}</p>
-                <p className="text-[10px] text-slate-400 truncate">{user?.email || ''}</p>
+            <div className="absolute right-0 mt-3 w-60 bg-white dark:bg-[#111827] rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50">
+              <div className="p-3 border-b border-slate-100 dark:border-slate-800 mb-1 flex items-center gap-3">
+                <div
+                  className="relative group/avatar cursor-pointer shrink-0"
+                  onClick={() => avatarInputRef.current?.click()}
+                  title="Click to upload profile picture"
+                >
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-600 to-slate-900 dark:from-indigo-500 dark:to-purple-700 text-white font-extrabold text-xs flex items-center justify-center shadow-xs overflow-hidden border border-indigo-500/30">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={user?.full_name || 'User'}
+                        className="w-full h-full object-cover"
+                        onError={() => setAvatarImgError(true)}
+                      />
+                    ) : (
+                      initials
+                    )}
+                  </div>
+                  <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+                    <Camera className="w-3.5 h-3.5 text-white" />
+                  </div>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-extrabold text-slate-900 dark:text-white truncate">{user?.full_name || 'User'}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{user?.email || ''}</p>
+                  <button
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={uploadingAvatar}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 flex items-center gap-1"
+                  >
+                    <Camera className="w-3 h-3" />
+                    <span>{uploadingAvatar ? 'Uploading...' : 'Change Photo'}</span>
+                  </button>
+                </div>
               </div>
+              {userRole !== 'admin' ? (
+                <button
+                  onClick={() => { setShowProfileMenu(false); navigate(userRole === 'recruiter' ? '/recruiter/reports' : '/reports'); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors cursor-pointer"
+                >
+                  <BarChart3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  Reports & Analytics
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setShowProfileMenu(false); navigate('/admin?tab=interviews'); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors cursor-pointer"
+                >
+                  <BarChart3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  Interview Audits
+                </button>
+              )}
               <button
                 onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors cursor-pointer"

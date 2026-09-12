@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, MicOff, Send, Clock, Sparkles, AlertCircle, Video, VideoOff, Maximize, Minimize, Wifi, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Mic, MicOff, Send, Clock, Sparkles, AlertCircle, Video, VideoOff, Maximize, Minimize, Wifi, ShieldCheck, ShieldAlert, Volume2, VolumeX } from 'lucide-react';
 import api from '../../services/api';
 import { integrityEngine, ActiveIncident } from '../../services/IntegrityEngine';
 import { IntegrityWarningOverlay } from '../../components/interview/IntegrityWarningOverlay';
 import { InterviewTerminatedScreen } from '../../components/interview/InterviewTerminatedScreen';
+import { storeSessionRecordingBlob, uploadSessionRecordingWithRetry } from '../../services/recordingStorage';
 
 // Extend window for SpeechRecognition
 declare global {
@@ -18,6 +19,7 @@ export const LiveInterviewRoom: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const sessionData = location.state?.sessionData;
+  const [activeSessionState, setActiveSessionState] = useState<any>(sessionData || null);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
@@ -30,6 +32,8 @@ export const LiveInterviewRoom: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
   const [isFinalizingReport, setIsFinalizingReport] = useState(false);
   const [autoSubmitCountdown, setAutoSubmitCountdown] = useState<number | null>(null);
+  const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
+  const [isFetchingTts, setIsFetchingTts] = useState<boolean>(false);
   const initialDurationSec = (sessionData?.duration_minutes || sessionData?.duration || 15) * 60;
   const [timeRemaining, setTimeRemaining] = useState(initialDurationSec);
   const [questionIndex, setQuestionIndex] = useState(1);
@@ -54,32 +58,93 @@ export const LiveInterviewRoom: React.FC = () => {
   const recordedChunksRef = useRef<Blob[]>([]);
   const hasGreetedRef = useRef<boolean>(false);
   const transcriptRef = useRef<string>('');
-  const suppressQuestionSpeakRef = useRef<boolean>(false);
   const persistentVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const isSessionEndedRef = useRef<boolean>(false);
+  const lastSpokenQuestionIdRef = useRef<string | null>(null);
+  const chromeResumeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const activeUtterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
+  
+  // High-Fidelity Audio Player & State Refs
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioUrlRef = useRef<string | null>(null);
+  const audioAbortControllerRef = useRef<AbortController | null>(null);
+  const ttsCacheRef = useRef<Map<string, string>>(new Map());
+  const isAiSpeakingRef = useRef<boolean>(false);
+  const isListeningRef = useRef<boolean>(false);
+  const submittingRef = useRef<boolean>(false);
+  const isAiThinkingRef = useRef<boolean>(false);
 
-  // Persistent Soothing Female Voice Selector Helper
+  // Keep state refs in sync on every render
+  useEffect(() => {
+    isAiSpeakingRef.current = isAiSpeaking;
+    isListeningRef.current = isListening;
+    submittingRef.current = submitting;
+    isAiThinkingRef.current = isAiThinking;
+  }, [isAiSpeaking, isListening, submitting, isAiThinking]);
+
+  // Subtle melodic AI chime that unlocks Web Audio and signals interviewer speaking
+  const playAiChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(659.25, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.26);
+      setTimeout(() => ctx.close().catch(() => {}), 400);
+    } catch (e) {}
+  };
+
+  // Fetch Studio Neural Audio from Backend
+  const fetchNeuralAudio = async (text: string, signal?: AbortSignal): Promise<string> => {
+    const cleanText = text.replace(/[*_#`~]/g, '').trim();
+    if (ttsCacheRef.current.has(cleanText)) {
+      return ttsCacheRef.current.get(cleanText)!;
+    }
+    const res = await api.post('/interview/tts',
+      { text: cleanText, voice: 'en-US-AriaNeural' },
+      { responseType: 'blob', timeout: 20000, signal }
+    );
+    if (!res.data || (res.data.type && res.data.type.includes('application/json'))) {
+      throw new Error("Invalid audio response received from TTS service.");
+    }
+    const blob = new Blob([res.data], { type: 'audio/mpeg' });
+    const objectUrl = URL.createObjectURL(blob);
+    ttsCacheRef.current.set(cleanText, objectUrl);
+    return objectUrl;
+  };
+
+  // Persistent Soothing Female Voice Selector Helper (Prioritizes reliable local offline voices)
   const getSoothingVoice = (voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
-    // If a soothing voice was already selected for this session, reuse it permanently
     if (persistentVoiceRef.current) {
       const stillAvailable = voices.find(v => v.name === persistentVoiceRef.current?.name);
       if (stillAvailable) return stillAvailable;
     }
     if (!voices || voices.length === 0) return undefined;
     
-    // Strict Blacklist: Never use male or harsh default voices
+    // Filter out Edge Online (Natural) voices that fail over WebSockets on localhost
+    const reliableVoices = voices.filter(v => !v.name.includes('Online (Natural)'));
+    const pool = reliableVoices.length > 0 ? reliableVoices : voices;
+
     const maleBlacklist = ['david', 'mark', 'george', 'guy', 'male', 'richard', 'stefan', 'paul', 'james'];
 
-    // High Priority: Natural, Neural, and Google Female Voices
+    // High Priority: Local female offline voices
     const soothingFemaleNames = [
-      'Jenny Online (Natural)',
-      'Aria Online (Natural)',
-      'Microsoft Jenny',
-      'Microsoft Aria',
-      'Google US English',
-      'Google UK English Female',
       'Microsoft Zira Desktop',
       'Microsoft Zira',
+      'Google US English',
+      'Google UK English Female',
       'Samantha',
       'Victoria',
       'Karen',
@@ -89,7 +154,7 @@ export const LiveInterviewRoom: React.FC = () => {
     ];
 
     for (const name of soothingFemaleNames) {
-      const match = voices.find(v => 
+      const match = pool.find(v => 
         v.name.toLowerCase().includes(name.toLowerCase()) && 
         v.lang.startsWith('en') &&
         !maleBlacklist.some(m => v.name.toLowerCase().includes(m))
@@ -100,81 +165,110 @@ export const LiveInterviewRoom: React.FC = () => {
       }
     }
 
-    // Tier 2: Any English voice with 'Natural', 'Female', or 'Google' and not male
-    const naturalVoice = voices.find(v => 
+    const naturalVoice = pool.find(v => 
       v.lang.startsWith('en') && 
       !maleBlacklist.some(m => v.name.toLowerCase().includes(m)) &&
-      (v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('female'))
+      (v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('google'))
     );
     if (naturalVoice) {
       persistentVoiceRef.current = naturalVoice;
       return naturalVoice;
     }
 
-    // Tier 3: Any English voice not in male blacklist
-    const politeVoice = voices.find(v => v.lang.startsWith('en') && !maleBlacklist.some(m => v.name.toLowerCase().includes(m)));
+    const politeVoice = pool.find(v => v.lang.startsWith('en') && !maleBlacklist.some(m => v.name.toLowerCase().includes(m)));
     if (politeVoice) {
       persistentVoiceRef.current = politeVoice;
       return politeVoice;
     }
 
-    const fallback = voices.find(v => v.lang.startsWith('en')) || voices[0];
+    const fallback = pool.find(v => v.lang.startsWith('en')) || pool[0];
     persistentVoiceRef.current = fallback;
     return fallback;
   };
 
   // 1. Initialize Session, Camera & MediaRecorder (guarded against re-runs)
   useEffect(() => {
+    isSessionEndedRef.current = false;
     if (isInitializedRef.current) return;
     isInitializedRef.current = true;
 
-    if (!sessionData) {
-      alert("No active session data. Returning to dashboard.");
-      navigate('/dashboard');
-      return;
-    }
-    setSessionId(sessionData.session_id);
-    setCurrentQuestion(sessionData.first_question);
-    startTimeRef.current = Date.now();
-    if (sessionData.duration_minutes) {
-      setTimeRemaining(sessionData.duration_minutes * 60);
-    }
+    const initLiveRoom = async () => {
+      isSessionEndedRef.current = false;
+      let activeSession = sessionData;
+      const searchParams = new URLSearchParams(location.search);
+      const qSessionId = searchParams.get('session');
 
-    // Start Camera Feed & Video MediaRecorder
-    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true })
-      .catch(() => {
-        return navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      })
-      .catch(() => {
-        // Fallback to audio-only if camera is unavailable or denied
-        return navigator.mediaDevices.getUserMedia({ audio: true });
-      })
-      .then((stream) => {
-        mediaStreamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.muted = true;
-          videoRef.current.setAttribute('playsinline', 'true');
-          videoRef.current.setAttribute('autoplay', 'true');
-          const playPromise = videoRef.current.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((e) => console.warn("Live room video play notice:", e));
-          }
-          // Start automated vision & tab switch integrity monitoring
-          if (sessionData.session_id) {
-            integrityEngine.startMonitoring(
-              videoRef.current,
-              sessionData.session_id,
-              (incident) => setActiveIncident(incident),
-              async (reason) => {
-                window.speechSynthesis?.cancel();
-                if (recognitionRef.current) recognitionRef.current.stop();
-                await finalizeAndUploadRecording();
-                setTerminatedReason(reason);
-              }
-            );
-          }
+      if (!activeSession && qSessionId) {
+        try {
+          const res = await api.get(`/interview/session/${qSessionId}`);
+          activeSession = res.data;
+        } catch (e) {
+          console.warn("Failed to fetch session by ID:", e);
         }
+      }
+
+      if (!activeSession) {
+        const stored = sessionStorage.getItem('active_interview_session');
+        if (stored) {
+          try { activeSession = JSON.parse(stored); } catch(e) {}
+        }
+      }
+
+      if (!activeSession) {
+        alert("No active session data. Returning to dashboard.");
+        navigate('/dashboard');
+        return;
+      }
+
+      setActiveSessionState(activeSession);
+      try {
+        sessionStorage.setItem('active_interview_session', JSON.stringify(activeSession));
+      } catch (e) {}
+
+      setSessionId(activeSession.session_id);
+      setCurrentQuestion(activeSession.current_question || activeSession.first_question);
+      startTimeRef.current = Date.now();
+      if (activeSession.duration_minutes) {
+        setTimeRemaining(activeSession.duration_minutes * 60);
+      }
+      if (activeSession.total_questions) {
+        setTotalQuestions(activeSession.total_questions);
+      }
+
+      // Start Camera Feed & Video MediaRecorder
+      navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true })
+        .catch(() => {
+          return navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        })
+        .catch(() => {
+          return navigator.mediaDevices.getUserMedia({ audio: true });
+        })
+        .then((stream) => {
+          mediaStreamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.muted = true;
+            videoRef.current.setAttribute('playsinline', 'true');
+            videoRef.current.setAttribute('autoplay', 'true');
+            const playPromise = videoRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((e) => console.warn("Live room video play notice:", e));
+            }
+            // Start automated vision & tab switch integrity monitoring
+            if (activeSession.session_id) {
+              integrityEngine.startMonitoring(
+                videoRef.current,
+                activeSession.session_id,
+                (incident) => setActiveIncident(incident),
+                async (reason) => {
+                  window.speechSynthesis?.cancel();
+                  if (recognitionRef.current) recognitionRef.current.stop();
+                  await finalizeAndUploadRecording();
+                  setTerminatedReason(reason);
+                }
+              );
+            }
+          }
         try {
           let mimeType = '';
           const candidateMimes = [
@@ -207,6 +301,8 @@ export const LiveInterviewRoom: React.FC = () => {
         }
       })
       .catch((err) => console.warn("Media device access notice:", err));
+    };
+    initLiveRoom();
 
     // Exit protection
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -216,7 +312,6 @@ export const LiveInterviewRoom: React.FC = () => {
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      isSessionEndedRef.current = true;
       window.removeEventListener('beforeunload', handleBeforeUnload);
       integrityEngine.stopMonitoring();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -229,24 +324,43 @@ export const LiveInterviewRoom: React.FC = () => {
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
       }
+      if (audioPlayerRef.current) {
+        try {
+          audioPlayerRef.current.pause();
+          audioPlayerRef.current.currentTime = 0;
+        } catch(e) {}
+      }
+      if (audioAbortControllerRef.current) {
+        audioAbortControllerRef.current.abort();
+      }
+      ttsCacheRef.current.forEach(url => {
+        try { URL.revokeObjectURL(url); } catch(e) {}
+      });
+      ttsCacheRef.current.clear();
       if ('speechSynthesis' in window) {
         window.speechSynthesis.onvoiceschanged = null;
         window.speechSynthesis.cancel();
       }
-      if (recognitionRef.current) recognitionRef.current.stop();
+      if (chromeResumeIntervalRef.current) clearInterval(chromeResumeIntervalRef.current);
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch(e) {}
+      }
     };
   }, [sessionData, navigate]);
 
-  // 2. Initialize Speech Recognition with Synchronous Ref Tracking & Robust VAD Auto-Submit
+  // 2. Initialize Speech Recognition ONCE on mount with synchronous ref guards
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
 
-      recognitionRef.current.onresult = (event: any) => {
+      recognition.onresult = (event: any) => {
+        // Drop any microphone audio captured while AI interviewer is speaking
+        if (isAiSpeakingRef.current) return;
+
         let fullTranscript = '';
         for (let i = 0; i < event.results.length; ++i) {
           fullTranscript += event.results[i][0].transcript + ' ';
@@ -282,144 +396,406 @@ export const LiveInterviewRoom: React.FC = () => {
         }
       };
 
-      recognitionRef.current.onend = () => {
-        if (isListening && !isAiSpeaking && !submitting && !isAiThinking) {
-          try { recognitionRef.current.start(); } catch (e) {}
+      recognition.onend = () => {
+        // Automatically restart only if candidate is supposed to be listening
+        if (isListeningRef.current && !isAiSpeakingRef.current && !submittingRef.current && !isAiThinkingRef.current && !isSessionEndedRef.current) {
+          try { recognition.start(); } catch (e) {}
         }
       };
+
+      recognition.onerror = (event: any) => {
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          console.warn("[SpeechRecognition] Notice:", event.error);
+        }
+      };
+
+      recognitionRef.current = recognition;
     } else {
       console.warn("Speech Recognition not supported in this browser.");
     }
-  }, [isListening, isAiSpeaking, submitting, isAiThinking]);
+
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch(e) {}
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
+
+  // Pre-load and cache SpeechSynthesis voices for fallback
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    const loadVoices = () => {
+      try {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices && voices.length > 0) {
+          const selected = getSoothingVoice(voices);
+          if (selected) {
+            persistentVoiceRef.current = selected;
+          }
+        }
+      } catch (e) {}
+    };
+
+    loadVoices();
+    if (typeof window.speechSynthesis.addEventListener === 'function') {
+      window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    } else {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    return () => {
+      if ('speechSynthesis' in window) {
+        if (typeof window.speechSynthesis.removeEventListener === 'function') {
+          window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+        } else {
+          window.speechSynthesis.onvoiceschanged = null;
+        }
+      }
+    };
+  }, []);
 
   // 3. AI Speech Synthesis Engine (Handles Greeting & Question TTS)
   useEffect(() => {
-    if (currentQuestion && !isAiThinking && !submitting) {
-      if (suppressQuestionSpeakRef.current) {
-        suppressQuestionSpeakRef.current = false;
-        return;
-      }
+    if (!currentQuestion || isAiThinking || submitting || isFinalizingReport || isSessionEndedRef.current) return;
 
-      if (!hasGreetedRef.current) {
-        hasGreetedRef.current = true;
-        const candName = sessionData?.candidate_name || sessionData?.candidate_full_name || 'Candidate';
-        const roleName = sessionData?.role_target || sessionData?.title || 'Software Engineer';
-        const roundName = sessionData?.round_type || 'Technical';
-        const greetingSpeech = `Hi ${candName}! Welcome to your ${roundName} interview for the ${roleName} position. I am your AI Interviewer. Let's begin with your first question. ${currentQuestion.question_text}`;
-        speakQuestion(greetingSpeech);
-      } else {
-        speakQuestion(currentQuestion.question_text);
-      }
-    }
-  }, [currentQuestion]);
+    const qId = String(currentQuestion.question_id || currentQuestion.id || currentQuestion.order_index || currentQuestion.question_text);
 
-  const speakQuestion = (text: string) => {
-    if (isSessionEndedRef.current || isFinalizingReport) {
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    // Prevent duplicate speech for the same question on re-renders, timers, or transcript updates
+    if (lastSpokenQuestionIdRef.current === qId) {
       return;
     }
+    lastSpokenQuestionIdRef.current = qId;
+
+    if (!hasGreetedRef.current) {
+      hasGreetedRef.current = true;
+      const candName = activeSessionState?.candidate_name || sessionData?.candidate_name || sessionData?.candidate_full_name || 'Candidate';
+      const roleName = activeSessionState?.role_target || sessionData?.role_target || sessionData?.title || 'Software Engineer';
+      const roundName = activeSessionState?.round_type || sessionData?.round_type || 'Technical';
+      const greetingSpeech = `Hi ${candName}! Welcome to your ${roundName} interview for the ${roleName} position. I am your AI Interviewer. Let's begin with your first question. ${currentQuestion.question_text}`;
+      speakQuestion(greetingSpeech);
+    } else {
+      speakQuestion(currentQuestion.question_text);
+    }
+  }, [currentQuestion, isAiThinking, submitting, isFinalizingReport]);
+
+  // Robust text chunker that NEVER drops sentences or text without trailing punctuation
+  const splitIntoChunks = (text: string, maxLen: number = 180): string[] => {
+    if (!text || text.length <= maxLen) return [text || ''];
+    const chunks: string[] = [];
+    const parts = text.split(/(?<=[.?!,;:])\s+/);
+    let current = '';
+    for (const part of parts) {
+      if (!part) continue;
+      if (current && (current.length + part.length + 1 > maxLen)) {
+        chunks.push(current.trim());
+        current = part;
+      } else {
+        current = current ? `${current} ${part}` : part;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    return chunks.length > 0 ? chunks : [text];
+  };
+
+  // Safe Chrome resume ticker that prevents Chrome from falling asleep mid-speech (never calls pause)
+  const startChromeResumeHack = () => {
+    stopChromeResumeHack();
+    chromeResumeIntervalRef.current = setInterval(() => {
+      if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+        window.speechSynthesis.resume();
+      }
+    }, 2500);
+  };
+
+  const stopChromeResumeHack = () => {
+    if (chromeResumeIntervalRef.current) {
+      clearInterval(chromeResumeIntervalRef.current);
+      chromeResumeIntervalRef.current = null;
+    }
+  };
+
+  // Fallback Local Speech Synthesis Engine (used if backend network audio fails)
+  const fallbackLocalSpeech = (cleanText: string) => {
+    if (isSessionEndedRef.current || isFinalizingReport) return;
     if (!('speechSynthesis' in window)) {
       setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
       startListening();
       return;
     }
-    window.speechSynthesis.cancel();
-    if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
-    
-    setIsAiSpeaking(true);
-    setIsListening(false);
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e) {}
-    }
 
-    const cleanText = text.replace(/[*_#`~]/g, '').trim();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    // Soothing, natural interview pace & pitch
-    utterance.rate = 0.96;
-    utterance.pitch = 1.02;
-    utterance.volume = 1.0;
-    
-    // Fallback safety timer
-    const safeDurationMs = Math.max(3500, Math.min(25000, cleanText.length * 75));
+    try { window.speechSynthesis.cancel(); } catch(e) {}
+    try { window.speechSynthesis.resume(); } catch(e) {}
+    stopChromeResumeHack();
+    if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+
+    setIsAiSpeaking(true);
+    isAiSpeakingRef.current = true;
+    setIsListening(false);
+    isListeningRef.current = false;
+
+    const chunks = splitIntoChunks(cleanText);
+
+    // Safety fallback timer so interview never hangs
+    const safeDurationMs = Math.max(7000, Math.min(90000, cleanText.length * 95));
     speechTimerRef.current = setTimeout(() => {
+      try { window.speechSynthesis.cancel(); } catch(e) {}
+      stopChromeResumeHack();
       setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
+      activeUtterancesRef.current = [];
+      (window as any).__smarthire_active_utterance = null;
       if (!isSessionEndedRef.current && !isFinalizingReport) {
         startListening();
       }
     }, safeDurationMs);
 
-    const setVoiceAndSpeak = () => {
-      if (isSessionEndedRef.current || isFinalizingReport) {
-        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    const onAllChunksDone = () => {
+      if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+      stopChromeResumeHack();
+      setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
+      activeUtterancesRef.current = [];
+      (window as any).__smarthire_active_utterance = null;
+      if (!isSessionEndedRef.current && !isFinalizingReport) {
+        startListening();
+      }
+    };
+
+    const voices = window.speechSynthesis.getVoices();
+    const soothingVoice = getSoothingVoice(voices) || persistentVoiceRef.current;
+
+    let chunkIdx = 0;
+    startChromeResumeHack();
+
+    const speakNext = () => {
+      if (isSessionEndedRef.current || isFinalizingReport || chunkIdx >= chunks.length) {
+        onAllChunksDone();
         return;
       }
-      const voices = window.speechSynthesis.getVoices();
-      const soothingVoice = getSoothingVoice(voices);
+
+      const chunk = chunks[chunkIdx];
+      chunkIdx++;
+
+      const utterance = new SpeechSynthesisUtterance(chunk);
+      utterance.rate = 0.98;
+      utterance.pitch = 1.02;
+      utterance.volume = 1.0;
       if (soothingVoice) utterance.voice = soothingVoice;
 
+      activeUtterancesRef.current = [utterance];
+      (window as any).__smarthire_active_utterance = utterance;
+
       utterance.onend = () => {
-        if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
-        setIsAiSpeaking(false);
-        if (!isSessionEndedRef.current && !isFinalizingReport) {
-          startListening();
+        if (chunkIdx >= chunks.length) {
+          onAllChunksDone();
+        } else {
+          speakNext();
         }
       };
-      utterance.onerror = () => {
-        if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
-        setIsAiSpeaking(false);
-        if (!isSessionEndedRef.current && !isFinalizingReport) {
-          startListening();
+
+      utterance.onerror = (err) => {
+        console.warn("Speech synthesis chunk notice:", err);
+        if (chunkIdx >= chunks.length) {
+          onAllChunksDone();
+        } else {
+          speakNext();
         }
       };
 
       try {
-        if (!isSessionEndedRef.current && !isFinalizingReport) {
-          window.speechSynthesis.speak(utterance);
-        }
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utterance);
       } catch (e) {
-        setIsAiSpeaking(false);
-        if (!isSessionEndedRef.current && !isFinalizingReport) {
-          startListening();
+        console.warn("Speech synthesis speak exception:", e);
+        if (chunkIdx >= chunks.length) {
+          onAllChunksDone();
+        } else {
+          speakNext();
         }
       }
     };
 
-    const currentVoices = window.speechSynthesis.getVoices();
-    const hasSoothingVoiceReady = currentVoices.length > 0 && currentVoices.some(v => 
-      !['david', 'mark', 'george', 'guy', 'male'].some(m => v.name.toLowerCase().includes(m))
-    );
+    setTimeout(() => {
+      speakNext();
+    }, 40);
+  };
 
-    if (hasSoothingVoiceReady) {
-      setVoiceAndSpeak();
-    } else {
-      let isExecuted = false;
-      const execute = () => {
-        if (isExecuted) return;
-        isExecuted = true;
-        window.speechSynthesis.onvoiceschanged = null;
-        setVoiceAndSpeak();
+  // Primary AI Speech Engine: High-Fidelity Edge Neural Voice Audio
+  const speakQuestion = async (text: string) => {
+    if (isSessionEndedRef.current || isFinalizingReport) {
+      if (audioPlayerRef.current) {
+        try { audioPlayerRef.current.pause(); } catch(e) {}
+      }
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      return;
+    }
+    if (!text || !text.trim()) {
+      setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
+      startListening();
+      return;
+    }
+
+    const cleanText = text.replace(/[*_#`~]/g, '').trim();
+
+    // Abort previous in-flight speech and pause existing audio
+    if (audioPlayerRef.current) {
+      try {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      } catch(e) {}
+    }
+    if (audioAbortControllerRef.current) {
+      try { audioAbortControllerRef.current.abort(); } catch(e) {}
+    }
+    const currentAbortController = new AbortController();
+    audioAbortControllerRef.current = currentAbortController;
+
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch(e) {}
+    }
+    stopChromeResumeHack();
+    if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+
+    // AI is preparing / speaking: stop microphone so it does not transcribe interviewer voice
+    setIsAiSpeaking(true);
+    isAiSpeakingRef.current = true;
+    setIsListening(false);
+    isListeningRef.current = false;
+    setIsFetchingTts(true);
+
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch(e) {}
+    }
+
+    // Play subtle AI chime to notify candidate and unlock audio context
+    playAiChime();
+
+    try {
+      const audioUrl = await fetchNeuralAudio(cleanText, currentAbortController.signal);
+      setIsFetchingTts(false);
+
+      if (isSessionEndedRef.current || isFinalizingReport || currentAbortController.signal.aborted) return;
+
+      if (!audioPlayerRef.current) {
+        audioPlayerRef.current = new Audio();
+      }
+      const player = audioPlayerRef.current;
+      player.src = audioUrl;
+      player.volume = 1.0;
+
+      // Estimated duration fallback safety timer
+      const safeDurationMs = Math.max(8000, Math.min(120000, Math.ceil(cleanText.length * 90)));
+      speechTimerRef.current = setTimeout(() => {
+        console.log("[AI Voice] Speech timeout reached, resuming candidate listening.");
+        setIsAiSpeaking(false);
+        isAiSpeakingRef.current = false;
+        if (!isSessionEndedRef.current && !isFinalizingReport) {
+          startListening();
+        }
+      }, safeDurationMs);
+
+      player.onended = () => {
+        console.log("[AI Voice] Finished reading question.");
+        if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+        setIsAiSpeaking(false);
+        isAiSpeakingRef.current = false;
+        if (!isSessionEndedRef.current && !isFinalizingReport) {
+          startListening();
+        }
       };
-      window.speechSynthesis.onvoiceschanged = execute;
-      setTimeout(execute, 250);
+
+      player.onerror = (e) => {
+        console.warn("[AI Voice] Neural audio playback error, falling back to local speech:", e);
+        if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+        fallbackLocalSpeech(cleanText);
+      };
+
+      const playPromise = player.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setAutoplayBlocked(false);
+            setIsAiSpeaking(true);
+            isAiSpeakingRef.current = true;
+            setIsListening(false);
+            isListeningRef.current = false;
+          })
+          .catch((err) => {
+            console.warn("[AI Voice] Audio play rejected by browser:", err);
+            if (err.name === 'NotAllowedError') {
+              setAutoplayBlocked(true);
+              setIsAiSpeaking(false);
+              isAiSpeakingRef.current = false;
+              // Provide gesture listener to unlock on user click
+              const handleUnlock = () => {
+                setAutoplayBlocked(false);
+                player.play().then(() => {
+                  setIsAiSpeaking(true);
+                  isAiSpeakingRef.current = true;
+                  setIsListening(false);
+                  isListeningRef.current = false;
+                }).catch(() => {
+                  fallbackLocalSpeech(cleanText);
+                });
+                window.removeEventListener('click', handleUnlock);
+                window.removeEventListener('keydown', handleUnlock);
+              };
+              window.addEventListener('click', handleUnlock, { once: true });
+              window.addEventListener('keydown', handleUnlock, { once: true });
+              if (!isSessionEndedRef.current && !isFinalizingReport) {
+                startListening();
+              }
+            } else {
+              fallbackLocalSpeech(cleanText);
+            }
+          });
+      }
+
+    } catch (err: any) {
+      setIsFetchingTts(false);
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || currentAbortController.signal.aborted) {
+        return;
+      }
+      console.warn("[AI Voice] Failed to fetch neural audio, falling back to speech synthesis:", err);
+      fallbackLocalSpeech(cleanText);
     }
   };
 
   const handleSkipAiSpeech = () => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (audioPlayerRef.current) {
+      try {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      } catch(e) {}
     }
+    if (audioAbortControllerRef.current) {
+      audioAbortControllerRef.current.abort();
+    }
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch(e) {}
+    }
+    stopChromeResumeHack();
     if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
     setIsAiSpeaking(false);
+    isAiSpeakingRef.current = false;
+    setIsFetchingTts(false);
+    activeUtterancesRef.current = [];
+    (window as any).__smarthire_active_utterance = null;
     startListening();
   };
 
   const startListening = () => {
-    if (!recognitionRef.current) return;
+    if (isSessionEndedRef.current || isFinalizingReport || submittingRef.current || isAiThinkingRef.current) return;
     setIsListening(true);
-    try {
-      recognitionRef.current.start();
-    } catch (e) {}
+    isListeningRef.current = true;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {}
+    }
   };
 
   const cancelAutoSubmit = () => {
@@ -444,9 +820,21 @@ export const LiveInterviewRoom: React.FC = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+    if (audioPlayerRef.current) {
+      try {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      } catch (e) {}
+    }
+    if (audioAbortControllerRef.current) {
+      audioAbortControllerRef.current.abort();
+    }
     window.speechSynthesis?.cancel();
+    stopChromeResumeHack();
     setAutoSubmitCountdown(null);
-    if (recognitionRef.current) recognitionRef.current.stop();
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch(e) {}
+    }
     
     setIsListening(false);
     setIsAiSpeaking(false);
@@ -476,8 +864,9 @@ export const LiveInterviewRoom: React.FC = () => {
       
       if (res.data.next_question) {
         const nextQ = res.data.next_question;
-        // Suppress redundant question speech in useEffect so full speech plays uninterrupted
-        suppressQuestionSpeakRef.current = true;
+        const nextQId = String(nextQ.question_id || nextQ.id || nextQ.order_index || nextQ.question_text);
+        // Mark next question as spoken so useEffect does not trigger duplicate speech
+        lastSpokenQuestionIdRef.current = nextQId;
         setCurrentQuestion(nextQ);
         setQuestionIndex(prev => prev + 1);
         
@@ -535,21 +924,18 @@ export const LiveInterviewRoom: React.FC = () => {
           blobUrl: localBlobUrl,
           blob: blob
         };
+
+        // Cache in IndexedDB immediately so it is never lost
+        await storeSessionRecordingBlob(sessionId, blob);
+
         try {
-          sessionStorage.setItem(`session_recording_url_${sessionId}`, localBlobUrl);
+          sessionStorage.removeItem(`session_recording_url_${sessionId}`);
         } catch(e) {}
 
-        const formData = new FormData();
-        const ext = mime.includes('mp4') ? 'mp4' : 'webm';
         const durationSec = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
-        formData.append('file', blob, `recording_${sessionId}.${ext}`);
-        formData.append('duration', String(durationSec));
-        formData.append('recording_type', mime.startsWith('audio') ? 'AUDIO_ONLY' : 'VIDEO_AUDIO');
         
-        await api.post(`/uploads/interview-sessions/${sessionId}/recordings`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: 45000
-        }).catch(e => console.warn("Recording upload notice:", e));
+        // Upload with multi-attempt retry
+        await uploadSessionRecordingWithRetry(sessionId, blob, durationSec, 3);
       }
     } catch(e) {
       console.warn("Recording finalize notice:", e);
@@ -557,15 +943,25 @@ export const LiveInterviewRoom: React.FC = () => {
   };
 
   const handleCompleteSession = async () => {
-    if (!sessionId) return;
+    if (!sessionId || isSessionEndedRef.current) return;
     isSessionEndedRef.current = true;
+    integrityEngine.stopMonitoring();
     setIsFinalizingReport(true);
     setSubmitting(true);
     setIsAiSpeaking(false);
     setIsListening(false);
     if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
+    if (audioPlayerRef.current) {
+      try {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      } catch (e) {}
+    }
+    if (audioAbortControllerRef.current) {
+      audioAbortControllerRef.current.abort();
+    }
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e) {}
+      try { recognitionRef.current.abort(); } catch(e) {}
     }
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = null;
@@ -610,7 +1006,11 @@ export const LiveInterviewRoom: React.FC = () => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          handleCompleteSession();
+          setTimeout(() => {
+            if (!isSessionEndedRef.current) {
+              handleCompleteSession();
+            }
+          }, 0);
           return 0;
         }
         return prev - 1;
@@ -768,23 +1168,57 @@ export const LiveInterviewRoom: React.FC = () => {
 
           {/* AI Status Pill & Active Question Card */}
           <div className="w-full max-w-3xl text-center space-y-4">
+            {/* Hidden audio player instance */}
+            <audio ref={audioPlayerRef} preload="auto" className="hidden" />
+
+            {/* Browser Autoplay Unmute Banner */}
+            {autoplayBlocked && (
+              <div 
+                onClick={() => {
+                  setAutoplayBlocked(false);
+                  if (audioPlayerRef.current) {
+                    audioPlayerRef.current.play().then(() => {
+                      setIsAiSpeaking(true);
+                      isAiSpeakingRef.current = true;
+                      setIsListening(false);
+                    }).catch(() => {
+                      if (currentQuestion) {
+                        fallbackLocalSpeech(currentQuestion.question_text);
+                      }
+                    });
+                  } else if (currentQuestion) {
+                    fallbackLocalSpeech(currentQuestion.question_text);
+                  }
+                }}
+                className="mx-auto max-w-lg px-4 py-3 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-bold flex items-center justify-between gap-3 animate-pulse cursor-pointer shadow-lg hover:bg-amber-500/30 transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-5 h-5 text-amber-400 shrink-0" />
+                  <span>Browser muted audio. Click anywhere or tap Unmute to hear the AI Interviewer speak.</span>
+                </div>
+                <span className="px-3 py-1 rounded-lg bg-amber-400 text-slate-950 text-[11px] font-black uppercase tracking-wider shrink-0">Unmute 🔊</span>
+              </div>
+            )}
+
             <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-slate-800 shadow-inner">
               <div className={`w-2.5 h-2.5 rounded-full ${
+                isFetchingTts ? 'bg-indigo-400 animate-spin' :
                 isAiSpeaking ? 'bg-indigo-400 animate-ping' : 
                 isAiThinking ? 'bg-amber-400 animate-pulse' : 
                 'bg-emerald-400 animate-pulse'
               }`} />
               <span className="text-xs font-black text-slate-200 tracking-wide uppercase">
-                {isAiSpeaking ? 'AI Interviewer Speaking...' : 
-                 isAiThinking ? 'AI Evaluating Response...' : 
-                 'Listening To Candidate...'}
+                {isFetchingTts ? 'Preparing AI Voice... ⏳' :
+                 isAiSpeaking ? 'AI Interviewer Speaking... 🎙️' : 
+                 isAiThinking ? 'AI Evaluating Response... 🧠' : 
+                 'Listening To Candidate... 🟢'}
               </span>
               {isAiSpeaking && (
                 <button
                   onClick={handleSkipAiSpeech}
                   className="ml-2 px-2.5 py-0.5 rounded-full bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 text-[10px] font-extrabold uppercase tracking-wider border border-indigo-500/40 transition-all cursor-pointer"
                 >
-                  Skip Audio ⏩
+                  Skip Voice ⏩
                 </button>
               )}
             </div>
@@ -797,10 +1231,38 @@ export const LiveInterviewRoom: React.FC = () => {
             )}
 
             {currentQuestion && (
-              <div className="p-6 bg-slate-950/60 rounded-2xl border border-slate-800/80 shadow-xl backdrop-blur-sm">
+              <div className="p-6 bg-slate-950/60 rounded-2xl border border-slate-800/80 shadow-xl backdrop-blur-sm space-y-4">
                 <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-100 leading-snug tracking-tight">
                   "{currentQuestion.question_text}"
                 </h2>
+
+                {/* Interactive Audio Controls */}
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <button
+                    onClick={() => speakQuestion(currentQuestion.question_text)}
+                    disabled={isFetchingTts}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black shadow-lg hover:shadow-indigo-500/25 transition-all active:scale-95 cursor-pointer"
+                    title="Click to hear the AI Interviewer read this question aloud"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                    <span>
+                      {isFetchingTts ? 'Loading Voice... ⏳' :
+                       isAiSpeaking ? 'Replay Voice 🔊' : 
+                       'Read Question Aloud 🔊'}
+                    </span>
+                  </button>
+
+                  {isAiSpeaking && (
+                    <button
+                      onClick={handleSkipAiSpeech}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-extrabold transition-all active:scale-95 cursor-pointer border border-slate-700"
+                      title="Skip or mute current question audio"
+                    >
+                      <VolumeX className="w-4 h-4" />
+                      <span>Skip Voice</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>

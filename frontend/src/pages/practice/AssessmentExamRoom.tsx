@@ -137,57 +137,57 @@ export const AssessmentExamRoom: React.FC = () => {
   if (result) {
     return (
       <main className="p-6 lg:p-10 max-w-5xl mx-auto space-y-8">
-        <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-md space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+        <div className="bg-white dark:bg-[#111827] rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-md space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6">
             <div>
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black rounded-lg uppercase">
+              <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-black rounded-lg uppercase">
                 {result.hiring_recommendation === 'Pass' ? 'PASSED ✅' : 'FAILED ❌'}
               </span>
-              <h1 className="text-2xl font-black text-slate-900 mt-2">{result.title} Report</h1>
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white mt-2">{result.title} Report</h1>
             </div>
 
             <div className="text-right">
-              <span className="text-[10px] text-slate-400 font-bold uppercase block">Overall Score</span>
-              <span className="text-4xl font-black text-indigo-600">{result.overall_score}%</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase block">Overall Score</span>
+              <span className="text-4xl font-black text-indigo-600 dark:text-indigo-400">{result.overall_score}%</span>
             </div>
           </div>
 
           {/* Metrics Grid */}
-          <div className="grid grid-cols-4 gap-4 p-4 bg-slate-50 rounded-2xl">
+          <div className="grid grid-cols-4 gap-4 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800">
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Correct</span>
-              <span className="text-lg font-black text-emerald-600">{result.total_correct}</span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase block">Correct</span>
+              <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">{result.total_correct}</span>
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Wrong</span>
-              <span className="text-lg font-black text-rose-600">{result.total_wrong}</span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase block">Wrong</span>
+              <span className="text-lg font-black text-rose-600 dark:text-rose-400">{result.total_wrong}</span>
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Skipped</span>
-              <span className="text-lg font-black text-slate-500">{result.total_skipped}</span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase block">Skipped</span>
+              <span className="text-lg font-black text-slate-500 dark:text-slate-400">{result.total_skipped}</span>
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Violations</span>
-              <span className="text-lg font-black text-amber-600">{result.proctoring_violations}</span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase block">Violations</span>
+              <span className="text-lg font-black text-amber-600 dark:text-amber-400">{result.proctoring_violations}</span>
             </div>
           </div>
 
           {/* Detailed Question Review */}
           <div className="space-y-4 pt-4">
-            <h3 className="text-lg font-extrabold text-slate-900">Question & Explanation Review</h3>
+            <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Question & Explanation Review</h3>
             {result.question_review?.map((q: any) => (
               <div key={q.question_id} className={`p-5 rounded-2xl border ${
-                q.is_correct ? 'bg-emerald-50/50 border-emerald-200' : q.selected_option === null ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/50 border-rose-200'
+                q.is_correct ? 'bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800' : q.selected_option === null ? 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700' : 'bg-rose-50/50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800'
               } space-y-3`}>
                 <div className="flex items-center justify-between text-xs font-bold">
-                  <span className="text-slate-500">Q{q.order_index} · {q.category}</span>
-                  <span className={q.is_correct ? 'text-emerald-700' : 'text-rose-700'}>
+                  <span className="text-slate-500 dark:text-slate-400">Q{q.order_index} · {q.category}</span>
+                  <span className={q.is_correct ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}>
                     {q.is_correct ? '+1.0 Point' : q.selected_option === null ? '0.0 Point (Skipped)' : '-0.25 Point'}
                   </span>
                 </div>
-                <p className="text-sm font-bold text-slate-900">{q.question_text}</p>
+                <p className="text-sm font-bold text-slate-900 dark:text-white">{q.question_text}</p>
                 {q.code_snippet && (
-                  <pre className="p-3 bg-slate-900 text-indigo-300 font-mono text-xs rounded-xl overflow-x-auto">
+                  <pre className="p-3 bg-slate-900 text-indigo-300 font-mono text-xs rounded-xl overflow-x-auto border border-slate-800">
                     <code>{q.code_snippet}</code>
                   </pre>
                 )}
@@ -196,14 +196,14 @@ export const AssessmentExamRoom: React.FC = () => {
                     <div key={opIdx} className={`p-2.5 rounded-xl border ${
                       opIdx === q.correct_option ? 'bg-emerald-500 text-white border-emerald-600 font-extrabold' :
                       opIdx === q.selected_option ? 'bg-rose-500 text-white border-rose-600 font-extrabold' :
-                      'bg-white text-slate-700 border-slate-200'
+                      'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
                     }`}>
                       {opIdx === q.correct_option ? '✓ ' : opIdx === q.selected_option ? '✗ ' : ''}{op}
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-slate-200/80">
-                  <strong className="text-slate-900">Explanation:</strong> {q.explanation}
+                <p className="text-xs text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+                  <strong className="text-slate-900 dark:text-white">Explanation:</strong> {q.explanation}
                 </p>
               </div>
             ))}
@@ -211,7 +211,7 @@ export const AssessmentExamRoom: React.FC = () => {
 
           <button
             onClick={() => navigate('/practice')}
-            className="w-full py-4 bg-slate-900 text-white font-extrabold text-xs rounded-2xl hover:bg-slate-800 transition-all"
+            className="w-full py-4 bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-extrabold text-xs rounded-2xl transition-all"
           >
             Return to AI Practice Hub
           </button>

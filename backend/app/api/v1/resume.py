@@ -12,7 +12,7 @@ from app.services.resume_service import resume_service
 
 router = APIRouter(prefix="/resume", tags=["Resume & ATS Pipeline"])
 
-UPLOAD_DIR = os.path.join(os.getcwd(), "uploads", "resumes")
+UPLOAD_DIR = os.path.join(os.getcwd(), "static", "uploads", "resumes")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/parse")
@@ -31,7 +31,7 @@ async def upload_and_parse_resume(
 
     # 2. Get or Create Candidate Profile
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    candidate = res_c.scalar_one_or_none()
+    candidate = res_c.scalars().first()
     if not candidate:
         candidate = Candidate(
             id=f"cand-{uuid.uuid4().hex[:8]}",
@@ -44,19 +44,21 @@ async def upload_and_parse_resume(
 
     # 3. Save File to Disk
     safe_filename = f"{candidate.id}_v{uuid.uuid4().hex[:6]}_{filename}"
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    disk_path = os.path.join(UPLOAD_DIR, safe_filename)
     try:
-        with open(file_path, "wb") as f:
+        with open(disk_path, "wb") as f:
             f.write(content)
     except Exception:
-        file_path = f"/uploads/resumes/{safe_filename}"
+        pass
+    web_url = f"/uploads/resumes/{safe_filename}"
+    candidate.resume_url = web_url
 
     # 4. Parse, Normalize into PostgreSQL, Version & Auto-Sync Candidate Profile
     full_parsed_resume = await resume_service.parse_and_store_resume(
         db=db,
         candidate=candidate,
         file_name=filename,
-        file_path=file_path,
+        file_path=web_url,
         raw_text=raw_text
     )
 
@@ -69,7 +71,7 @@ async def get_my_resume(
 ):
     """Retrieves active normalized resume and full parsed structure for current candidate."""
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    candidate = res_c.scalar_one_or_none()
+    candidate = res_c.scalars().first()
     if not candidate:
         return None
 
@@ -99,7 +101,7 @@ async def get_resume_versions(
 ):
     """Retrieves list of all resume upload versions for candidate history."""
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    candidate = res_c.scalar_one_or_none()
+    candidate = res_c.scalars().first()
     if not candidate:
         return []
 
@@ -167,7 +169,7 @@ async def delete_my_resume(
 ):
     """Deletes stored candidate resume records from database."""
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    candidate = res_c.scalar_one_or_none()
+    candidate = res_c.scalars().first()
     if not candidate:
         return {"message": "No candidate profile found."}
 

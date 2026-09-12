@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "")
+    
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgrespassword2026")
@@ -37,7 +40,7 @@ class Settings(BaseSettings):
         db_override = os.getenv("DATABASE_URL")
         if db_override:
             return db_override
-        use_sqlite = os.getenv("USE_SQLITE", "true").lower() in ("true", "1")
+        use_sqlite = os.getenv("USE_SQLITE", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() in ("true", "1")
         if use_sqlite:
             return f"sqlite+aiosqlite:///{self.CANONICAL_SQLITE_PATH}"
 
@@ -52,7 +55,13 @@ class Settings(BaseSettings):
     
     @property
     def SYNC_DATABASE_URL(self) -> str:
-        return f"sqlite:///{self.CANONICAL_SQLITE_PATH}"
+        db_override = os.getenv("SYNC_DATABASE_URL")
+        if db_override:
+            return db_override
+        use_sqlite = os.getenv("USE_SQLITE", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() in ("true", "1")
+        if use_sqlite:
+            return f"sqlite:///{self.CANONICAL_SQLITE_PATH}"
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     REDIS_HOST: str = os.getenv("REDIS_HOST", "127.0.0.1")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))

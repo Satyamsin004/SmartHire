@@ -783,9 +783,42 @@ class Notification(Base):
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
     notification_type = Column(String(50), default="interview_scheduled")
+    interview_id = Column(String(36), nullable=True)
+    link = Column(String(500), nullable=True)
     is_read = Column(Boolean, default=False)
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ReminderScheduleLog(Base):
+    __tablename__ = "reminder_schedule_logs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    interview_id = Column(String(36), ForeignKey("scheduled_interviews.id"), nullable=False, index=True)
+    candidate_user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    reminder_type = Column(String(20), nullable=False) # 24H, 1H, 15M
+    scheduled_for = Column(DateTime, nullable=False, index=True)
+    idempotency_key = Column(String(100), unique=True, index=True, nullable=False)
+    status = Column(String(20), default="PENDING", index=True) # PENDING, SENT, CANCELLED, SKIPPED
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class EmailNotificationLog(Base):
+    __tablename__ = "email_notification_logs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    interview_id = Column(String(36), nullable=True, index=True)
+    notification_type = Column(String(50), nullable=False, index=True)
+    idempotency_key = Column(String(120), unique=True, index=True, nullable=False)
+    recipient_email = Column(String(255), nullable=False)
+    subject = Column(String(255), nullable=False)
+    body_preview = Column(Text, nullable=True)
+    status = Column(String(20), default="PENDING", index=True) # PENDING, SENT, FAILED
+    retry_count = Column(Integer, default=0)
+    failure_reason = Column(Text, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class JobPosting(Base):

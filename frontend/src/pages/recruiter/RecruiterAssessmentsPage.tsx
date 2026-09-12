@@ -3,8 +3,10 @@ import {
   CheckSquare, Plus, Layers, Clock, ShieldCheck, Award, Users, Filter, ArrowRight, Sparkles, Building2
 } from 'lucide-react';
 import api from '../../services/api';
+import { useWebSocket } from '../../context/WebSocketContext';
 
 export const RecruiterAssessmentsPage: React.FC = () => {
+  const { lastMessage } = useWebSocket();
   const [jobs, setJobs] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState<string>('');
 
@@ -19,14 +21,25 @@ export const RecruiterAssessmentsPage: React.FC = () => {
   const [proctoring, setProctoring] = useState<boolean>(true);
   const [creating, setCreating] = useState<boolean>(false);
 
-  useEffect(() => {
+  const fetchJobs = () => {
     api.get('/recruiter/posted-jobs')
       .then((res) => {
         setJobs(res.data || []);
-        if (res.data && res.data.length > 0) setSelectedJob(res.data[0].id);
+        if (res.data && res.data.length > 0 && !selectedJob) setSelectedJob(res.data[0].id);
       })
       .catch((err) => console.error(err));
+  };
+
+  useEffect(() => {
+    fetchJobs();
   }, []);
+
+  // Listen for realtime domain updates
+  useEffect(() => {
+    if (lastMessage) {
+      fetchJobs();
+    }
+  }, [lastMessage]);
 
   const handleCreateAssessmentConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,29 +71,29 @@ export const RecruiterAssessmentsPage: React.FC = () => {
 
   return (
     <main className="p-6 lg:p-10 max-w-7xl mx-auto w-full space-y-8">
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center font-bold">
             <CheckSquare className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-slate-900">Online Assessment Manager</h1>
-            <p className="text-xs font-semibold text-slate-500">Configure proctored technical & aptitude screening tests for candidate requisitions</p>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white">Online Assessment Manager</h1>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Configure proctored technical & aptitude screening tests for candidate requisitions</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-8 space-y-6 shadow-xs">
-          <h2 className="text-lg font-extrabold text-slate-900">Configure Requisition Assessment</h2>
+        <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-6 shadow-xs">
+          <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Configure Requisition Assessment</h2>
 
           <form onSubmit={handleCreateAssessmentConfig} className="space-y-4">
             <div>
-              <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Target Job Requisition</label>
+              <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">Target Job Requisition</label>
               <select
                 value={selectedJob}
                 onChange={(e) => setSelectedJob(e.target.value)}
-                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
               >
                 {jobs.map((j) => (
                   <option key={j.id} value={j.id}>{j.title} ({j.company_name})</option>
@@ -89,32 +102,32 @@ export const RecruiterAssessmentsPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Assessment Title</label>
+              <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">Assessment Title</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
               />
             </div>
 
             <div>
-              <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Evaluation Topics (Comma Separated)</label>
+              <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">Evaluation Topics (Comma Separated)</label>
               <input
                 type="text"
                 value={topicsStr}
                 onChange={(e) => setTopicsStr(e.target.value)}
-                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Difficulty</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">Difficulty</label>
                 <select
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 >
                   <option>Easy</option>
                   <option>Medium</option>
@@ -124,34 +137,34 @@ export const RecruiterAssessmentsPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Passing Threshold (%)</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">Passing Threshold (%)</label>
                 <input
                   type="number"
                   value={passingScore}
                   onChange={(e) => setPassingScore(parseFloat(e.target.value) || 70)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Question Count</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">Question Count</label>
                 <input
                   type="number"
                   value={qCount}
                   onChange={(e) => setQCount(parseInt(e.target.value) || 10)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block mb-2">Time Limit (Mins)</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">Time Limit (Mins)</label>
                 <input
                   type="number"
                   value={duration}
                   onChange={(e) => setDuration(parseInt(e.target.value) || 15)}
-                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600"
                 />
               </div>
             </div>

@@ -40,6 +40,7 @@ const clearAuthData = () => {
   sessionStorage.removeItem('user');
   sessionStorage.removeItem('token');
   delete api.defaults.headers.common['Authorization'];
+  clearApiCache();
 };
 
 api.interceptors.response.use(
@@ -113,4 +114,74 @@ api.interceptors.response.use(
   }
 );
 
+// In-memory cache and in-flight request deduplication for ultra-fast load times
+const cacheMap = new Map<string, { res: any; timestamp: number }>();
+const inFlightMap = new Map<string, Promise<any>>();
+
+export const clearApiCache = () => {
+  cacheMap.clear();
+  inFlightMap.clear();
+};
+
+const rawGet = api.get.bind(api);
+api.get = ((url: string, config?: any) => {
+  // Option to skip cache if explicit
+  if (config?.skipCache) {
+    return rawGet(url, config);
+  }
+
+  const key = `${url}?${JSON.stringify(config?.params || {})}`;
+  const now = Date.now();
+  const ttl = config?.cacheTtl ?? 20000; // 20-second default cache for repeat visits / tab switching
+
+  const cached = cacheMap.get(key);
+  if (cached && now - cached.timestamp < ttl) {
+    return Promise.resolve({ ...cached.res, fromCache: true });
+  }
+
+  // Deduplicate identical in-flight requests
+  const existingInFlight = inFlightMap.get(key);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const reqPromise = rawGet(url, config)
+    .then((response) => {
+      cacheMap.set(key, { res: response, timestamp: Date.now() });
+      return response;
+    })
+    .finally(() => {
+      inFlightMap.delete(key);
+    });
+
+  inFlightMap.set(key, reqPromise);
+  return reqPromise;
+}) as typeof api.get;
+
+// Auto-purge cache on write mutations to keep client data synchronized
+const rawPost = api.post.bind(api);
+api.post = ((...args: any[]) => {
+  clearApiCache();
+  return (rawPost as any)(...args);
+}) as typeof api.post;
+
+const rawPut = api.put.bind(api);
+api.put = ((...args: any[]) => {
+  clearApiCache();
+  return (rawPut as any)(...args);
+}) as typeof api.put;
+
+const rawPatch = api.patch.bind(api);
+api.patch = ((...args: any[]) => {
+  clearApiCache();
+  return (rawPatch as any)(...args);
+}) as typeof api.patch;
+
+const rawDelete = api.delete.bind(api);
+api.delete = ((...args: any[]) => {
+  clearApiCache();
+  return (rawDelete as any)(...args);
+}) as typeof api.delete;
+
 export default api;
+

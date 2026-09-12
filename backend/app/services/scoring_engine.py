@@ -41,10 +41,11 @@ class ScoringEngine:
         speech_results: List[Dict[str, Any]],
         vision_results: List[Dict[str, Any]],
         technical_answers: List[Dict[str, Any]],
-        transcripts: List[str],
+        transcripts: Optional[List[str]] = None,
         session_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Calculates authentic evidence-based interview scores using specialized analyzers."""
+        transcripts = transcripts or []
         info = session_info or {}
         role = info.get("role_target", "Software Engineer")
         total_duration = float(info.get("duration_minutes", 15) * 60)
@@ -68,10 +69,33 @@ class ScoringEngine:
 
         # 2. Run Speech Analytics
         speech_analysis = speech_analyzer.analyze_full_session(raw_segments, total_duration)
+        if speech_results and not raw_segments:
+            first_sp = speech_results[0]
+            if "clarity_score" in first_sp:
+                speech_analysis["clarity_score"] = float(first_sp["clarity_score"])
+            if "grammar_score" in first_sp:
+                speech_analysis["grammar_score"] = float(first_sp["grammar_score"])
+            if "speaking_pace_wpm" in first_sp:
+                speech_analysis["average_wpm"] = float(first_sp["speaking_pace_wpm"])
+                speech_analysis["pace_score"] = min(100.0, max(40.0, 100.0 - abs(140.0 - speech_analysis["average_wpm"]) * 0.5))
+            if "filler_word_count" in first_sp:
+                speech_analysis["filler_count"] = int(first_sp["filler_word_count"])
+                speech_analysis["filler_control_score"] = max(40.0, 100.0 - (int(first_sp["filler_word_count"]) * 5.0))
+            if "vocabulary_richness" in first_sp:
+                speech_analysis["vocabulary_richness"] = float(first_sp["vocabulary_richness"])
 
         # 3. Run Gaze, Eye-Tracking & Visual Analytics
         raw_observations = info.get("visual_observations") or []
         gaze_analysis = gaze_analyzer.analyze_session_gaze(raw_observations, total_duration)
+        if vision_results and not raw_observations:
+            first_vis = vision_results[0]
+            if "eye_contact_percentage" in first_vis:
+                gaze_analysis["eye_contact_ratio"] = float(first_vis["eye_contact_percentage"])
+            if "attention_score" in first_vis:
+                gaze_analysis["attention_score"] = float(first_vis["attention_score"])
+            if "confidence_percentage" in first_vis:
+                gaze_analysis["engagement_score"] = float(first_vis["confidence_percentage"])
+                gaze_analysis["head_pose_stability"] = float(first_vis["confidence_percentage"])
         emotion_analysis = emotion_service.aggregate_session_emotions(raw_observations, total_duration)
 
         # 4. Run Question-Specific Technical Evaluation
@@ -90,6 +114,14 @@ class ScoringEngine:
                 })
 
         tech_analysis = technical_evaluator.evaluate_answers(normalized_questions, technical_answers)
+        if technical_answers and not normalized_questions and "technical_score" in technical_answers[0]:
+            tech_score_direct = float(technical_answers[0]["technical_score"])
+            tech_analysis["technical_score"] = tech_score_direct
+            tech_analysis["accuracy"] = tech_score_direct
+            tech_analysis["concept_relevance"] = tech_score_direct
+            tech_analysis["problem_solving"] = float(technical_answers[0].get("problem_solving", tech_score_direct))
+            tech_analysis["completeness"] = float(technical_answers[0].get("completeness", tech_score_direct))
+            tech_analysis["domain_knowledge"] = float(technical_answers[0].get("domain_knowledge", tech_score_direct))
 
         # 5. Deterministic Communication Submetric Calculations
         clarity = speech_analysis["clarity_score"]

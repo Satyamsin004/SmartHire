@@ -16,6 +16,8 @@ from app.models.domain import (
 )
 from app.services.ai_engine import ai_engine
 from app.services.scoring_engine import scoring_engine
+from app.services.email_service import email_service
+from app.core.config import settings
 from app.api.v1.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -179,6 +181,8 @@ class PipelineManager:
             return False
 
         for app in apps:
+            if (app.status or "").lower() in ["hired", "offer sent", "offer accepted"] and new_status.lower() in ["interview scheduled", "interview in progress", "shortlisted", "screening passed"]:
+                continue
             app.status = new_status
         return True
 
@@ -210,19 +214,35 @@ class QuestionGeneratorService:
                 logger.warning(f"Gemini generated duplicate or initial question '{q_text}' as follow-up. Triggering contextual fallback.")
                 cand_ans = context.get('candidate_answer', '').lower()
                 role = context.get('role', 'Software Engineer')
-                fallbacks = [
-                    "How do you handle API versioning, error schemas, and backward compatibility in production?",
-                    "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?",
-                    f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?",
-                    "How do you approach automated testing, continuous integration, and canary deployments for microservices?",
-                    "What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?",
-                    "How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?",
-                    "Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?"
-                ]
-                if "api" in cand_ans or "rest" in cand_ans:
-                    fallbacks.insert(0, "How do you handle API versioning, error schemas, and backward compatibility in production?")
-                elif "database" in cand_ans or "sql" in cand_ans:
-                    fallbacks.insert(0, "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?")
+                round_type_str = str(context.get('round_type') or 'Technical').lower()
+
+                if "behavioral" in round_type_str or "star" in round_type_str:
+                    fallbacks = [
+                        "Could you elaborate on the specific actions YOU personally took in that scenario, and how your team reacted?",
+                        "What was the measurable outcome or final result of that situation, and what would you do differently today?",
+                        "Can you share an instance where you faced a significant conflict with a colleague and how you resolved it diplomatically?",
+                        "Tell me about a time when you took initiative to solve an unexpected project roadblock under tight deadlines."
+                    ]
+                elif "hr" in round_type_str or "culture" in round_type_str:
+                    fallbacks = [
+                        "How do your personal professional values and long-term career aspirations align with our company culture?",
+                        "What kind of management style and workplace dynamic allows you to perform at your highest potential?",
+                        "How do you prioritize your work-life balance and mental focus when managing multiple high-priority deliverables?"
+                    ]
+                else:
+                    fallbacks = [
+                        "How do you handle API versioning, error schemas, and backward compatibility in production?",
+                        "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?",
+                        f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?",
+                        "How do you approach automated testing, continuous integration, and canary deployments for microservices?",
+                        "What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?",
+                        "How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?",
+                        "Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?"
+                    ]
+                    if "api" in cand_ans or "rest" in cand_ans:
+                        fallbacks.insert(0, "How do you handle API versioning, error schemas, and backward compatibility in production?")
+                    elif "database" in cand_ans or "sql" in cand_ans:
+                        fallbacks.insert(0, "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?")
                 
                 for fb in fallbacks:
                     fb_dup = any(fb.lower() == h.lower() or (len(fb) > 20 and fb.lower() in h.lower()) for h in all_history)
@@ -238,9 +258,17 @@ class QuestionGeneratorService:
             }
         except Exception as e:
             logger.error(f"Dynamic Follow-up generation failed: {e}")
+            round_type_str = str(context.get('round_type') or 'Technical').lower()
+            if "behavioral" in round_type_str:
+                return {
+                    "question_text": "Thank you for explaining that. Could you describe the specific outcome of that situation and what you learned from it?",
+                    "category": "Behavioral",
+                    "difficulty": "Medium",
+                    "expected_keywords": ["situation", "outcome", "learning"]
+                }
             return {
-                "question_text": "Thank you for sharing. Could you provide a specific example from your past experience?",
-                "category": "Behavioral",
+                "question_text": "Thank you for sharing. Could you provide a specific technical example from your past experience?",
+                "category": "Technical",
                 "difficulty": "Medium",
                 "expected_keywords": ["example", "experience"]
             }
@@ -291,26 +319,52 @@ class QuestionGeneratorService:
         # Fallback with distinct main questions if deduplicated list is shorter than target count
         if len(unique_questions) < num_questions:
             role = session.role_target or "Software Engineer"
-            main_fallbacks = [
-                f"How do you design scalable REST APIs and handle data validation in {role} applications?",
-                f"Could you explain your approach to database indexing and query optimization for high-traffic {role} services?",
-                f"How do you configure CI/CD pipelines, containerization, and automated deployments for {role} services?",
-                f"What strategies do you use for error handling, logging, and monitoring in {role} backend microservices?",
-                f"Could you describe a challenging technical architecture decision you made in a recent {role} project?",
-                f"How do you handle distributed caching, session persistence, and invalidation strategies in {role} systems?",
-                f"What approaches do you take to design fault-tolerant microservices with circuit breakers and fallback mechanisms for {role} applications?",
-                f"How do you ensure data consistency, transaction management, and saga patterns across microservices in {role} projects?",
-                f"Could you elaborate on your experience implementing real-time messaging, WebSockets, and event-driven architectures for {role} services?",
-                f"What performance profiling tools and load testing strategies do you use to benchmark high-scale {role} backends?"
-            ]
+            round_type_str = str(session.round_type or context.get('round_type') or 'Technical').lower()
+
+            if "behavioral" in round_type_str or "star" in round_type_str:
+                main_fallbacks = [
+                    "Could you walk me through a challenging situation in a past project where you had to resolve a conflict within your team, and what was the outcome?",
+                    "Tell me about a time when you took initiative to fix a broken process or technical bottleneck without being directly asked.",
+                    "Can you describe a scenario where you faced tight deadlines and conflicting priorities? How did you prioritize and execute?",
+                    "Tell me about a time when you received constructive or critical feedback on your work and how you incorporated it.",
+                    "Describe a time you made a mistake on a project. How did you communicate it to stakeholders and resolve it?",
+                    "Walk me through a project where you collaborated closely with cross-functional partners (e.g. Product, Design, QA) to achieve a key deliverable."
+                ]
+                fb_category = "Behavioral & STAR"
+                fb_keywords = ["teamwork", "leadership", "STAR", "conflict", "deadlines"]
+            elif "hr" in round_type_str or "culture" in round_type_str:
+                main_fallbacks = [
+                    f"To begin, tell me about your career journey as a {role}, what drives your passion, and why this role is the right next step for you?",
+                    f"What key core values and team dynamics are most important to you when choosing an employer?",
+                    f"Looking ahead, what professional milestones or leadership skills do you aim to develop over the next 2 to 3 years?",
+                    "How do you ensure you maintain work-life balance and productivity in a fast-paced work environment?"
+                ]
+                fb_category = "HR & Cultural Fit"
+                fb_keywords = ["career", "motivation", "values", "culture"]
+            else:
+                main_fallbacks = [
+                    f"How do you design scalable REST APIs and handle data validation in {role} applications?",
+                    f"Could you explain your approach to database indexing and query optimization for high-traffic {role} services?",
+                    f"How do you configure CI/CD pipelines, containerization, and automated deployments for {role} services?",
+                    f"What strategies do you use for error handling, logging, and monitoring in {role} backend microservices?",
+                    f"Could you describe a challenging technical architecture decision you made in a recent {role} project?",
+                    f"How do you handle distributed caching, session persistence, and invalidation strategies in {role} systems?",
+                    f"What approaches do you take to design fault-tolerant microservices with circuit breakers and fallback mechanisms for {role} applications?",
+                    f"How do you ensure data consistency, transaction management, and saga patterns across microservices in {role} projects?",
+                    f"Could you elaborate on your experience implementing real-time messaging, WebSockets, and event-driven architectures for {role} services?",
+                    f"What performance profiling tools and load testing strategies do you use to benchmark high-scale {role} backends?"
+                ]
+                fb_category = "Technical Architecture"
+                fb_keywords = ["architecture", "design", "performance"]
+
             for fb_text in main_fallbacks:
                 norm_fb = re.sub(r'[^a-zA-Z0-9]', '', fb_text.lower())
                 if norm_fb not in norm_history and fb_text not in prev_texts:
                     unique_questions.append({
                         "question_text": fb_text,
-                        "category": "Technical Architecture",
+                        "category": fb_category,
                         "difficulty": session.difficulty or "Medium",
-                        "expected_keywords": ["architecture", "design", "performance"]
+                        "expected_keywords": fb_keywords
                     })
                     prev_texts.add(fb_text)
                     norm_history.add(norm_fb)
@@ -318,24 +372,34 @@ class QuestionGeneratorService:
                         break
 
         # Final safety net: guarantee non-empty list
+        round_type_str = str(session.round_type or context.get('round_type') or 'Technical').lower()
         while len(unique_questions) < num_questions:
             idx = len(unique_questions) + 1
-            fb_text = f"Could you walk me through your technical approach and key design decisions for component #{idx} in your {session.role_target or 'Software Engineer'} project?"
+            if "behavioral" in round_type_str:
+                fb_text = f"Can you share another example from your professional experience demonstrating teamwork and problem-solving (Scenario #{idx})?"
+                fb_cat = "Behavioral & STAR"
+            elif "hr" in round_type_str:
+                fb_text = f"Could you describe what kind of company culture and team collaboration enables you to do your best work (Dimension #{idx})?"
+                fb_cat = "HR & Cultural Fit"
+            else:
+                fb_text = f"Could you walk me through your technical approach and key design decisions for component #{idx} in your {session.role_target or 'Software Engineer'} project?"
+                fb_cat = "Technical Architecture"
+
             if fb_text not in prev_texts:
                 unique_questions.append({
                     "question_text": fb_text,
-                    "category": "Technical Architecture",
+                    "category": fb_cat,
                     "difficulty": session.difficulty or "Medium",
-                    "expected_keywords": ["architecture", "design", "engineering"]
+                    "expected_keywords": ["experience", "communication"]
                 })
                 prev_texts.add(fb_text)
             else:
                 fb_text += f" (Ref: {uuid.uuid4().hex[:4]})"
                 unique_questions.append({
                     "question_text": fb_text,
-                    "category": "Technical Architecture",
+                    "category": fb_cat,
                     "difficulty": session.difficulty or "Medium",
-                    "expected_keywords": ["architecture", "design", "engineering"]
+                    "expected_keywords": ["experience", "communication"]
                 })
 
         logger.info("Unique Questions Generated ✅ Count: %d | Non-Repetitive Guarantee Active", len(unique_questions))
@@ -363,7 +427,7 @@ class EvaluationService:
         # FEATURE 4: Immutable Stored Report Check - Return immediately from DB if already finalized
         res_existing = await db.execute(select(ScoringReport).where(ScoringReport.session_id == session_id))
         existing_report = res_existing.scalars().first()
-        if existing_report and session.status == "completed":
+        if existing_report and (getattr(session, "status", "").lower() == "completed" or getattr(existing_report, "status", "").upper() == "COMPLETED"):
             t_db_read = (time.perf_counter() - t_total_start) * 1000
             print("\nREPORT PERFORMANCE (IMMUTABLE DB READ)")
             print(f"Database Read: {t_db_read:.1f} ms")
@@ -788,58 +852,117 @@ class EvaluationService:
             res_app = await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))
             app_obj = res_app.scalar_one_or_none()
             if app_obj:
-                int_status = "Interview Passed" if ovr >= 70.0 else "Interview Failed"
-                app_obj.status = int_status
+                r_type = (session.round_type or "Technical").capitalize()
+                # Set round-specific Evaluation Ready status so the recruiter can review and decide.
+                # Avoid regressing or failing previous passed rounds.
+                app_obj.status = f"{r_type} Evaluation Ready"
 
             InterviewStateMachine.transition(session, "UPDATE_HISTORY")
 
-            # Fetch candidate user to notify
-            res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
-            cand = res_c.scalar_one_or_none()
-            if cand and cand.user_id:
+        # Fetch candidate user to notify
+        res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
+        cand = res_c.scalar_one_or_none()
+        cand_user = None
+        if cand and cand.user_id:
+            res_cu = await db.execute(select(User).where(User.id == cand.user_id))
+            cand_user = res_cu.scalar_one_or_none()
+
+        report_url = f"{settings.FRONTEND_URL}/report/{session.id}"
+
+        # 1. Candidate In-App Notification & Email
+        if cand and cand.user_id:
+            res_ex_notif = await db.execute(
+                select(Notification).where(
+                    Notification.user_id == cand.user_id,
+                    Notification.interview_id == session.id,
+                    Notification.notification_type == "interview_completed"
+                )
+            )
+            if not res_ex_notif.scalar_one_or_none():
                 notif_cand = Notification(
                     user_id=cand.user_id,
-                    title=f"Interview Completed: {session.title}",
-                    message=f"Your interview evaluation is ready. Overall Score: {computed['overall_score']}%. Status: {app_obj.status if app_obj else 'Evaluation Ready'}.",
-                    notification_type="interview_completed"
+                    title=f"Interview Evaluation Ready: {session.title}",
+                    message=f"Your evaluation is ready. Overall Score: {computed['overall_score']}%. Hiring Recommendation: {final_recommendation}.",
+                    notification_type="interview_completed",
+                    interview_id=session.id,
+                    link=f"/report/{session.id}"
                 )
                 db.add(notif_cand)
 
-            # Notify Recruiter
-            rec_user_id = None
-            if session.recruiter_id:
-                res_rec = await db.execute(select(Recruiter).where(Recruiter.id == session.recruiter_id))
-                rec = res_rec.scalar_one_or_none()
-                if rec:
-                    rec_user_id = rec.user_id
+            if cand_user and cand_user.email:
+                try:
+                    await email_service.send_report_ready_email(
+                        db=db,
+                        recipient_email=cand_user.email,
+                        recipient_name=cand_user.full_name or "Candidate",
+                        interview_title=session.title,
+                        overall_score=computed["overall_score"],
+                        recommendation=final_recommendation,
+                        report_link=report_url,
+                        is_recruiter=False,
+                        interview_id=session.id,
+                        recipient_user_id=cand_user.id
+                    )
+                except Exception as e_err:
+                    logger.warning("Failed to dispatch candidate report ready email: %s", e_err)
 
-            if rec_user_id:
-                cand_name = "Candidate"
-                if cand and cand.user_id:
-                    res_cu = await db.execute(select(User).where(User.id == cand.user_id))
-                    cu = res_cu.scalar_one_or_none()
-                    if cu:
-                        cand_name = cu.full_name
+        # 2. Recruiter In-App Notification, WebSocket Event & Email
+        rec_user = None
+        if session.recruiter_id:
+            res_rec = await db.execute(select(Recruiter).where(Recruiter.id == session.recruiter_id))
+            rec = res_rec.scalar_one_or_none()
+            if rec:
+                res_ru = await db.execute(select(User).where(User.id == rec.user_id))
+                rec_user = res_ru.scalar_one_or_none()
 
+        if rec_user:
+            cand_name = cand_user.full_name if cand_user else "Candidate"
+            res_ex_rec_notif = await db.execute(
+                select(Notification).where(
+                    Notification.user_id == rec_user.id,
+                    Notification.interview_id == session.id,
+                    Notification.notification_type == "interview_evaluation_ready"
+                )
+            )
+            if not res_ex_rec_notif.scalar_one_or_none():
                 notif_rec = Notification(
-                    user_id=rec_user_id,
-                    title=f"Interview Completed: {cand_name}",
+                    user_id=rec_user.id,
+                    title=f"Evaluation Ready: {cand_name}",
                     message=f"{cand_name} completed {session.title}. Overall Score: {computed['overall_score']}%. Evaluation ready for review.",
-                    notification_type="interview_evaluation_ready"
+                    notification_type="interview_evaluation_ready",
+                    interview_id=session.id,
+                    link=f"/report/{session.id}"
                 )
                 db.add(notif_rec)
 
-                # Send WebSocket notification to recruiter
-                await ws_manager.send_personal_message({
-                    "event": "INTERVIEW_COMPLETED",
-                    "data": {
-                        "session_id": session_id,
-                        "candidate_name": cand_name,
-                        "overall_score": computed["overall_score"],
-                        "recommendation": final_recommendation,
-                        "status": "Evaluation Generated"
-                    }
-                }, rec_user_id)
+            await ws_manager.send_personal_message({
+                "event": "INTERVIEW_COMPLETED",
+                "data": {
+                    "session_id": session_id,
+                    "candidate_name": cand_name,
+                    "overall_score": computed["overall_score"],
+                    "recommendation": final_recommendation,
+                    "status": "Evaluation Generated"
+                }
+            }, rec_user.id)
+
+            if rec_user.email:
+                try:
+                    await email_service.send_report_ready_email(
+                        db=db,
+                        recipient_email=rec_user.email,
+                        recipient_name=rec_user.full_name or "Recruiter",
+                        interview_title=session.title,
+                        overall_score=computed["overall_score"],
+                        recommendation=final_recommendation,
+                        report_link=report_url,
+                        is_recruiter=True,
+                        candidate_name=cand_name,
+                        interview_id=session.id,
+                        recipient_user_id=rec_user.id
+                    )
+                except Exception as e_err:
+                    logger.warning("Failed to dispatch recruiter report ready email: %s", e_err)
 
         InterviewStateMachine.transition(session, "NOTIFY_DASHBOARDS")
         await db.commit()
@@ -892,7 +1015,7 @@ class EvaluationService:
                     recruiter_id=session.recruiter_id,
                     job_application_id=session.job_application_id,
                     job_id=session.job_id,
-                    status="Interview Completed",
+                    status=f"{(session.round_type or 'Interview').capitalize()} Evaluation Ready",
                     metadata=meta
                 ))
         except Exception as event_err:

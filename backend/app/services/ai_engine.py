@@ -64,24 +64,47 @@ class AIEngine:
         prev_asked_str = "\n".join([f"- {q}" for q in recent_prev if q]) if recent_prev else "None"
         session_entropy = f"Seed-{time.time_ns()}-{random.randint(1000, 9999)}"
 
-        # Extract topic keywords from recently asked questions to forbid semantically similar topics
+        round_type_str = str(context.get('round_type') or 'Technical').lower()
+        is_behavioral = 'behavioral' in round_type_str or 'star' in round_type_str
+        is_hr = 'hr' in round_type_str or 'culture' in round_type_str
+
+        # Round-domain specific topic detection map
         topic_keywords_found = set()
-        topic_detection_map = {
-            "concurrency": ["concurrency", "concurrent", "multithreading", "multi-threaded", "thread", "threading", "synchronized", "lock", "deadlock"],
-            "api_design": ["api", "rest", "restful", "graphql", "grpc", "endpoint", "api versioning"],
-            "database": ["database", "sql", "postgresql", "mysql", "indexing", "query optimization", "sharding", "replication"],
-            "caching": ["caching", "redis", "memcached", "cache invalidation", "cache strategy"],
-            "microservices": ["microservices", "microservice", "service mesh", "circuit breaker", "saga pattern"],
-            "testing": ["testing", "unit test", "integration test", "tdd", "test-driven", "junit", "pytest"],
-            "ci_cd": ["ci/cd", "cicd", "pipeline", "deployment", "docker", "kubernetes", "containerization"],
-            "design_patterns": ["design pattern", "singleton", "factory", "observer", "strategy pattern", "solid"],
-            "security": ["security", "authentication", "authorization", "oauth", "jwt", "encryption", "xss", "csrf"],
-            "performance": ["performance", "profiling", "load testing", "optimization", "benchmarking", "latency"],
-            "system_design": ["system design", "scalability", "distributed system", "load balancing", "fault tolerance"],
-            "data_structures": ["data structure", "algorithm", "sorting", "binary tree", "hash map", "linked list", "graph"],
-            "messaging": ["message queue", "kafka", "rabbitmq", "event-driven", "pub/sub", "event streaming"],
-            "logging": ["logging", "monitoring", "observability", "tracing", "alerting", "metrics"],
-        }
+        if is_behavioral:
+            topic_detection_map = {
+                "conflict_resolution": ["conflict", "disagreement", "dispute", "difference of opinion", "pushback", "compromise"],
+                "leadership_and_initiative": ["leadership", "initiative", "ownership", "lead", "spearheaded", "mentoring", "driving change"],
+                "handling_failure_and_mistakes": ["failure", "mistake", "error in production", "bug", "regret", "postmortem", "learning from failure"],
+                "teamwork_and_collaboration": ["teamwork", "collaboration", "cross-functional", "partnering", "cooperation", "team dynamics"],
+                "tight_deadlines_and_pressure": ["deadline", "pressure", "crunch", "prioritization", "tight timeline", "urgent", "fast-paced"],
+                "handling_ambiguity": ["ambiguity", "unclear requirements", "vague specification", "open-ended problem", "unknowns"],
+                "constructive_feedback": ["feedback", "critique", "code review pushback", "constructive criticism", "adapting approach"]
+            }
+        elif is_hr:
+            topic_detection_map = {
+                "career_goals_and_aspirations": ["career goals", "future", "5 years", "aspirations", "growth", "next step", "career vision"],
+                "company_culture_and_values": ["culture", "values", "work environment", "principles", "ethics", "workplace fit"],
+                "work_life_balance_and_stress": ["stress", "work-life", "burnout", "well-being", "balance", "handling pressure"],
+                "team_dynamics_and_fit": ["team style", "working with managers", "communication preference", "etiquette", "interpersonal"],
+                "motivation_and_company_alignment": ["why us", "motivation", "company mission", "passion", "why apply", "company alignment"]
+            }
+        else:
+            topic_detection_map = {
+                "concurrency": ["concurrency", "concurrent", "multithreading", "multi-threaded", "thread", "threading", "synchronized", "lock", "deadlock"],
+                "api_design": ["api", "rest", "restful", "graphql", "grpc", "endpoint", "api versioning"],
+                "database": ["database", "sql", "postgresql", "mysql", "indexing", "query optimization", "sharding", "replication"],
+                "caching": ["caching", "redis", "memcached", "cache invalidation", "cache strategy"],
+                "microservices": ["microservices", "microservice", "service mesh", "circuit breaker", "saga pattern"],
+                "testing": ["testing", "unit test", "integration test", "tdd", "test-driven", "junit", "pytest"],
+                "ci_cd": ["ci/cd", "cicd", "pipeline", "deployment", "docker", "kubernetes", "containerization"],
+                "design_patterns": ["design pattern", "singleton", "factory", "observer", "strategy pattern", "solid"],
+                "security": ["security", "authentication", "authorization", "oauth", "jwt", "encryption", "xss", "csrf"],
+                "performance": ["performance", "profiling", "load testing", "optimization", "benchmarking", "latency"],
+                "system_design": ["system design", "scalability", "distributed system", "load balancing", "fault tolerance"],
+                "data_structures": ["data structure", "algorithm", "sorting", "binary tree", "hash map", "linked list", "graph"],
+                "messaging": ["message queue", "kafka", "rabbitmq", "event-driven", "pub/sub", "event streaming"],
+                "logging": ["logging", "monitoring", "observability", "tracing", "alerting", "metrics"],
+            }
         
         prev_text_combined = " ".join(recent_prev).lower()
         for topic_name, keywords in topic_detection_map.items():
@@ -98,16 +121,33 @@ class AIEngine:
         if not available_topics:
             available_topics = all_topics  # reset if all covered
         random.shuffle(available_topics)
-        suggested_topic = available_topics[0] if available_topics else "software architecture"
+        default_fallback_topic = "conflict resolution" if is_behavioral else ("cultural fit and motivation" if is_hr else "software architecture")
+        suggested_topic = available_topics[0] if available_topics else default_fallback_topic
         
         # Pick a target skill/project to focus on if multiple exist to guarantee question variance
-        primary_skill = random.choice(skills_clean) if skills_clean else "software architecture"
+        primary_skill = random.choice(skills_clean) if skills_clean else "software engineering"
         projects_list = context.get('resume_projects', [])
         primary_project = random.choice(projects_list) if isinstance(projects_list, list) and len(projects_list) > 0 else None
         project_name = primary_project.get('project_name', str(primary_project)) if isinstance(primary_project, dict) else str(primary_project or "")
 
+        interviewer_persona = (
+            "Principal Behavioral & Leadership Interviewer conducting an executive-grade STAR behavioral interview"
+            if is_behavioral else (
+                "Chief People Officer & Talent Director conducting an HR & Cultural Alignment interview"
+                if is_hr else "Chief Technical Recruiter and Principal AI Interviewer conducting an enterprise-grade technical interview"
+            )
+        )
+
+        domain_mandate = (
+            "Ask ONLY real-time STAR-method Behavioral questions (Situation, Task, Action, Result). Explore candidate's actual interpersonal experiences, conflicts, leadership, or handling tight deadlines. NEVER ask any technical coding or algorithmic questions!"
+            if is_behavioral else (
+                "Ask ONLY HR, career motivation, values alignment, and workplace culture questions. NEVER ask any technical coding or algorithmic questions!"
+                if is_hr else "Focus on core technical engineering, architecture, coding patterns, and data systems."
+            )
+        )
+
         prompt = f"""
-        You are a Chief Technical Recruiter and Principal AI Interviewer conducting an enterprise-grade interview.
+        You are a {interviewer_persona}.
         You must generate unique opening questions for this interview session.
 
         ========================================================================
@@ -134,11 +174,12 @@ class AIEngine:
 
         CRITICAL DIVERSITY & NON-REPETITION MANDATES:
         1. NEVER repeat any question or variant present in the PREVIOUSLY ASKED QUESTIONS list above!
-        2. NEVER ask about any topic area listed in PREVIOUSLY COVERED TOPIC AREAS! Choose a COMPLETELY DIFFERENT technical domain!
+        2. NEVER ask about any topic area listed in PREVIOUSLY COVERED TOPIC AREAS! Choose a COMPLETELY DIFFERENT domain!
         3. Focus this session on the SUGGESTED NEW TOPIC AREA: {suggested_topic.replace('_', ' ').title()}
-        4. Pick a DIFFERENT project (e.g. {project_name or 'a key project'}), skill (e.g. {primary_skill}), or architectural focus area each session!
-        5. If candidate details are available, actively personalize the opening question by explicitly referencing candidate's specific project or skills.
+        4. {domain_mandate}
+        5. If candidate details are available, actively personalize the opening question by referencing candidate's specific background.
         6. Two questions about the same technical concept (e.g. both about "concurrency") count as DUPLICATE even if worded differently!
+        7. NEVER ask questions specifically about "SmartHire", "SmartHire AI", "SmartHire Platform", or any hiring/recruitment platform the candidate may have listed in their resume. SmartHire is the platform conducting this interview — asking about it is circular. Instead, focus on the candidate's OTHER projects, skills, and general technical concepts relevant to the target role.
 
         STRICT ROUND DOMAIN BOUNDARY RULES:
         1. If Interview Round is "Technical" or "Coding": Ask ONLY technical, coding, or algorithmic questions. NEVER ask HR or behavioral questions.
@@ -229,7 +270,7 @@ class AIEngine:
         self,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Generates a dynamic follow-up question assessing candidate response completeness and technical depth."""
+        """Generates a dynamic follow-up question assessing candidate response completeness and round-specific depth."""
         
         history_str = ""
         if context.get('conversation_memory'):
@@ -243,8 +284,39 @@ class AIEngine:
         skills_raw = context.get('resume_skills', [])
         skills_clean = [s.get("skill_name", str(s)) if isinstance(s, dict) else str(s) for s in skills_raw]
 
+        round_type_str = str(context.get('round_type') or 'Technical').lower()
+        is_behavioral = 'behavioral' in round_type_str or 'star' in round_type_str
+        is_hr = 'hr' in round_type_str or 'culture' in round_type_str
+
+        interviewer_persona = (
+            "Principal Behavioral & Leadership Interviewer conducting an executive STAR behavioral interview"
+            if is_behavioral else (
+                "Chief People Officer & Talent Director conducting an HR & Cultural Alignment interview"
+                if is_hr else "Principal AI Technical Interviewer conducting a dynamic, adaptive interview"
+            )
+        )
+
+        domain_mandate = (
+            """CRITICAL BEHAVIORAL INTERVIEW MANDATE:
+        YOU ARE CONDUCTING A REAL-TIME BEHAVIORAL INTERVIEW (Stage 5).
+        YOU MUST FOLLOW UP ONLY ON STAR DETAILS (Situation, Task, Action, Result) FROM THE CANDIDATE'S PREVIOUS ANSWER.
+        Ask probing questions exploring:
+        - What specific actions did YOU personally take vs the team?
+        - How did other team members or stakeholders react?
+        - What was the measurable outcome or lesson learned?
+        - How would you handle it differently today?
+        STRICTLY FORBIDDEN: NEVER ASK ANY TECHNICAL CODING, DATABASE, API, REST, OR SYSTEM ARCHITECTURE QUESTIONS!"""
+            if is_behavioral else (
+                """CRITICAL HR INTERVIEW MANDATE:
+        YOU ARE CONDUCTING AN HR & CULTURE INTERVIEW (Stage 6).
+        Follow up ONLY on work style, personal values, handling workload, collaboration, and career aspirations.
+        STRICTLY FORBIDDEN: NEVER ASK ANY TECHNICAL CODING, DATABASE, API, OR SYSTEM ARCHITECTURE QUESTIONS!"""
+                if is_hr else """Follow up on technical terms, code decisions, algorithms, databases, API protocols, or architecture trade-offs."""
+            )
+        )
+
         prompt = f"""
-        You are a Principal AI Interviewer conducting a dynamic, adaptive interview.
+        You are a {interviewer_persona}.
         You must decide whether to probe deeper into the candidate's last answer or transition to an advanced related topic within the target round domain.
 
         ========================================================================
@@ -267,19 +339,20 @@ class AIEngine:
         Candidate Answer: {context.get('candidate_answer')}
         ========================================================================
         
+        {domain_mandate}
+
         STRICT ROUND DOMAIN BOUNDARY RULES:
         1. If Interview Round is "Technical" or "Coding": Follow up ONLY on technical terms, code decisions, algorithms, databases, or API protocols. NEVER ask HR or behavioral questions.
         2. If Interview Round is "Behavioral": Follow up ONLY on STAR method details (Situation, Task, Action, Result) regarding personal role, leadership, conflict, or team impact. NEVER ask technical or code questions.
         3. If Interview Round is "HR": Follow up ONLY on cultural fit, work style, motivation, and career expectations. NEVER ask technical questions.
         4. If Interview Round is "System Design": Follow up ONLY on architecture trade-offs, scalability bottlenecks, availability, and component decoupling.
-        5. If Interview Round is "Resume Discussion": Follow up ONLY on candidate's listed skills, experience, and accomplishments.
-        6. If Interview Round is "Project Discussion": Follow up ONLY on candidate's technical role, decisions, and outcomes in listed projects.
 
         EVALUATION & FOLLOW-UP RULES:
         1. Deeply Probe Candidate's Answer:
-           - If candidate mentions specific terms or concepts, ask follow-up questions probing deeper into THOSE SPECIFIC TERMS before switching topics!
+           - If candidate mentions specific situations, teams, or actions, ask follow-up questions probing deeper into THOSE SPECIFIC DETAILS before switching topics!
         2. NEVER repeat any question present in Conversation History or Previously Asked Questions.
         3. Do NOT jump to an unrelated topic abruptly until the current topic has been thoroughly explored.
+        4. NEVER ask questions specifically about "SmartHire", "SmartHire AI", "SmartHire Platform", or any hiring/recruitment platform the candidate may have listed in their resume. SmartHire is the platform conducting this interview — asking about it is circular.
 
         Return JSON with keys: "question_text", "category", "difficulty", "expected_keywords", "evaluation_notes".
         Pure JSON object only. No markdown.
@@ -302,44 +375,65 @@ class AIEngine:
             init_q = context.get("initial_question")
             asked_history = [q.strip().lower() for q in (prev_asked + conv_mem + ([prev_q] if prev_q else []) + ([init_q] if init_q else [])) if q]
 
-            # Contextual fallback based on candidate's actual answer content & terms
             cand_ans_lower = cand_ans.lower()
             prev_q_lower = prev_q.lower()
             
-            # Pool of candidate fallback questions paired with keywords
-            fallback_options = [
-                ("What is the difference between PUT and PATCH in terms of payload representation and idempotency, and how do you handle JWT authorization headers for these endpoints?", ["PUT", "PATCH", "idempotency", "JWT", "Authorization"]),
-                ("Could you detail how you structure your REST endpoints, handle HTTP status codes (200, 201, 400, 401, 404, 500), and enforce API rate limiting?", ["REST", "status codes", "rate limiting", "endpoints", "error handling"]),
-                ("How do you analyze slow database queries, configure indexing strategies, and prevent deadlock conditions under heavy concurrent traffic?", ["indexing", "transactions", "ACID", "concurrency", "deadlocks"]),
-                ("How do you securely store JWT tokens on the client side, handle token expiration, and implement refresh token rotation?", ["JWT", "Refresh Token", "Security", "Token Rotation", "Cookies"]),
-                ("You mentioned GET and POST. What is GET specifically, and when should you use PUT vs PATCH vs DELETE instead of POST?", ["GET", "POST", "PUT", "PATCH", "DELETE", "HTTP Methods"]),
-                ("How do you handle authentication (e.g., JWT, Bearer tokens, or OAuth) and status code handling for these API endpoints?", ["JWT", "Authentication", "Bearer", "OAuth", "API Security"]),
-                (f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?", ["bottlenecks", "performance", "architecture"]),
-                ("How do you approach automated testing, continuous integration, and canary deployments for microservices?", ["testing", "CI/CD", "canary", "microservices"]),
-                ("What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?", ["monitoring", "metrics", "tracing", "alerting"]),
-                ("How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?", ["security", "CORS", "CSRF", "XSS", "SQL injection"]),
-                ("Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?", ["task queue", "Celery", "RabbitMQ", "asynchronous"]),
-                ("Could you walk through how the Virtual DOM diffing algorithm works, and how you optimize React state management using hooks and memoization?", ["Virtual DOM", "hooks", "memoization", "re-rendering", "performance"]),
-                ("Could you walk through your containerization strategy, multi-stage builds, and deployment pipeline configuration?", ["Docker", "Kubernetes", "multi-stage build", "CI/CD", "deployment"]),
-                (f"You mentioned key technical components in your previous answer. Could you elaborate on the specific architectural trade-offs and performance bottlenecks you encountered in that implementation?", ["architecture", "trade-offs", "bottlenecks", "performance", "scalability"])
-            ]
+            if is_behavioral:
+                fallback_options = [
+                    ("Could you walk me through the specific actions YOU personally took in that situation, and how your team or stakeholders reacted?", ["Action", "personal role", "team reaction"]),
+                    ("What was the measurable outcome or result of that decision, and what key lesson did you take away from that experience?", ["Result", "outcome", "impact", "lesson"]),
+                    ("Looking back at that scenario, if you faced the exact same situation today, what is one thing you would handle differently?", ["reflection", "growth", "adaptability"]),
+                    ("Tell me about a time when you strongly disagreed with a team lead or colleague on a project decision. How did you resolve the disagreement?", ["disagreement", "conflict resolution", "diplomacy"]),
+                    ("Can you share an instance where you took initiative to solve a major workflow bottleneck or team issue without being instructed to do so?", ["initiative", "ownership", "proactivity"]),
+                    ("Describe a time when you had to manage tight deadlines and competing priorities under pressure. How did you prioritize and keep stakeholders informed?", ["prioritization", "deadlines", "stakeholder management"]),
+                    ("Can you share an example of when you received tough or critical feedback on your work? How did you respond and adapt?", ["feedback", "receptivity", "continuous growth"]),
+                    ("Tell me about a situation where a project or feature did not go as planned. What went wrong and how did you navigate the fallout?", ["failure", "resilience", "accountability"])
+                ]
+                round_cat = "Behavioral & STAR"
+            elif is_hr:
+                fallback_options = [
+                    ("How do your personal professional values align with our engineering culture and company mission?", ["values", "culture fit", "alignment"]),
+                    ("What kind of work environment and management style brings out your best productivity and creativity?", ["work style", "management", "environment"]),
+                    ("Where do you see your career progression over the next 2 to 3 years, and how does this role support that journey?", ["career growth", "goals", "aspirations"]),
+                    ("How do you maintain a healthy work-life balance and stay motivated during high-intensity project delivery cycles?", ["work-life balance", "stress management", "well-being"])
+                ]
+                round_cat = "HR & Cultural Fit"
+            else:
+                # Pool of candidate fallback questions paired with keywords
+                fallback_options = [
+                    ("What is the difference between PUT and PATCH in terms of payload representation and idempotency, and how do you handle JWT authorization headers for these endpoints?", ["PUT", "PATCH", "idempotency", "JWT", "Authorization"]),
+                    ("Could you detail how you structure your REST endpoints, handle HTTP status codes (200, 201, 400, 401, 404, 500), and enforce API rate limiting?", ["REST", "status codes", "rate limiting", "endpoints", "error handling"]),
+                    ("How do you analyze slow database queries, configure indexing strategies, and prevent deadlock conditions under heavy concurrent traffic?", ["indexing", "transactions", "ACID", "concurrency", "deadlocks"]),
+                    ("How do you securely store JWT tokens on the client side, handle token expiration, and implement refresh token rotation?", ["JWT", "Refresh Token", "Security", "Token Rotation", "Cookies"]),
+                    ("You mentioned GET and POST. What is GET specifically, and when should you use PUT vs PATCH vs DELETE instead of POST?", ["GET", "POST", "PUT", "PATCH", "DELETE", "HTTP Methods"]),
+                    ("How do you handle authentication (e.g., JWT, Bearer tokens, or OAuth) and status code handling for these API endpoints?", ["JWT", "Authentication", "Bearer", "OAuth", "API Security"]),
+                    (f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?", ["bottlenecks", "performance", "architecture"]),
+                    ("How do you approach automated testing, continuous integration, and canary deployments for microservices?", ["testing", "CI/CD", "canary", "microservices"]),
+                    ("What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?", ["monitoring", "metrics", "tracing", "alerting"]),
+                    ("How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?", ["security", "CORS", "CSRF", "XSS", "SQL injection"]),
+                    ("Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?", ["task queue", "Celery", "RabbitMQ", "asynchronous"]),
+                    ("Could you walk through how the Virtual DOM diffing algorithm works, and how you optimize React state management using hooks and memoization?", ["Virtual DOM", "hooks", "memoization", "re-rendering", "performance"]),
+                    ("Could you walk through your containerization strategy, multi-stage builds, and deployment pipeline configuration?", ["Docker", "Kubernetes", "multi-stage build", "CI/CD", "deployment"]),
+                    (f"You mentioned key technical components in your previous answer. Could you elaborate on the specific architectural trade-offs and performance bottlenecks you encountered in that implementation?", ["architecture", "trade-offs", "bottlenecks", "performance", "scalability"])
+                ]
+                round_cat = "Technical Architecture"
 
-            # Primary candidate selection based on candidate transcript terms
             preferred = None
-            if ("get" in cand_ans_lower and "post" in cand_ans_lower) or ("get" in prev_q_lower and "post" in prev_q_lower):
-                preferred = fallback_options[4] if ("put" not in cand_ans_lower and "patch" not in cand_ans_lower) else fallback_options[5]
-            elif "put" in cand_ans_lower or "patch" in cand_ans_lower or "delete" in cand_ans_lower:
-                preferred = fallback_options[0]
-            elif "jwt" in cand_ans_lower or "auth" in cand_ans_lower or "token" in cand_ans_lower:
-                preferred = fallback_options[3]
-            elif "api" in cand_ans_lower or "rest" in cand_ans_lower or "api" in prev_q_lower:
-                preferred = fallback_options[1]
-            elif "database" in cand_ans_lower or "sql" in cand_ans_lower or "postgres" in cand_ans_lower or "database" in prev_q_lower:
-                preferred = fallback_options[2]
-            elif "react" in cand_ans_lower or "frontend" in cand_ans_lower or "component" in cand_ans_lower:
-                preferred = fallback_options[11]
-            elif "docker" in cand_ans_lower or "kubernetes" in cand_ans_lower or "aws" in cand_ans_lower or "cloud" in cand_ans_lower:
-                preferred = fallback_options[12]
+            if not is_behavioral and not is_hr:
+                if ("get" in cand_ans_lower and "post" in cand_ans_lower) or ("get" in prev_q_lower and "post" in prev_q_lower):
+                    preferred = fallback_options[4] if ("put" not in cand_ans_lower and "patch" not in cand_ans_lower) else fallback_options[5]
+                elif "put" in cand_ans_lower or "patch" in cand_ans_lower or "delete" in cand_ans_lower:
+                    preferred = fallback_options[0]
+                elif "jwt" in cand_ans_lower or "auth" in cand_ans_lower or "token" in cand_ans_lower:
+                    preferred = fallback_options[3]
+                elif "api" in cand_ans_lower or "rest" in cand_ans_lower or "api" in prev_q_lower:
+                    preferred = fallback_options[1]
+                elif "database" in cand_ans_lower or "sql" in cand_ans_lower or "postgres" in cand_ans_lower or "database" in prev_q_lower:
+                    preferred = fallback_options[2]
+                elif "react" in cand_ans_lower or "frontend" in cand_ans_lower or "component" in cand_ans_lower:
+                    preferred = fallback_options[11]
+                elif "docker" in cand_ans_lower or "kubernetes" in cand_ans_lower or "aws" in cand_ans_lower or "cloud" in cand_ans_lower:
+                    preferred = fallback_options[12]
 
             def _is_dup(q_str: str) -> bool:
                 q_low = q_str.strip().lower()
@@ -356,17 +450,24 @@ class AIEngine:
 
             if not selected:
                 variant_num = len(asked_history) + 1
-                q_text = f"Could you detail your technical approach to system architecture, testing, and performance optimization for component #{variant_num} in your {role} project?"
-                keywords = ["architecture", "testing", "performance", "optimization"]
+                if is_behavioral:
+                    q_text = f"Could you provide another specific example from your past experience where you managed a major challenge or team milestone (Scenario #{variant_num})?"
+                    keywords = ["example", "challenge", "milestone", "outcome"]
+                elif is_hr:
+                    q_text = f"Could you elaborate on how you envision your day-to-day impact and relationship with leadership in this {role} position?"
+                    keywords = ["impact", "leadership", "collaboration"]
+                else:
+                    q_text = f"Could you detail your technical approach to system architecture, testing, and performance optimization for component #{variant_num} in your {role} project?"
+                    keywords = ["architecture", "testing", "performance", "optimization"]
             else:
                 q_text, keywords = selected
 
             return {
                 "question_text": q_text,
-                "category": "HR Technical Deep-Dive",
+                "category": round_cat,
                 "difficulty": "Adaptive",
                 "expected_keywords": keywords,
-                "evaluation_notes": "Contextual HR follow-up probing generated successfully."
+                "evaluation_notes": f"Contextual {round_cat} follow-up probing generated successfully."
             }
 
 

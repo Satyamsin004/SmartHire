@@ -113,7 +113,15 @@ ALTER_QUERIES = [
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS candidate_id VARCHAR(36);",
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS transcript_id VARCHAR(36);",
     "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS vision_analysis_id VARCHAR(36);",
-    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'COMPLETED';"
+    "ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'COMPLETED';",
+
+    # Assessment questions & Master question bank
+    "ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS passage_text TEXT;",
+    "ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS dataset_json JSONB DEFAULT '{}'::jsonb;",
+    "ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS test_cases JSONB DEFAULT '[]'::jsonb;",
+    "ALTER TABLE master_question_bank ADD COLUMN IF NOT EXISTS passage_text TEXT;",
+    "ALTER TABLE master_question_bank ADD COLUMN IF NOT EXISTS dataset_json JSONB DEFAULT '{}'::jsonb;",
+    "ALTER TABLE master_question_bank ADD COLUMN IF NOT EXISTS test_cases JSONB DEFAULT '[]'::jsonb;"
 ]
 
 TABLES_FOR_ENV_COLUMNS = [

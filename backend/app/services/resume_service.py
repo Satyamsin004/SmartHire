@@ -566,28 +566,143 @@ class ResumeService:
             } for r in resumes
         ]
 
+    SKILL_ALIASES: Dict[str, List[str]] = {
+        "react": ["react", "react.js", "reactjs", "react js"],
+        "react.js": ["react", "react.js", "reactjs", "react js"],
+        "reactjs": ["react", "react.js", "reactjs", "react js"],
+        "node.js": ["node", "node.js", "nodejs", "node js"],
+        "node": ["node", "node.js", "nodejs", "node js"],
+        "nodejs": ["node", "node.js", "nodejs", "node js"],
+        "express.js": ["express", "express.js", "expressjs", "express js"],
+        "express": ["express", "express.js", "expressjs", "express js"],
+        "expressjs": ["express", "express.js", "expressjs", "express js"],
+        "vue": ["vue", "vue.js", "vuejs"],
+        "vue.js": ["vue", "vue.js", "vuejs"],
+        "angular": ["angular", "angularjs", "angular.js"],
+        "rest api": ["rest api", "rest apis", "restful api", "restful apis", "rest api integration", "restapi", "rest apis integration"],
+        "rest apis": ["rest api", "rest apis", "restful api", "restful apis", "rest api integration", "restapi", "rest apis integration"],
+        "rest api integration": ["rest api", "rest apis", "restful api", "restful apis", "rest api integration", "restapi", "rest apis integration"],
+        "html": ["html", "html5"],
+        "html5": ["html", "html5"],
+        "css": ["css", "css3"],
+        "css3": ["css", "css3"],
+        "postgresql": ["postgresql", "postgres", "psql", "postgre", "sql"],
+        "postgres": ["postgresql", "postgres", "psql", "postgre", "sql"],
+        "mysql": ["mysql", "sql queries", "sql"],
+        "sql": ["sql", "sql queries", "structured query language", "postgresql", "mysql", "pl/sql", "sqlite"],
+        "git": ["git", "github", "gitlab", "version control"],
+        "github": ["git", "github", "gitlab"],
+        "ci/cd": ["ci/cd", "ci-cd", "cicd", "continuous integration", "continuous deployment"],
+        "data structures & algorithms": ["data structures & algorithms", "data structures and algorithms", "datastructures&algorithms", "dsa", "data structures", "algorithms"],
+        "dsa": ["data structures & algorithms", "data structures and algorithms", "datastructures&algorithms", "dsa", "data structures", "algorithms"],
+        "oop": ["oop", "oops", "object oriented programming", "object-oriented programming", "object oriented"],
+        "dbms": ["dbms", "database management", "database management systems", "database", "databases"],
+        "operating systems": ["operating systems", "operating system", "os", "linux", "unix"],
+        "computer networks": ["computer networks", "networking", "computer network", "tcp/ip", "http", "https"],
+        "responsive web design": ["responsive web design", "responsive design", "responsive ui", "mobile-first design"],
+        "ui development": ["ui development", "frontend", "ui/ux", "ui design", "user interface", "frontend development"],
+        "sdlc": ["sdlc", "software development life cycle", "agile", "scrum"],
+        "agile": ["agile", "scrum", "kanban", "sprint"],
+        "docker": ["docker", "containerization", "containers"],
+        "aws": ["aws", "amazon web services", "aws ec2", "ec2", "cloud"],
+        "fastapi": ["fastapi", "fast api", "python rest api"],
+        "python": ["python", "python3", "py"],
+        "javascript": ["javascript", "js", "ecmascript"],
+        "typescript": ["typescript", "ts"],
+        "java": ["java", "core java", "java 8", "java 11", "java 17", "java 21"],
+        "c++": ["c++", "cpp"],
+        "c#": ["c#", "csharp", ".net", "dotnet"],
+        "postman": ["postman", "api testing", "rest api testing"],
+        "ai": ["ai", "artificial intelligence", "google gemini", "machine learning", "deep learning", "genai", "generative ai"],
+        "machine learning": ["machine learning", "ml", "scikit-learn", "sklearn"],
+        "mongodb": ["mongodb", "mongo", "nosql"],
+        "redis": ["redis", "in-memory cache", "caching"],
+    }
+
+    @classmethod
+    def _is_skill_present(cls, skill: str, candidate_skills: List[str], raw_text: Optional[str]) -> bool:
+        """Evaluates whether a target skill is demonstrated in candidate's skills or resume text."""
+        sk_clean = skill.strip().lower()
+        if not sk_clean:
+            return False
+
+        sk_alphanumeric = re.sub(r'[^a-z0-9]', '', sk_clean)
+
+        # 1. Match against candidate_skills list
+        for cs in candidate_skills:
+            cs_clean = cs.strip().lower()
+            cs_alphanumeric = re.sub(r'[^a-z0-9]', '', cs_clean)
+            if sk_clean == cs_clean or sk_alphanumeric == cs_alphanumeric:
+                return True
+            if len(sk_alphanumeric) >= 3 and (sk_alphanumeric in cs_alphanumeric or cs_alphanumeric in sk_alphanumeric):
+                return True
+
+        # 2. Match aliases against candidate_skills list
+        aliases = cls.SKILL_ALIASES.get(sk_clean, [])
+        if not aliases:
+            for k, v in cls.SKILL_ALIASES.items():
+                if k == sk_clean or sk_clean in v:
+                    aliases = v
+                    break
+
+        for alias in aliases:
+            alias_clean = alias.strip().lower()
+            alias_alphanumeric = re.sub(r'[^a-z0-9]', '', alias_clean)
+            for cs in candidate_skills:
+                cs_clean = cs.strip().lower()
+                cs_alphanumeric = re.sub(r'[^a-z0-9]', '', cs_clean)
+                if alias_clean == cs_clean or alias_alphanumeric == cs_alphanumeric:
+                    return True
+                if len(alias_alphanumeric) >= 3 and (alias_alphanumeric in cs_alphanumeric or cs_alphanumeric in alias_alphanumeric):
+                    return True
+
+        # 3. Match against full raw resume text if available
+        if raw_text:
+            raw_lower = raw_text.lower()
+            raw_alphanumeric = re.sub(r'[^a-z0-9]', '', raw_lower)
+
+            if sk_clean in raw_lower or sk_alphanumeric in raw_alphanumeric:
+                return True
+
+            for alias in aliases:
+                a_clean = alias.strip().lower()
+                a_alpha = re.sub(r'[^a-z0-9]', '', a_clean)
+                if a_clean in raw_lower or a_alpha in raw_alphanumeric:
+                    return True
+
+        return False
+
     async def match_job_description(
         self,
         candidate_skills: List[str],
         job_description: str,
-        required_skills: Optional[List[str]] = None
+        required_skills: Optional[List[str]] = None,
+        raw_resume_text: Optional[str] = None
     ) -> Dict[str, Any]:
         """Calculates real ATS Match score, matching skills, missing skills, and qualitative feedback based on skills and role alignment."""
         if not candidate_skills:
             candidate_skills = []
 
         jd_text = (job_description or "").lower()
-        req_skills = [s.strip() for s in (required_skills or []) if s and s.strip()]
 
-        matching_skills = []
-        missing_skills = []
+        # Deduplicate required_skills preserving original order
+        req_skills: List[str] = []
+        if required_skills:
+            seen = set()
+            for s in required_skills:
+                if s and isinstance(s, str) and s.strip():
+                    cleaned = s.strip()
+                    if cleaned.lower() not in seen:
+                        seen.add(cleaned.lower())
+                        req_skills.append(cleaned)
+
+        matching_skills: List[str] = []
+        missing_skills: List[str] = []
 
         # If required skills provided, evaluate candidate against required skills
         if req_skills:
             for skill in req_skills:
-                sk_low = skill.lower()
-                is_matched = any(sk_low in cs.lower() or cs.lower() in sk_low for cs in candidate_skills)
-                if is_matched:
+                if self._is_skill_present(skill, candidate_skills, raw_resume_text):
                     if skill not in matching_skills:
                         matching_skills.append(skill)
                 else:
@@ -598,13 +713,12 @@ class ResumeService:
             common_tech = [
                 "python", "fastapi", "react", "typescript", "postgresql", "docker",
                 "kubernetes", "aws", "sql", "java", "c++", "pytorch", "tensorflow",
-                "machine learning", "ai", "node.js", "graphql", "redis"
+                "machine learning", "ai", "node.js", "graphql", "redis", "javascript",
+                "html5", "css3", "git", "github", "ci/cd", "rest api"
             ]
             extracted_reqs = [t.title() for t in common_tech if t in jd_text]
             for skill in extracted_reqs:
-                sk_low = skill.lower()
-                is_matched = any(sk_low in cs.lower() or cs.lower() in sk_low for cs in candidate_skills)
-                if is_matched:
+                if self._is_skill_present(skill, candidate_skills, raw_resume_text):
                     if skill not in matching_skills:
                         matching_skills.append(skill)
                 else:
@@ -634,6 +748,43 @@ class ResumeService:
                 "recommendation": recommendation,
                 "reasoning": f"Matched {len(matching_skills)} of {total_targets} required requisition skills."
             }
+        }
+
+    def parse_resume_text(self, text: str) -> Dict[str, Any]:
+        """Synchronously extracts technical skills and computes an evidence-based ATS score from raw text."""
+        raw_clean = self._clean_text(text or "")
+        t_lower = raw_clean.lower()
+
+        common_skills = [
+            "React", "TypeScript", "JavaScript", "Python", "FastAPI", "PostgreSQL",
+            "Docker", "Kubernetes", "AWS", "SQL", "Redis", "Git", "HTML", "CSS",
+            "Node.js", "Java", "C++", "REST API", "GraphQL", "CI/CD", "Linux"
+        ]
+
+        detected_skills = []
+        for s in common_skills:
+            if re.search(r'\b' + re.escape(s.lower()) + r'\b', t_lower):
+                detected_skills.append(s)
+
+        # Detect education keywords
+        education_keywords = ["bachelor", "master", "phd", "doctorate", "b.tech", "b.e", "m.tech", "m.s", "b.s", "diploma"]
+        detected_education = []
+        for e in education_keywords:
+            if re.search(r'\b' + re.escape(e) + r'\b', t_lower):
+                detected_education.append(e.upper() if len(e) <= 4 else e.title())
+
+        # Calculate ATS score: baseline 60.0 + 5.0 per matched skill (capped at 98.0)
+        skill_bonus = min(35.0, len(detected_skills) * 6.0)
+        ats_score = round(min(98.0, 60.0 + skill_bonus), 1)
+
+        return {
+            "skills": detected_skills,
+            "education": detected_education,
+            "ats_score": ats_score,
+            "text_length": len(raw_clean),
+            "word_count": len(raw_clean.split()),
+            "has_skills": len(detected_skills) > 0,
+            "has_education": len(detected_education) > 0
         }
 
 resume_service = ResumeService()

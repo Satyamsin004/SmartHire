@@ -2,16 +2,17 @@ import uuid
 import logging
 import asyncio
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, Response, Query, status
 import pdfplumber
 import io
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import or_
 from typing import List, Dict, Any, Optional
 from app.core.db import get_db
 from app.models.domain import (
     InterviewSession, InterviewRecording, InterviewQuestion, InterviewAnswer,
-    SpeechAnalysis, EyeTracking, EmotionAnalysis, ScoringReport, Candidate, User,
+    SpeechAnalysis, EyeTracking, EmotionAnalysis, ScoringReport, Candidate, Recruiter, User,
     ScheduledInterview, JobApplication, JobPosting, Resume, ResumeSkill,
     InterviewTranscriptSegment, InterviewSpeechMetric, InterviewFillerEvent,
     InterviewVisualMetric, InterviewVisualObservation
@@ -30,6 +31,10 @@ from app.schemas.domain import (
 )
 from app.dependencies.auth import get_current_user
 
+import re
+import hashlib
+from pydantic import BaseModel
+
 router = APIRouter(prefix="/interview", tags=["AI Interview Engine"])
 logger = logging.getLogger("smarthire.interview")
 
@@ -37,6 +42,33 @@ from app.services.storage_service import storage_service
 from app.services.resume_service import ResumeService
 
 resume_service = ResumeService()
+
+_tts_cache: Dict[str, bytes] = {}
+
+async def _prewarm_tts(text: str, voice: str = "en-US-AriaNeural"):
+    """Pre-generates neural TTS audio in the background so questions play with 0ms latency."""
+    try:
+        raw = (text or "").strip()
+        if not raw:
+            return
+        clean_text = re.sub(r'[*_#`~]', '', raw).strip()
+        cache_key = hashlib.md5(f"{voice}:{clean_text}".encode()).hexdigest()
+        if cache_key in _tts_cache:
+            return
+        import edge_tts
+        comm = edge_tts.Communicate(clean_text, voice)
+        chunks = []
+        async for chunk in comm.stream():
+            if chunk.get("type") == "audio" and "data" in chunk:
+                chunks.append(chunk["data"])
+        audio_bytes = b"".join(chunks)
+        if audio_bytes:
+            if len(_tts_cache) > 120:
+                _tts_cache.clear()
+            _tts_cache[cache_key] = audio_bytes
+            logger.info(f"[TTS Pre-warm] Pre-cached {len(audio_bytes)} bytes audio for question: {clean_text[:40]}...")
+    except Exception as e:
+        logger.debug(f"[TTS Pre-warm] Notice: {e}")
 
 @router.post("/parse-resume")
 async def parse_resume(file: UploadFile = File(...)):
@@ -76,8 +108,52 @@ async def start_interview_session(
     if body.schedule_id:
         res_s = await db.execute(select(ScheduledInterview).where(ScheduledInterview.id == body.schedule_id))
         scheduled_inst = res_s.scalar_one_or_none()
+        if not scheduled_inst:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scheduled interview not found.")
 
     if scheduled_inst:
+        # Check authorization: Candidate must own this scheduled interview
+        if scheduled_inst.candidate_id != candidate.id and current_user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to start this scheduled interview."
+            )
+
+        # Check status: Completed or Cancelled interviews cannot be restarted
+        if scheduled_inst.status in ("Completed", "Cancelled"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This interview has already been marked as {scheduled_inst.status}."
+            )
+
+        # ENFORCE SCHEDULE TIME: Candidate can ONLY start at or after the scheduled time, NOT before!
+        if scheduled_inst.scheduled_date:
+            sched_dt = scheduled_inst.scheduled_date
+            if sched_dt.tzinfo is not None:
+                sched_dt = sched_dt.replace(tzinfo=None)
+            now_utc = datetime.utcnow()
+            if now_utc < sched_dt:
+                diff = sched_dt - now_utc
+                total_secs = int(diff.total_seconds())
+                hours = total_secs // 3600
+                minutes = (total_secs % 3600) // 60
+                seconds = total_secs % 60
+                time_parts = []
+                if hours > 0:
+                    time_parts.append(f"{hours}h")
+                if minutes > 0 or hours > 0:
+                    time_parts.append(f"{minutes}m")
+                time_parts.append(f"{seconds}s")
+                remaining_str = " ".join(time_parts)
+                formatted_time = sched_dt.strftime("%b %d, %Y at %I:%M %p")
+                logger.warning(
+                    f"[Interview Start Blocked] Candidate {candidate.id} attempted to start scheduled interview {scheduled_inst.id} before scheduled time {formatted_time}. Remaining: {remaining_str}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"This interview is scheduled for {formatted_time}. You can only attend at the scheduled time, not before that (starts in {remaining_str})."
+                )
+
         # MODE 2: Recruiter Scheduled Interview (Pre-configured by Recruiter)
         cfg = scheduled_inst.config_json or {}
         role_target = cfg.get("job_title") or candidate.target_role or "Software Engineer"
@@ -134,8 +210,12 @@ async def start_interview_session(
         db.add(new_session)
         await db.flush()
 
-    # Automatically advance candidate pipeline status to 'Interview Started'
-    await PipelineManager.update_pipeline_stage(db, candidate.id, "Interview Started", job_id=new_session.job_id)
+    # Automatically advance candidate pipeline status to round-specific 'In Progress' status
+    if new_session.interview_type == "Recruiter" and new_session.job_application_id:
+        r_name = (new_session.round_type or "Interview").capitalize()
+        await PipelineManager.update_pipeline_stage(db, candidate.id, f"{r_name} In Progress", job_id=new_session.job_id)
+    else:
+        await PipelineManager.update_pipeline_stage(db, candidate.id, "Interview Started", job_id=new_session.job_id)
 
     target_num_q = new_session.question_count or 6
 
@@ -185,7 +265,13 @@ async def start_interview_session(
     resume_summary_val = (db_resume.summary if db_resume and db_resume.summary else None) or body.resume_text or "Not Available"
     raw_skills = [s.skill_name for s in db_skills] if db_skills else (body.parsed_resume.get("skills", []) if body.parsed_resume else [])
     resume_skills_val = [s.get("skill_name", str(s)) if isinstance(s, dict) else str(s) for s in raw_skills]
-    resume_projects_val = (db_resume.projects if db_resume and db_resume.projects else None) or (body.parsed_resume.get("projects", []) if body.parsed_resume else [])
+    resume_projects_raw = (db_resume.projects if db_resume and db_resume.projects else None) or (body.parsed_resume.get("projects", []) if body.parsed_resume else [])
+    # Filter out SmartHire project from context - SmartHire is the interview platform itself
+    resume_projects_val = [
+        p for p in (resume_projects_raw or [])
+        if not (isinstance(p, str) and "smarthire" in p.lower())
+        and not (isinstance(p, dict) and "smarthire" in (p.get("project_name", "") or str(p)).lower())
+    ]
 
     context_payload = {
         "role": new_session.role_target,
@@ -248,6 +334,12 @@ async def start_interview_session(
             "expected_keywords": q.expected_keywords,
             "is_followup": False
         })
+
+    if response_questions:
+        try:
+            asyncio.create_task(_prewarm_tts(response_questions[0]["question_text"]))
+        except Exception:
+            pass
 
     return {
         "session_id": new_session.id,
@@ -460,6 +552,10 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                     "difficulty": next_q_db.difficulty,
                     "is_followup": next_q_db.is_followup
                 }
+                try:
+                    asyncio.create_task(_prewarm_tts(next_q_db.question_text))
+                except Exception:
+                    pass
             except Exception as dynamic_q_err:
                 logger.error(f"Dynamic Question Generation Error: {dynamic_q_err}")
                 next_q_response = None
@@ -518,10 +614,9 @@ async def finish_interview_session(
                 await db.flush()
                 cand_ids = [candidate.id]
             if session.candidate_id and cand_ids and session.candidate_id not in cand_ids:
-                if session.interview_type in ("Mock", "Practice") or session.scheduled_interview_id is None:
-                    session.candidate_id = cand_ids[0]
-                else:
-                    raise HTTPException(status_code=403, detail="Unauthorized access.")
+                raise HTTPException(status_code=403, detail="Unauthorized access to another candidate's interview session.")
+            elif session.candidate_id is None and cand_ids:
+                session.candidate_id = cand_ids[0]
 
         report = await EvaluationService.generate_and_finalize_report(db, session_id)
         return {
@@ -536,7 +631,103 @@ async def finish_interview_session(
         logger.error(f"Error finishing session {session_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Finish session error: {type(e).__name__} - {str(e)}")
 
+@router.get("/session/{session_id}", summary="Get active interview session details")
+async def get_interview_session_details(
+    session_id: str,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        res = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
+        session = res.scalars().first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Interview session not found.")
+
+        # Candidate & Recruiter Access Control
+        if current_user and current_user.role == "candidate":
+            res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
+            cand = res_c.scalar_one_or_none()
+            if cand and session.candidate_id and session.candidate_id != cand.id and session.interview_type not in ("Mock", "Practice"):
+                raise HTTPException(status_code=403, detail="Unauthorized access to this interview session.")
+        elif current_user and current_user.role == "recruiter":
+            res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == current_user.id))
+            rec = res_r.scalar_one_or_none()
+            if rec and session.recruiter_id and session.recruiter_id != rec.id and current_user.role != "admin":
+                raise HTTPException(status_code=403, detail="Unauthorized recruiter access to this session.")
+
+        cand_name = "Candidate"
+        if session.candidate_id:
+            cand_res = await db.execute(
+                select(User.full_name)
+                .join(Candidate, Candidate.user_id == User.id)
+                .where(Candidate.id == session.candidate_id)
+            )
+            name_val = cand_res.scalar_one_or_none()
+            if name_val:
+                cand_name = name_val
+
+        q_res = await db.execute(
+            select(InterviewQuestion)
+            .where(InterviewQuestion.session_id == session_id)
+            .order_by(InterviewQuestion.order_index)
+        )
+        db_questions = q_res.scalars().all()
+
+        a_res = await db.execute(
+            select(InterviewAnswer.question_id)
+            .join(InterviewQuestion, InterviewQuestion.id == InterviewAnswer.question_id)
+            .where(InterviewQuestion.session_id == session_id)
+        )
+        answered_ids = set(a_res.scalars().all())
+
+        questions_list = []
+        current_q = None
+        for q in db_questions:
+            q_dict = {
+                "question_id": q.id,
+                "id": q.id,
+                "session_id": session.id,
+                "order_index": q.order_index,
+                "question_text": q.question_text,
+                "category": q.category,
+                "difficulty": q.difficulty,
+                "is_followup": q.is_followup
+            }
+            questions_list.append(q_dict)
+            if not current_q and q.id not in answered_ids:
+                current_q = q_dict
+
+        if not current_q and questions_list:
+            current_q = questions_list[-1]
+
+        if current_q and "question_text" in current_q:
+            try:
+                asyncio.create_task(_prewarm_tts(current_q["question_text"]))
+            except Exception:
+                pass
+
+        return {
+            "session_id": session.id,
+            "title": session.title,
+            "role_target": session.role_target,
+            "round_type": session.round_type,
+            "difficulty": session.difficulty,
+            "duration_minutes": session.duration_minutes,
+            "status": session.status,
+            "candidate_name": cand_name,
+            "total_questions": len(questions_list),
+            "first_question": current_q or (questions_list[0] if questions_list else None),
+            "current_question": current_q,
+            "questions": questions_list
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching session {session_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/report/{session_id}")
+@router.get("/evaluation/{session_id}")
 async def get_session_report(
     session_id: str,
     current_user: User = Depends(get_current_user),
@@ -555,20 +746,26 @@ async def get_session_report(
             res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
             cands = res_c.scalars().all()
             cand_ids = [c.id for c in cands]
-            if not cands:
-                candidate = Candidate(user_id=current_user.id, target_role="Software Engineer")
-                db.add(candidate)
-                await db.flush()
-                cand_ids = [candidate.id]
-
-            if session.candidate_id in cand_ids:
-                pass
-            elif session.candidate_id is None:
-                session.candidate_id = cand_ids[0]
-            elif session.interview_type in ("Mock", "Practice") or session.scheduled_interview_id is None:
-                session.candidate_id = cand_ids[0]
-            else:
+            if not cands or (session.candidate_id and session.candidate_id not in cand_ids):
                 raise HTTPException(status_code=403, detail="Unauthorized access to another candidate's interview session.")
+        elif current_user.role == "recruiter":
+            res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == current_user.id))
+            rec = res_r.scalar_one_or_none()
+            if not rec:
+                raise HTTPException(status_code=403, detail="Recruiter profile not found.")
+            res_j = await db.execute(select(JobPosting.id).where(JobPosting.recruiter_id == rec.id))
+            rec_job_ids = res_j.scalars().all()
+
+            is_own_job = session.job_id in rec_job_ids if session.job_id else False
+            is_own_recruiter = session.recruiter_id == rec.id if session.recruiter_id else False
+            if session.job_application_id:
+                res_app = await db.execute(select(JobApplication.job_id).where(JobApplication.id == session.job_application_id))
+                app_job_id = res_app.scalar_one_or_none()
+                if app_job_id in rec_job_ids:
+                    is_own_job = True
+
+            if not (is_own_job or is_own_recruiter) and current_user.role != "admin":
+                raise HTTPException(status_code=403, detail="Unauthorized recruiter access to this evaluation.")
 
         # Generate / finalize evaluation report (returns stored immutable DB record if completed)
         report = await EvaluationService.generate_and_finalize_report(db, session_id)
@@ -696,82 +893,84 @@ async def get_session_report(
         logger.error(f"Error fetching session report for {session_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Report fetch error: {type(e).__name__} - {str(e)}")
 
-@router.get("/transcript/{session_id}")
-async def get_session_transcript(
-    session_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
-    session = res_s.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Interview session not found.")
-
-    res_qa = await db.execute(
-        select(InterviewQuestion, InterviewAnswer)
-        .outerjoin(InterviewAnswer, InterviewQuestion.id == InterviewAnswer.question_id)
-        .where(InterviewQuestion.session_id == session_id)
-        .order_by(InterviewQuestion.order_index)
-    )
-    qa_list = res_qa.all()
-
-    questions = []
-    for q_inst, a_inst in qa_list:
-        questions.append({
-            "question_id": q_inst.id,
-            "order_index": q_inst.order_index,
-            "question_text": q_inst.question_text,
-            "category": q_inst.category,
-            "difficulty": q_inst.difficulty,
-            "is_followup": q_inst.is_followup,
-            "candidate_answer": a_inst.transcript_text if a_inst else "No verbal response submitted",
-            "interviewer_response": "Evaluation completed"
-        })
-
-    return {
-        "session_id": session_id,
-        "title": session.title,
-        "role_target": session.role_target,
-        "total_questions": len(questions),
-        "questions": questions
-    }
-
 @router.get("/history", response_model=List[Dict[str, Any]])
 async def get_interview_history(
     candidate_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches interview history strictly filtered by authenticated user's Candidate record or specified candidate_id for recruiters."""
-    cand_ids = []
+    """Fetches interview history strictly isolated to authenticated candidate, or to authenticated recruiter's job requisitions."""
+    sessions = []
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
         cands = res_c.scalars().all()
         if not cands:
-            candidate = Candidate(user_id=current_user.id, target_role="Software Engineer")
-            db.add(candidate)
-            await db.flush()
-            cands = [candidate]
+            return []
         cand_ids = [c.id for c in cands]
-    elif candidate_id:
-        cand_ids = [candidate_id]
-
-    if not cand_ids and current_user.role != "candidate":
-        res = await db.execute(select(InterviewSession).order_by(InterviewSession.started_at.desc()))
-        sessions = res.scalars().all()
-    else:
-        # Fetch sessions belonging to candidate or mock sessions linked to candidate
         res = await db.execute(
             select(InterviewSession)
             .where(InterviewSession.candidate_id.in_(cand_ids))
             .order_by(InterviewSession.started_at.desc())
         )
         sessions = res.scalars().all()
+    elif current_user.role == "recruiter":
+        res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == current_user.id))
+        rec = res_r.scalar_one_or_none()
+        if not rec:
+            return []
+        res_j = await db.execute(select(JobPosting.id).where(JobPosting.recruiter_id == rec.id))
+        job_ids = res_j.scalars().all()
+        if not job_ids:
+            return []
+        res_a = await db.execute(select(JobApplication.id).where(JobApplication.job_id.in_(job_ids)))
+        app_ids = res_a.scalars().all()
+
+        stmt = select(InterviewSession).where(
+            or_(
+                InterviewSession.job_id.in_(job_ids),
+                InterviewSession.job_application_id.in_(app_ids)
+            ),
+            InterviewSession.interview_type != "Mock"
+        )
+        if candidate_id:
+            stmt = stmt.where(InterviewSession.candidate_id == candidate_id)
+        stmt = stmt.order_by(InterviewSession.started_at.desc())
+        res = await db.execute(stmt)
+        sessions = res.scalars().all()
+    elif current_user.role == "admin":
+        stmt = select(InterviewSession)
+        if candidate_id:
+            stmt = stmt.where(InterviewSession.candidate_id == candidate_id)
+        stmt = stmt.order_by(InterviewSession.started_at.desc())
+        res = await db.execute(stmt)
+        sessions = res.scalars().all()
+    else:
+        return []
 
     if not sessions:
         return []
 
     session_ids = [s.id for s in sessions]
+    session_candidate_ids = list({s.candidate_id for s in sessions if s.candidate_id})
+    session_job_ids = list({s.job_id for s in sessions if s.job_id})
+
+    # Batch query candidate user info
+    cand_map = {}
+    if session_candidate_ids:
+        res_c = await db.execute(
+            select(Candidate.id, User.full_name, User.email)
+            .join(User, Candidate.user_id == User.id)
+            .where(Candidate.id.in_(session_candidate_ids))
+        )
+        for c_id, f_name, em in res_c.all():
+            cand_map[c_id] = {"name": f_name or "Candidate", "email": em or ""}
+
+    # Batch query job titles
+    job_map = {}
+    if session_job_ids:
+        res_j = await db.execute(select(JobPosting.id, JobPosting.title).where(JobPosting.id.in_(session_job_ids)))
+        for j_id, j_title in res_j.all():
+            job_map[j_id] = j_title
 
     # Batch query reports, question counts, and recordings in 3 parallel/instant queries
     from sqlalchemy import func
@@ -798,11 +997,20 @@ async def get_interview_history(
         has_rec = bool(rec_obj)
         rec_path = rec_obj.file_path if rec_obj else None
 
+        cand_info = cand_map.get(s.candidate_id, {})
+        job_title = job_map.get(s.job_id)
+        display_title = s.title or (f"{s.round_type or 'Technical'} Interview - {cand_info.get('name')}" if cand_info.get("name") else (job_title or s.role_target or "Interview"))
+
         history.append({
             "id": s.id,
             "session_id": s.id,
-            "title": s.title,
-            "role_target": s.role_target or "Software Engineer",
+            "title": display_title,
+            "role_target": job_title or s.role_target or "Software Engineer",
+            "candidate_id": s.candidate_id,
+            "candidate_name": cand_info.get("name"),
+            "candidate_email": cand_info.get("email"),
+            "job_id": s.job_id,
+            "job_title": job_title,
             "round_type": s.round_type or "Technical",
             "interview_type": s.interview_type or "Mock",
             "duration_minutes": s.duration_minutes or 30,
@@ -813,29 +1021,63 @@ async def get_interview_history(
             "overall_score": score,
             "recommendation": rec,
             "has_recording": has_rec,
-            "recording_file_path": rec_path
+            "recording_file_path": rec_path,
+            "strengths": rep.strengths if (rep and rep.strengths) else [],
+            "weaknesses": rep.weaknesses if (rep and rep.weaknesses) else [],
+            "technical_score": rep.technical_score if rep else None,
+            "communication_score": rep.communication_score if rep else None,
+            "confidence_score": rep.confidence_score if rep else None,
+            "professionalism_score": rep.professionalism_score if rep else None,
         })
 
     return history
 
 @router.get("/report/{session_id}/pdf")
+@router.get("/report/{session_id}/download")
+@router.get("/reports/{session_id}/download")
 async def get_session_pdf_report(
     session_id: str,
+    round: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Generates and downloads a complete enterprise PDF evaluation report for an interview session."""
+    """Generates and downloads an authoritative enterprise PDF evaluation report for an interview session."""
     res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
     session = res_s.scalar_one_or_none()
     if not session:
+        res_app = await db.execute(select(JobApplication).where(JobApplication.id == session_id))
+        app_obj = res_app.scalar_one_or_none()
+        if app_obj:
+            from app.api.v1.recruiter import download_evaluation_report_pdf
+            return await download_evaluation_report_pdf(session_id, round=round or "combined", db=db)
         raise HTTPException(status_code=404, detail="Interview session not found.")
 
+    if round and round.lower() in ["assessment", "mock", "online_assessment", "combined", "all", "master"] and session.job_application_id:
+        from app.api.v1.recruiter import download_evaluation_report_pdf
+        return await download_evaluation_report_pdf(session.job_application_id, round=round, db=db)
+
     # Authorization check
+    cand_obj = None
+    cand_user = None
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
         candidate = res_c.scalar_one_or_none()
-        if not candidate or session.candidate_id != candidate.id:
-            raise HTTPException(status_code=403, detail="Unauthorized access.")
+        if not candidate or (session.candidate_id and session.candidate_id != candidate.id):
+            raise HTTPException(status_code=403, detail="Unauthorized access to this candidate report.")
+        cand_obj = candidate
+        cand_user = current_user
+    elif current_user.role == "recruiter":
+        res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == current_user.id))
+        recruiter = res_r.scalar_one_or_none()
+        if recruiter and session.recruiter_id and session.recruiter_id != recruiter.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Unauthorized recruiter access to this report.")
+
+    if not cand_user and session.candidate_id:
+        res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
+        cand_obj = res_c.scalar_one_or_none()
+        if cand_obj and cand_obj.user_id:
+            res_u = await db.execute(select(User).where(User.id == cand_obj.user_id))
+            cand_user = res_u.scalar_one_or_none()
 
     # Generate / Fetch report
     report = await EvaluationService.generate_and_finalize_report(db, session_id)
@@ -850,21 +1092,57 @@ async def get_session_pdf_report(
     results = await db.execute(stmt)
     pairs = results.all()
 
+    # Build Q&A evaluation lookup
+    eval_lookup = {}
+    for q_eval in (report.question_evaluations or []):
+        if isinstance(q_eval, dict):
+            q_txt = q_eval.get("question_text") or q_eval.get("question")
+            if q_txt:
+                eval_lookup[q_txt] = q_eval
+
     transcript_list = []
     for q, a in pairs:
+        q_meta = eval_lookup.get(q.question_text) or {}
         transcript_list.append({
             "question_text": q.question_text,
             "category": q.category,
             "difficulty": q.difficulty,
             "is_followup": q.is_followup,
-            "answer_text": a.transcript_text if a else None
+            "answer_text": a.transcript_text if a else None,
+            "technical_score": q_meta.get("technical_score") or q_meta.get("score"),
+            "covered_concepts": q_meta.get("covered_concepts") or q_meta.get("concepts_covered") or [],
+            "missing_concepts": q_meta.get("missing_concepts") or q_meta.get("concepts_missing") or [],
+            "recommendation": q_meta.get("recommendation")
         })
+
+    # Fetch real integrity summary
+    integrity_summary = None
+    try:
+        integrity_summary = await integrity_service.get_session_integrity_summary(db, session_id)
+    except Exception as e_int:
+        logger.warning("Could not load integrity summary for PDF: %s", e_int)
+
+    # Company name resolution
+    company_name = "SmartHire AI Platform"
+    if session.job_application_id:
+        res_app = await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))
+        app_obj = res_app.scalar_one_or_none()
+        if app_obj and app_obj.job_id:
+            res_jp = await db.execute(select(JobPosting).where(JobPosting.id == app_obj.job_id))
+            jp = res_jp.scalar_one_or_none()
+            if jp:
+                company_name = jp.company_name
 
     session_info = {
         "title": session.title,
-        "role_target": session.role_target,
-        "round_type": session.round_type,
-        "interview_type": session.interview_type
+        "role_target": session.role_target or (cand_obj.target_role if cand_obj else "Software Engineer"),
+        "round_type": session.round_type or "Technical",
+        "interview_type": session.interview_type or "Simulation",
+        "candidate_name": cand_user.full_name if cand_user else "Candidate User",
+        "candidate_email": cand_user.email if cand_user else "N/A",
+        "company_name": company_name,
+        "date": (getattr(session, "started_at", None) or getattr(session, "created_at", None) or datetime.utcnow()).strftime("%b %d, %Y at %I:%M %p"),
+        "session_id": session.id
     }
 
     report_dict = {
@@ -880,13 +1158,21 @@ async def get_session_pdf_report(
         "recommendation": report.recommendation,
         "overall_summary": report.overall_summary,
         "strengths": report.strengths or [],
-        "weaknesses": report.weaknesses or []
+        "weaknesses": report.weaknesses or [],
+        "communication_metrics": report.communication_metrics or {},
+        "confidence_metrics": report.confidence_metrics or {},
+        "technical_metrics": report.technical_metrics or {},
+        "integrity_score": getattr(session, "integrity_score", 100.0),
+        "integrity_status": getattr(session, "integrity_status", "CLEAN"),
+        "model_version": report.model_version or "smart-hire-v2.0.0",
+        "analysis_version": report.analysis_version or "evidence_based_v2"
     }
 
     pdf_bytes = pdf_generator.generate_interview_pdf(
         session_info=session_info,
         report_data=report_dict,
-        transcript_data=transcript_list
+        transcript_data=transcript_list,
+        integrity_summary=integrity_summary
     )
 
     return Response(
@@ -960,7 +1246,8 @@ async def get_session_transcript(
         "round_type": session.round_type,
         "status": session.status,
         "total_questions": len(transcript),
-        "transcript": transcript
+        "transcript": transcript,
+        "questions": transcript
     }
 
 @router.get("/mock-history", response_model=List[Dict[str, Any]], summary="Get Candidate Mock Practice History Cards")
@@ -1035,11 +1322,11 @@ async def record_integrity_event(
         await db.flush()
     cand_id = cand.id if cand else session.candidate_id
 
-    # Bind candidate ownership for mock practice or unlinked sessions
-    if session.candidate_id is None or session.interview_type in ("Mock", "Practice") or session.scheduled_interview_id is None:
-        session.candidate_id = cand_id
-    elif current_user.role == "candidate" and cand and session.candidate_id != cand.id:
-        raise HTTPException(status_code=403, detail="Unauthorized access to this interview session.")
+    if current_user.role == "candidate":
+        if session.candidate_id and cand and session.candidate_id != cand.id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to this interview session.")
+        elif session.candidate_id is None and cand:
+            session.candidate_id = cand.id
 
     try:
         event, summary = await integrity_service.record_or_update_event(
@@ -1112,8 +1399,11 @@ async def terminate_interview_session(
         await db.flush()
     cand_id = cand.id if cand else session.candidate_id
 
-    if session.candidate_id is None or session.interview_type in ("Mock", "Practice") or session.scheduled_interview_id is None:
-        session.candidate_id = cand_id
+    if current_user.role == "candidate":
+        if session.candidate_id and cand and session.candidate_id != cand.id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to this interview session.")
+        elif session.candidate_id is None and cand:
+            session.candidate_id = cand.id
 
     reason = (payload or {}).get("reason") or "TAB_SWITCH"
     metadata = (payload or {}).get("metadata") or {}
@@ -1157,8 +1447,11 @@ async def record_transcript_segment(
         await db.flush()
     cand_id = cand.id if cand else session.candidate_id
 
-    if session.candidate_id is None or session.interview_type in ("Mock", "Practice") or session.scheduled_interview_id is None:
-        session.candidate_id = cand_id
+    if current_user.role == "candidate":
+        if session.candidate_id and cand and session.candidate_id != cand.id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to this interview session.")
+        elif session.candidate_id is None and cand:
+            session.candidate_id = cand.id
 
     text = payload.get("text", "").strip()
     if not text:
@@ -1243,8 +1536,11 @@ async def infer_visual_frame(
         await db.flush()
     cand_id = cand.id if cand else session.candidate_id
 
-    if session.candidate_id is None or session.interview_type in ("Mock", "Practice") or session.scheduled_interview_id is None:
-        session.candidate_id = cand_id
+    if current_user.role == "candidate":
+        if session.candidate_id and cand and session.candidate_id != cand.id:
+            raise HTTPException(status_code=403, detail="Unauthorized access to this interview session.")
+        elif session.candidate_id is None and cand:
+            session.candidate_id = cand.id
 
     face_detected = payload.get("face_detected", True)
     frame_b64 = payload.get("frame_base64") or payload.get("image_base64")
@@ -1306,32 +1602,47 @@ async def record_visual_observations(
 
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
     cand = res_c.scalar_one_or_none()
+
+    if current_user.role == "candidate":
+        if session.candidate_id and cand and session.candidate_id != cand.id:
+            raise HTTPException(status_code=403, detail="Not authorized to access this interview session.")
+        elif session.candidate_id is None and cand:
+            session.candidate_id = cand.id
+
     cand_id = cand.id if cand else session.candidate_id
 
     observations_data = payload.get("observations", [])
     if not observations_data and "timestamp" in payload:
         observations_data = [payload]
 
+    def safe_float(val, default=0.0):
+        try:
+            return float(val) if val is not None else default
+        except (ValueError, TypeError):
+            return default
+
     added = 0
     for obs in observations_data:
+        if not isinstance(obs, dict):
+            continue
         record = InterviewVisualObservation(
             session_id=session_id,
             candidate_id=cand_id,
-            timestamp=float(obs.get("timestamp", 0.0)),
+            timestamp=safe_float(obs.get("timestamp"), 0.0),
             face_detected=bool(obs.get("face_detected", True)),
-            face_confidence=float(obs.get("face_confidence", 1.0)),
-            head_yaw=float(obs.get("head_yaw", 0.0)),
-            head_pitch=float(obs.get("head_pitch", 0.0)),
-            head_roll=float(obs.get("head_roll", 0.0)),
-            gaze_horizontal=float(obs.get("gaze_horizontal", 0.0)),
-            gaze_vertical=float(obs.get("gaze_vertical", 0.0)),
-            eye_contact_state=obs.get("eye_contact_state", "LOOKING_AT_CAMERA"),
-            emotion=obs.get("emotion", "neutral"),
-            emotion_confidence=float(obs.get("emotion_confidence", 1.0)),
-            attention_state=obs.get("attention_state", "FOCUSED"),
-            model_version=obs.get("model_version", "smart-hire-behavior-v2.0"),
-            probability_distribution=obs.get("probability_distribution", {}),
-            observation_status=obs.get("observation_status", "VALID")
+            face_confidence=safe_float(obs.get("face_confidence"), 1.0),
+            head_yaw=safe_float(obs.get("head_yaw"), 0.0),
+            head_pitch=safe_float(obs.get("head_pitch"), 0.0),
+            head_roll=safe_float(obs.get("head_roll"), 0.0),
+            gaze_horizontal=safe_float(obs.get("gaze_horizontal"), 0.0),
+            gaze_vertical=safe_float(obs.get("gaze_vertical"), 0.0),
+            eye_contact_state=str(obs.get("eye_contact_state") or "LOOKING_AT_CAMERA"),
+            emotion=str(obs.get("emotion") or "neutral"),
+            emotion_confidence=safe_float(obs.get("emotion_confidence"), 1.0),
+            attention_state=str(obs.get("attention_state") or "FOCUSED"),
+            model_version=str(obs.get("model_version") or "smart-hire-behavior-v2.0"),
+            probability_distribution=obs.get("probability_distribution") if isinstance(obs.get("probability_distribution"), dict) else {},
+            observation_status=str(obs.get("observation_status") or "VALID")
         )
         db.add(record)
         added += 1
@@ -1339,4 +1650,44 @@ async def record_visual_observations(
     await db.commit()
     return {"success": True, "count": added}
 
+
+# -----------------------------------------------------------------------------
+# Neural AI Interviewer Text-To-Speech (TTS) Endpoint
+# -----------------------------------------------------------------------------
+class TTSPayload(BaseModel):
+    text: str
+    voice: Optional[str] = "en-US-AriaNeural"
+
+@router.post("/tts", summary="Synthesize High-Fidelity Neural Speech Audio")
+async def generate_interview_tts(body: TTSPayload):
+    """Generates crystal-clear natural human-like voice audio (MP3) for AI Interviewer."""
+    raw = (body.text or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    clean_text = re.sub(r'[*_#`~]', '', raw).strip()
+    voice = body.voice or "en-US-AriaNeural"
+    cache_key = hashlib.md5(f"{voice}:{clean_text}".encode()).hexdigest()
+
+    if cache_key in _tts_cache:
+        return Response(content=_tts_cache[cache_key], media_type="audio/mpeg")
+
+    try:
+        import edge_tts
+        comm = edge_tts.Communicate(clean_text, voice)
+        chunks = []
+        async for chunk in comm.stream():
+            if chunk.get("type") == "audio" and "data" in chunk:
+                chunks.append(chunk["data"])
+        audio_bytes = b"".join(chunks)
+
+        if audio_bytes:
+            if len(_tts_cache) > 120:
+                _tts_cache.clear()
+            _tts_cache[cache_key] = audio_bytes
+            return Response(content=audio_bytes, media_type="audio/mpeg")
+    except Exception as e:
+        logger.warning(f"Neural TTS failed for text: {e}")
+
+    raise HTTPException(status_code=500, detail="Failed to generate neural audio.")
 

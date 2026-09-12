@@ -32,6 +32,8 @@ async def get_my_notifications(
             "title": n.title,
             "message": n.message,
             "notification_type": n.notification_type,
+            "interview_id": getattr(n, "interview_id", None),
+            "link": getattr(n, "link", None),
             "is_read": n.is_read,
             "created_at": n.created_at.isoformat() if n.created_at else None,
             "timestamp": n.created_at.strftime('%I:%M %p · %b %d') if n.created_at else "Just now"

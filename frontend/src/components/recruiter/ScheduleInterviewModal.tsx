@@ -8,11 +8,12 @@ interface ScheduleModalProps {
   onSuccess: () => void;
   defaultJobId?: string;
   defaultMode?: 'assessment' | 'interview';
+  defaultRoundType?: string;
   defaultCandidateId?: string;
 }
 
 export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
-  isOpen, onClose, onSuccess, defaultJobId, defaultMode = 'assessment', defaultCandidateId
+  isOpen, onClose, onSuccess, defaultJobId, defaultMode = 'assessment', defaultRoundType = 'Technical', defaultCandidateId
 }) => {
   const [scheduleMode, setScheduleMode] = useState<'assessment' | 'interview'>(defaultMode);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -21,7 +22,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
 
   const [candidates, setCandidates] = useState<any[]>([]);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
-  const [roundType, setRoundType] = useState<string>('Technical');
+  const [roundType, setRoundType] = useState<string>(defaultRoundType);
   const [scheduledDate, setScheduledDate] = useState<string>('');
   const [scheduledTime, setScheduledTime] = useState<string>('10:30');
   const [durationMinutes, setDurationMinutes] = useState<number>(30);
@@ -39,6 +40,10 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
   useEffect(() => {
     if (defaultMode) setScheduleMode(defaultMode);
   }, [defaultMode]);
+
+  useEffect(() => {
+    if (defaultRoundType) setRoundType(defaultRoundType);
+  }, [defaultRoundType]);
 
   // Update assessment topics when selected job changes
   useEffect(() => {
@@ -170,35 +175,35 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl p-7 border border-slate-200 shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-6">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-7 border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-6 text-slate-900 dark:text-slate-100">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-slate-900">
+              <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
                 {scheduleMode === 'assessment' ? 'Schedule Online Assessment Test' : 'Schedule Technical Interview Invitation'}
               </h3>
-              <p className="text-xs text-slate-400 font-semibold">Sequential Hiring Pipeline Workflow · Single Source of Truth</p>
+              <p className="text-xs text-slate-400 dark:text-slate-400 font-semibold">Sequential Hiring Pipeline Workflow · Single Source of Truth</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg">
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Schedule Mode Selector Tabs */}
-        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl text-xs font-extrabold">
+        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-extrabold">
           <button
             type="button"
             onClick={() => setScheduleMode('assessment')}
             className={`py-2.5 rounded-xl transition-all ${
               scheduleMode === 'assessment'
                 ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             1. Online Assessment (ATS ≥80%)
@@ -209,7 +214,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
             className={`py-2.5 rounded-xl transition-all ${
               scheduleMode === 'interview'
                 ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             2. Technical Interview (Assessment Passed)
@@ -217,7 +222,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
         </div>
 
         {errorMsg && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold">
+          <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-semibold">
             {errorMsg}
           </div>
         )}
@@ -226,20 +231,20 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
 
           {/* STEP 1: Select Job Posting Requisition */}
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
-              <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1 flex items-center gap-1.5">
+              <Briefcase className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               1. Select Job Posting Requisition
             </label>
             <select
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
-              className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50/40"
+              className="w-full px-4 py-3 border border-indigo-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50/40 dark:bg-slate-800"
             >
               {jobs.length === 0 ? (
                 <option value="">No Active Published Jobs Found</option>
               ) : (
                 jobs.map((j) => (
-                  <option key={j.id} value={j.id}>
+                  <option key={j.id} value={j.id} className="dark:bg-slate-800 dark:text-white">
                     {j.title} · {j.company_name || 'SmartHire AI'} ({j.shortlisted_count || 0} Shortlisted Candidates)
                   </option>
                 ))
@@ -249,15 +254,15 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
 
           {/* Job Details Metadata Capsule */}
           {selectedJob && (
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1">
-              <div className="flex items-center justify-between font-extrabold text-slate-900">
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 text-xs space-y-1">
+              <div className="flex items-center justify-between font-extrabold text-slate-900 dark:text-white">
                 <span>Role: {selectedJob.title}</span>
-                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">
+                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold">
                   {selectedJob.experience_level || 'Mid-Senior'}
                 </span>
               </div>
               {selectedJob.required_skills && selectedJob.required_skills.length > 0 && (
-                <p className="text-[11px] text-slate-500 font-medium truncate">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
                   Required Skills: {selectedJob.required_skills.join(', ')}
                 </p>
               )}
@@ -267,24 +272,24 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
           {/* STEP 2: Candidate Selection Box */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-700">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 2. Select {scheduleMode === 'assessment' ? 'ATS Passed (≥80%)' : 'Assessment Passed (≥70%)'} Candidates for {selectedJob?.title || 'Position'} ({selectedCandidateIds.length} selected)
               </label>
               {candidates.length > 0 && (
                 <button
                   type="button"
                   onClick={toggleSelectAll}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700"
+                  className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700"
                 >
                   {selectedCandidateIds.length === candidates.length ? 'Deselect All' : 'Select All'}
                 </button>
               )}
             </div>
 
-            <div className="border border-slate-200 rounded-2xl p-3 max-h-44 overflow-y-auto space-y-2 bg-slate-50/50">
+            <div className="border border-slate-200 dark:border-slate-700 rounded-2xl p-3 max-h-44 overflow-y-auto space-y-2 bg-slate-50/50 dark:bg-slate-800/40">
               {candidates.length === 0 ? (
                 <div className="p-4 text-center space-y-1">
-                  <p className="text-xs font-bold text-slate-700">
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
                     No Eligible Candidates Found for {scheduleMode === 'assessment' ? 'Online Assessment' : 'Interview'}
                   </p>
                   <p className="text-[11px] text-slate-400 font-medium">
@@ -304,29 +309,29 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
                       onClick={() => toggleCandidateSelect(candId)}
                       className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
                         isSelected 
-                          ? 'bg-indigo-50/90 border-indigo-300 text-indigo-950 font-bold shadow-xs' 
-                          : 'bg-white border-slate-200/80 text-slate-700 hover:border-indigo-200'
+                          ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-950 dark:text-indigo-200 font-bold shadow-xs' 
+                          : 'bg-white dark:bg-slate-800 border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-200 dark:hover:border-slate-600'
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+                          <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
                         ) : (
                           <Square className="w-4 h-4 text-slate-400 shrink-0" />
                         )}
                         <div>
-                          <p className="text-xs font-black text-slate-900">{c.candidate_name || c.full_name}</p>
-                          <p className="text-[11px] text-slate-500 font-medium">{c.email} · {c.applied_job || c.job_title}</p>
+                          <p className="text-xs font-black text-slate-900 dark:text-white">{c.candidate_name || c.full_name}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">{c.email} · {c.applied_job || c.job_title}</p>
                           <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Applied: {c.applied_date}</p>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                          c.ats_score >= 80 ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-slate-100 text-slate-600'
+                          c.ats_score >= 80 ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                         }`}>
                           {c.ats_score}% ATS Match
                         </span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
                           {c.eligibility || c.status || 'Assessment Passed'}
                         </span>
                       </div>
@@ -339,28 +344,28 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
 
           {/* STEP 3: Config Controls (Distinct between Assessment vs Interview) */}
           {scheduleMode === 'assessment' ? (
-            <div className="space-y-4 border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-2 text-xs font-extrabold text-indigo-600">
+            <div className="space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
                 <Sparkles className="w-4 h-4" />
                 <span>3. Online Assessment Configuration</span>
               </div>
 
               {/* Assessment Title */}
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Assessment Test Title</label>
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">Assessment Test Title</label>
                 <input
                   type="text"
                   value={assessmentTitle}
                   onChange={(e) => setAssessmentTitle(e.target.value)}
                   required
                   placeholder="e.g. Senior Full Stack Technical & Aptitude Test"
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               {/* Assessment Topics (Comma-Separated) */}
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">
                   Topics / Required Skills (Separated by Commas)
                 </label>
                 <input
@@ -369,7 +374,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
                   onChange={(e) => setAssessmentTopics(e.target.value)}
                   required
                   placeholder="e.g. React, TypeScript, FastAPI, PostgreSQL, Data Structures"
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <p className="text-[10px] text-slate-400 font-medium mt-1">
                   AI will generate questions tailored to these specific skill tags.
@@ -379,11 +384,11 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
               {/* Difficulty & Question Count */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Difficulty Level</label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">Difficulty Level</label>
                   <select
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800"
                   >
                     <option value="Easy">Easy (Graduate / Junior)</option>
                     <option value="Medium">Medium (Mid-Level Standard)</option>
@@ -392,11 +397,11 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Total Questions</label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">Total Questions</label>
                   <select
                     value={questionCount}
                     onChange={(e) => setQuestionCount(Number(e.target.value))}
-                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800"
                   >
                     <option value={10}>10 Questions (Short Screening)</option>
                     <option value={20}>20 Questions (Standard Test)</option>
@@ -409,11 +414,11 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
               {/* Duration & Passing Cutoff Score */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Time Duration (Minutes)</label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">Time Duration (Minutes)</label>
                   <select
                     value={durationMinutes}
                     onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800"
                   >
                     <option value={15}>15 Mins</option>
                     <option value={30}>30 Mins</option>
@@ -423,7 +428,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Passing Cutoff Score (%)</label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">Passing Cutoff Score (%)</label>
                   <input
                     type="number"
                     min="40"
@@ -431,25 +436,25 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
                     value={passingScore}
                     onChange={(e) => setPassingScore(Number(e.target.value))}
                     required
-                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
               {/* Assessment Instructions */}
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Assessment Test Instructions</label>
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">Assessment Test Instructions</label>
                 <textarea
                   rows={2}
                   value={assessmentInstructions}
                   onChange={(e) => setAssessmentInstructions(e.target.value)}
-                  className="w-full p-3 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full p-3 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-xs font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
           ) : (
-            <div className="space-y-4 border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-2 text-xs font-extrabold text-purple-600">
+            <div className="space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-purple-600 dark:text-purple-400">
                 <Video className="w-4 h-4" />
                 <span>3. Technical Interview Configuration</span>
               </div>
@@ -457,11 +462,11 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
               {/* Round Type & Difficulty */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">Round Type</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">Round Type</label>
                   <select
                     value={roundType}
                     onChange={(e) => setRoundType(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800"
                   >
                     <option>Technical</option>
                     <option>HR</option>
@@ -472,11 +477,11 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">Difficulty Level (Auto-Inferred)</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">Difficulty Level (Auto-Inferred)</label>
                   <select
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800"
                   >
                     <option>Easy</option>
                     <option>Medium</option>
@@ -488,33 +493,33 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
               {/* Date, Time & Duration */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">Date</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">Date</label>
                   <input
                     type="date"
                     value={scheduledDate}
                     onChange={(e) => setScheduledDate(e.target.value)}
                     required
-                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">Time</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">Time</label>
                   <input
                     type="time"
                     value={scheduledTime}
                     onChange={(e) => setScheduledTime(e.target.value)}
                     required
-                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">Duration</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">Duration</label>
                   <select
                     value={durationMinutes}
                     onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800"
                   >
                     <option value={15}>15 Mins</option>
                     <option value={30}>30 Mins</option>
@@ -526,23 +531,23 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
 
               {/* Interview Instructions */}
               <div>
-                <label className="text-xs font-bold text-slate-500 block mb-1">Interview Instructions for Candidate</label>
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">Interview Instructions for Candidate</label>
                 <textarea
                   rows={2}
                   value={instructions}
                   onChange={(e) => setInstructions(e.target.value)}
-                  className="w-full p-3 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full p-3 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-xs font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900"
+              className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
             >
               Cancel
             </button>

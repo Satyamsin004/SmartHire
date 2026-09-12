@@ -115,30 +115,30 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-6">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-6 text-slate-900 dark:text-slate-100">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
-            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100">
+            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">
               OFFICIAL ATS APPLICATION FORM
             </span>
-            <h2 className="text-xl font-extrabold text-slate-900 mt-1">{job.title}</h2>
-            <p className="text-xs text-slate-500 font-medium">{job.company_name} · {job.location} ({job.work_mode || 'Remote'})</p>
+            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">{job.title}</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{job.company_name} · {job.location} ({job.work_mode || 'Remote'})</p>
           </div>
 
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-xl">
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {appliedSuccess ? (
           <div className="py-12 text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto shadow-sm">
               <CheckCircle2 className="w-8 h-8" />
             </div>
-            <h3 className="text-lg font-black text-slate-900">Application Submitted Successfully!</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">Application Submitted Successfully!</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
               Your resume and application details have been saved. AI Resume Screening is evaluating your profile against the job description.
             </p>
           </div>
@@ -146,20 +146,20 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
           <form onSubmit={handleSubmit} className="space-y-5">
             
             {errorMsg && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl">
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-xl">
                 {errorMsg}
               </div>
             )}
 
             {/* MANDATORY RESUME PROFILE SELECTION */}
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-indigo-600" />
+                <span className="text-xs font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   Candidate Resume Profile (Mandatory)
                 </span>
                 {existingResume && (
-                  <span className="text-[11px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                  <span className="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800">
                     ✓ Resume Stored
                   </span>
                 )}
@@ -168,14 +168,14 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
               {loadingResume ? (
                 <div className="text-xs font-bold text-slate-400">Checking stored resume...</div>
               ) : existingResume ? (
-                <div className="flex items-center justify-between bg-white p-3.5 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
                       <FileText className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-extrabold text-slate-900">{existingResume.file_name || 'My_Resume.pdf'}</h4>
-                      <span className="text-[11px] font-medium text-slate-500">Active PDF profile for ATS matching</span>
+                      <h4 className="text-xs font-extrabold text-slate-900 dark:text-slate-100">{existingResume.file_name || 'My_Resume.pdf'}</h4>
+                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Active PDF profile for ATS matching</span>
                     </div>
                   </div>
 
@@ -184,12 +184,12 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
                       href={existingResume.file_path}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg flex items-center gap-1"
+                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-bold rounded-lg flex items-center gap-1 transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
                       Download
                     </a>
-                    <label className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1">
+                    <label className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1 transition-colors">
                       <RefreshCw className="w-3.5 h-3.5" />
                       Replace
                       <input type="file" accept=".pdf" onChange={handleResumeFileUpload} className="hidden" />
@@ -197,12 +197,12 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
                   </div>
                 </div>
               ) : (
-                <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200/80 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-amber-800 text-xs font-bold">
+                <div className="bg-amber-50/60 dark:bg-amber-950/30 p-4 rounded-xl border border-amber-200/80 dark:border-amber-800/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 text-xs font-bold">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>No Resume Uploaded. Upload a PDF resume to enable submission.</span>
                   </div>
-                  <label className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5">
+                  <label className="px-4 py-2 bg-slate-900 dark:bg-brand-primary hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5">
                     <FileUp className="w-3.5 h-3.5 text-indigo-400" />
                     {uploadingResume ? 'Uploading...' : 'Upload Resume'}
                     <input type="file" accept=".pdf" onChange={handleResumeFileUpload} className="hidden" />
@@ -212,130 +212,130 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
             </div>
 
             {/* Application Form Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
               <div>
-                <label className="block mb-1 font-bold">Phone Number *</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">Phone Number *</label>
                 <input
                   type="text"
                   required
                   placeholder="+1 (555) 019-2834"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">Location / Address</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">Location / Address</label>
                 <input
                   type="text"
                   placeholder="City, State, Country"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">Current CTC / Salary</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">Current CTC / Salary</label>
                 <input
                   type="text"
                   placeholder="e.g. $110,000 / yr"
                   value={currentCtc}
                   onChange={(e) => setCurrentCtc(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">Expected CTC / Salary</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">Expected CTC / Salary</label>
                 <input
                   type="text"
                   placeholder="e.g. $140,000 / yr"
                   value={expectedCtc}
                   onChange={(e) => setExpectedCtc(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">Notice Period</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">Notice Period</label>
                 <input
                   type="text"
                   placeholder="e.g. Immediate / 15 Days"
                   value={noticePeriod}
                   onChange={(e) => setNoticePeriod(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">Availability to Start</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">Availability to Start</label>
                 <input
                   type="text"
                   placeholder="e.g. Immediately"
                   value={availability}
                   onChange={(e) => setAvailability(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">LinkedIn Profile URL</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">LinkedIn Profile URL</label>
                 <input
                   type="url"
                   placeholder="https://linkedin.com/in/username"
                   value={linkedinUrl}
                   onChange={(e) => setLinkedinUrl(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">GitHub / Portfolio URL</label>
+                <label className="block mb-1 font-bold text-slate-800 dark:text-slate-200">GitHub / Portfolio URL</label>
                 <input
                   type="url"
                   placeholder="https://github.com/username"
                   value={githubUrl}
                   onChange={(e) => setGithubUrl(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Cover Letter / Statement of Interest</label>
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">Cover Letter / Statement of Interest</label>
               <textarea
                 rows={3}
                 placeholder="Explain why your technical experience matches this job description..."
                 value={coverLetter}
                 onChange={(e) => setCoverLetter(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-brand-accent"
               />
             </div>
 
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-2">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer pt-2">
               <input
                 type="checkbox"
                 checked={declaration}
                 onChange={(e) => setDeclaration(e.target.checked)}
-                className="w-4 h-4 accent-slate-900 rounded"
+                className="w-4 h-4 accent-slate-900 dark:accent-brand-primary rounded"
               />
               <span>I hereby declare that all information submitted in this application is accurate and complete.</span>
             </label>
 
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800"
+                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting || !declaration || !existingResume}
-                className="py-3 px-6 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all transform active:scale-95 disabled:opacity-50"
+                className="py-3 px-6 bg-slate-900 dark:bg-brand-primary hover:bg-slate-800 dark:hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all transform active:scale-95 disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
                 {submitting ? 'Screening & Submitting...' : 'Submit Official Application'}

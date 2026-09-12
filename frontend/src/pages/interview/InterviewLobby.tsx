@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, MicOff, Video, VideoOff, Clock, CheckCircle2, AlertCircle, ShieldCheck, Play, Wifi, WifiOff, Volume2, RotateCcw } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Clock, CheckCircle2, AlertCircle, ShieldCheck, Play, Wifi, WifiOff, Volume2, RotateCcw, Lock, Calendar } from 'lucide-react';
 import api from '../../services/api';
 import { integrityEngine } from '../../services/IntegrityEngine';
 
@@ -19,6 +19,12 @@ export const InterviewLobby: React.FC = () => {
   const [networkStatus, setNetworkStatus] = useState<'good' | 'fair' | 'poor'>('good');
   const [scheduledDetails, setScheduledDetails] = useState<any>(null);
   const [interviewMode, setInterviewMode] = useState<'MOCK' | 'RECRUITER'>('MOCK');
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -28,6 +34,20 @@ export const InterviewLobby: React.FC = () => {
 
   const params = new URLSearchParams(location.search);
   const scheduleId = params.get('schedule') || params.get('schedule_id');
+
+  const scheduledTimeMs = scheduledDetails?.scheduled_date ? new Date(scheduledDetails.scheduled_date).getTime() : null;
+  const isEarly = interviewMode === 'RECRUITER' && scheduledTimeMs !== null && !isNaN(scheduledTimeMs) && currentTime < scheduledTimeMs;
+  const remainingSeconds = isEarly && scheduledTimeMs ? Math.max(0, Math.floor((scheduledTimeMs - currentTime) / 1000)) : 0;
+
+  const formatCountdown = (secs: number) => {
+    const d = Math.floor(secs / 86400);
+    const h = Math.floor((secs % 86400) / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (d > 0) return `${d}d ${h}h ${m}m ${s}s`;
+    if (h > 0) return `${h}h ${m}m ${s < 10 ? '0' : ''}${s}s`;
+    return `${m}m ${s < 10 ? '0' : ''}${s}s`;
+  };
 
   useEffect(() => {
     if (scheduleId) {
@@ -50,23 +70,11 @@ export const InterviewLobby: React.FC = () => {
     };
     checkNetwork();
 
-    // Auto-request media access on lobby load
+    // Auto-request media access on lobby load with instant lightweight preview
     startCamera();
-
-    // Pre-warm AI vision models in background only when browser is idle
-    // (prevents main-thread blocking during lobby render)
-    const idleHandle = (window as any).requestIdleCallback
-      ? (window as any).requestIdleCallback(() => { integrityEngine.loadModel().catch(() => {}); }, { timeout: 5000 })
-      : setTimeout(() => { integrityEngine.loadModel().catch(() => {}); }, 2000);
-
 
     return () => {
       stopMedia();
-      if ((window as any).cancelIdleCallback) {
-        (window as any).cancelIdleCallback(idleHandle);
-      } else {
-        clearTimeout(idleHandle);
-      }
     };
   }, [scheduleId]);
 
@@ -75,6 +83,13 @@ export const InterviewLobby: React.FC = () => {
     if (cameraStatus === 'READY' && videoActive && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
       videoRef.current.play().catch(e => console.warn('Lobby video play notice:', e));
+      
+      // Pre-warm AI vision & proctoring model in background during lobby idle time
+      // so entering the live interview room is 100% instantaneous with zero pause or freeze
+      const prewarmTimer = setTimeout(() => {
+        integrityEngine.loadModel().catch(() => {});
+      }, 1000);
+      return () => clearTimeout(prewarmTimer);
     }
   }, [cameraStatus, videoActive]);
 
@@ -90,11 +105,23 @@ export const InterviewLobby: React.FC = () => {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // Use lightweight 640x480 preview constraints for instant camera startup
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 30, max: 30 }
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
+        }
+      });
       streamRef.current = stream;
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
       }
       setVideoActive(true);
       setCameraStatus('READY');
@@ -198,6 +225,44 @@ export const InterviewLobby: React.FC = () => {
   };
 
   const handleJoinInterview = async () => {
+    // Unlock Audio playback context and HTMLAudioElement for browser origin on user gesture
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        if (!(window as any).__smarthire_audio_ctx) {
+          (window as any).__smarthire_audio_ctx = new AudioCtx();
+        }
+        const ctx = (window as any).__smarthire_audio_ctx;
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+      }
+
+      // Unlock HTMLAudioElement media pipeline by playing a silent 1-sample WAV buffer
+      const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      const unlockAudio = new Audio(silentWav);
+      unlockAudio.volume = 0.01;
+      const unlockPromise = unlockAudio.play();
+      if (unlockPromise !== undefined) {
+        unlockPromise.catch(() => {});
+      }
+      (window as any).__smarthire_audio_unlocked = true;
+    } catch (e) {}
+
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.resume();
+        const unlockUtterance = new SpeechSynthesisUtterance('');
+        unlockUtterance.volume = 0.01;
+        window.speechSynthesis.speak(unlockUtterance);
+      } catch (e) {}
+    }
+
+    if (isEarly && scheduledTimeMs) {
+      alert(`This interview is scheduled for ${new Date(scheduledTimeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. You can only start the interview at or after the scheduled time.`);
+      return;
+    }
+
     setLoading(true);
     try {
       let res;
@@ -481,13 +546,59 @@ export const InterviewLobby: React.FC = () => {
               </div>
             )}
 
+            {/* Scheduled Interview Waiting Room Banner */}
+            {isEarly && scheduledTimeMs && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-950 dark:text-amber-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider">
+                    <Lock className="w-4 h-4" />
+                    <span>Scheduled Waiting Room</span>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                    Locked
+                  </span>
+                </div>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  This interview is scheduled for{' '}
+                  <strong className="text-slate-900 dark:text-white">
+                    {new Date(scheduledTimeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </strong>{' '}
+                  on {new Date(scheduledTimeMs).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}.
+                </p>
+                <div className="flex items-center justify-between bg-amber-500/15 dark:bg-amber-950/60 p-3 rounded-xl border border-amber-500/30">
+                  <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    Room Unlocks In:
+                  </span>
+                  <span className="font-mono font-black text-sm text-amber-700 dark:text-amber-400">
+                    {formatCountdown(remainingSeconds)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                  You can complete your camera and microphone checks while you wait. The room will automatically unlock when your scheduled time arrives.
+                </p>
+              </div>
+            )}
+
             <button
               onClick={handleJoinInterview}
-              disabled={loading}
-              className="w-full py-4 rounded-2xl bg-brand-primary hover:bg-sb-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-luxury disabled:opacity-50"
+              disabled={loading || isEarly}
+              className={`w-full py-4 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-luxury ${
+                isEarly
+                  ? 'bg-slate-300 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed shadow-none'
+                  : 'bg-brand-primary hover:bg-sb-700 text-white cursor-pointer'
+              } disabled:opacity-60`}
             >
               {loading ? (
-                <span>Initializing Engine...</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <span>Preparing AI Interviewer & Questions... ⚡</span>
+                </div>
+              ) : isEarly ? (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Starts at {new Date(scheduledTimeMs!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({formatCountdown(remainingSeconds)})</span>
+                </>
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-current" />

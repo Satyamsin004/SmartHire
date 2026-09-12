@@ -81,8 +81,8 @@ export const SignupPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-brand-bg flex items-center justify-center p-4 lg:p-8 font-sans">
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 bg-white rounded-5xl shadow-floating border border-stoneBorder overflow-hidden min-h-[700px]">
+    <div className="min-h-screen bg-brand-bg dark:bg-[#0B0F19] flex items-center justify-center p-4 lg:p-8 font-sans transition-colors duration-200">
+      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 bg-white dark:bg-[#111827] rounded-5xl shadow-floating border border-stoneBorder dark:border-slate-800 overflow-hidden min-h-[700px]">
         
         {/* Left Side Hero Banner */}
         <div className="lg:col-span-6 bg-gradient-to-br from-brand-primary via-sb-800 to-brand-ink p-8 lg:p-12 text-brand-bg flex flex-col justify-between relative overflow-hidden">
@@ -128,20 +128,20 @@ export const SignupPage: React.FC = () => {
         </div>
 
         {/* Right Side Onboarding Form */}
-        <div className="lg:col-span-6 p-8 lg:p-12 flex flex-col justify-center bg-white/80 backdrop-blur-xl">
+        <div className="lg:col-span-6 p-8 lg:p-12 flex flex-col justify-center bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl">
           
           <div className="max-w-md mx-auto w-full space-y-6">
             
             <div>
-              <span className="px-3 py-1 rounded-xl text-[10px] font-extrabold uppercase bg-brand-accent/40 text-brand-primary">
+              <span className="px-3 py-1 rounded-xl text-[10px] font-extrabold uppercase bg-brand-accent/40 dark:bg-brand-accent/20 text-brand-primary dark:text-brand-accent">
                 Step {step} of 3
               </span>
-              <h2 className="text-2xl font-extrabold text-brand-ink mt-2">
+              <h2 className="text-2xl font-extrabold text-brand-ink dark:text-white mt-2">
                 {step === 1 && 'Select Your Account Type'}
                 {step === 2 && 'Enter Account Credentials'}
                 {step === 3 && 'Complete Your Profile Details'}
               </h2>
-              <p className="text-xs text-slate-500 font-semibold mt-1">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
                 {step === 1 && 'Choose how you intend to utilize SmartHire AI Platform.'}
                 {step === 2 && 'Provide your name, work email, and secure password.'}
                 {step === 3 && 'Finalize profile specifications before joining.'}
@@ -149,7 +149,7 @@ export const SignupPage: React.FC = () => {
             </div>
 
             {error && (
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">
+              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs font-bold">
                 {error}
               </div>
             )}
@@ -162,33 +162,37 @@ export const SignupPage: React.FC = () => {
                   <div
                     onClick={() => setRole('candidate')}
                     className={`p-4 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${
-                      role === 'candidate' ? 'bg-indigo-50/50 border-brand-primary' : 'bg-cream-100 border-stoneBorder hover:border-slate-300'
+                      role === 'candidate'
+                        ? 'bg-indigo-50/50 dark:bg-indigo-950/30 border-brand-primary dark:border-brand-accent'
+                        : 'bg-cream-100 dark:bg-slate-800/80 border-stoneBorder dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-brand-primary text-white flex items-center justify-center font-bold">
                       <User className="w-6 h-6" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-sm font-extrabold text-brand-ink">Candidate Account</h4>
-                      <p className="text-xs text-slate-500 font-medium">Apply for jobs, upload resume PDF, and take AI mock interviews.</p>
+                      <h4 className="text-sm font-extrabold text-brand-ink dark:text-white">Candidate Account</h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Apply for jobs, upload resume PDF, and take AI mock interviews.</p>
                     </div>
-                    {role === 'candidate' && <CheckCircle2 className="w-6 h-6 text-brand-primary" />}
+                    {role === 'candidate' && <CheckCircle2 className="w-6 h-6 text-brand-primary dark:text-brand-accent" />}
                   </div>
 
                   <div
                     onClick={() => setRole('recruiter')}
                     className={`p-4 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${
-                      role === 'recruiter' ? 'bg-indigo-50/50 border-brand-primary' : 'bg-cream-100 border-stoneBorder hover:border-slate-300'
+                      role === 'recruiter'
+                        ? 'bg-indigo-50/50 dark:bg-indigo-950/30 border-brand-primary dark:border-brand-accent'
+                        : 'bg-cream-100 dark:bg-slate-800/80 border-stoneBorder dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-brand-secondary text-white flex items-center justify-center font-bold">
                       <Building className="w-6 h-6" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-sm font-extrabold text-brand-ink">Recruiter Account</h4>
-                      <p className="text-xs text-slate-500 font-medium">Post job requisitions, review ATS scores, and schedule candidate rounds.</p>
+                      <h4 className="text-sm font-extrabold text-brand-ink dark:text-white">Recruiter Account</h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Post job requisitions, review ATS scores, and schedule candidate rounds.</p>
                     </div>
-                    {role === 'recruiter' && <CheckCircle2 className="w-6 h-6 text-brand-primary" />}
+                    {role === 'recruiter' && <CheckCircle2 className="w-6 h-6 text-brand-primary dark:text-brand-accent" />}
                   </div>
                 </div>
               )}
@@ -197,7 +201,7 @@ export const SignupPage: React.FC = () => {
               {step === 2 && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-700 mb-1.5">Full Name</label>
+                    <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1.5">Full Name</label>
                     <div className="relative">
                       <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
@@ -206,13 +210,13 @@ export const SignupPage: React.FC = () => {
                         placeholder="John Doe"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        className="w-full bg-cream-100 border border-stoneBorder rounded-2xl pl-10 pr-4 py-3 text-xs font-bold text-brand-ink focus:outline-none focus:border-brand-primary"
+                        className="w-full bg-cream-100 dark:bg-slate-800 border border-stoneBorder dark:border-slate-700 rounded-2xl pl-10 pr-4 py-3 text-xs font-bold text-brand-ink dark:text-white focus:outline-none focus:border-brand-primary dark:focus:border-brand-accent"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-700 mb-1.5">Email Address</label>
+                    <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1.5">Email Address</label>
                     <div className="relative">
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
@@ -221,13 +225,13 @@ export const SignupPage: React.FC = () => {
                         placeholder="john@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full bg-cream-100 border border-stoneBorder rounded-2xl pl-10 pr-4 py-3 text-xs font-bold text-brand-ink focus:outline-none focus:border-brand-primary"
+                        className="w-full bg-cream-100 dark:bg-slate-800 border border-stoneBorder dark:border-slate-700 rounded-2xl pl-10 pr-4 py-3 text-xs font-bold text-brand-ink dark:text-white focus:outline-none focus:border-brand-primary dark:focus:border-brand-accent"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-700 mb-1.5">Password</label>
+                    <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1.5">Password</label>
                     <div className="relative">
                       <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
@@ -236,7 +240,7 @@ export const SignupPage: React.FC = () => {
                         placeholder="••••••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full bg-cream-100 border border-stoneBorder rounded-2xl pl-10 pr-4 py-3 text-xs font-bold text-brand-ink focus:outline-none focus:border-brand-primary"
+                        className="w-full bg-cream-100 dark:bg-slate-800 border border-stoneBorder dark:border-slate-700 rounded-2xl pl-10 pr-4 py-3 text-xs font-bold text-brand-ink dark:text-white focus:outline-none focus:border-brand-primary dark:focus:border-brand-accent"
                       />
                     </div>
                   </div>
@@ -248,31 +252,31 @@ export const SignupPage: React.FC = () => {
                 <div className="space-y-4">
                   {role === 'candidate' ? (
                     <div>
-                      <label className="block text-xs font-extrabold text-slate-700 mb-1.5">Primary Target Role</label>
+                      <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1.5">Primary Target Role</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. Senior Backend Systems Engineer"
                         value={targetRole}
                         onChange={(e) => setTargetRole(e.target.value)}
-                        className="w-full bg-cream-100 border border-stoneBorder rounded-2xl px-4 py-3 text-xs font-bold text-brand-ink focus:outline-none focus:border-brand-primary"
+                        className="w-full bg-cream-100 dark:bg-slate-800 border border-stoneBorder dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-bold text-brand-ink dark:text-white focus:outline-none focus:border-brand-primary dark:focus:border-brand-accent"
                       />
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-xs font-extrabold text-slate-700 mb-1.5">Company Name</label>
+                      <label className="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1.5">Company Name</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. SmartHire AI Corporate"
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
-                        className="w-full bg-cream-100 border border-stoneBorder rounded-2xl px-4 py-3 text-xs font-bold text-brand-ink focus:outline-none focus:border-brand-primary"
+                        className="w-full bg-cream-100 dark:bg-slate-800 border border-stoneBorder dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-bold text-brand-ink dark:text-white focus:outline-none focus:border-brand-primary dark:focus:border-brand-accent"
                       />
                     </div>
                   )}
 
-                  <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-semibold leading-relaxed">
+                  <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200 text-xs font-semibold leading-relaxed">
                     By registering, you agree to SmartHire AI's Enterprise Platform Terms of Service and Privacy Policy.
                   </div>
                 </div>
@@ -283,7 +287,7 @@ export const SignupPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setStep(step - 1)}
-                    className="px-6 py-3 rounded-2xl bg-cream-200 hover:bg-stoneBorder text-brand-ink text-xs font-extrabold"
+                    className="px-6 py-3 rounded-2xl bg-cream-200 dark:bg-slate-800 hover:bg-stoneBorder dark:hover:bg-slate-700 text-brand-ink dark:text-slate-200 text-xs font-extrabold transition-colors"
                   >
                     Back
                   </button>
@@ -301,10 +305,10 @@ export const SignupPage: React.FC = () => {
 
             </form>
 
-            <div className="text-center pt-4 border-t border-stoneBorder/60">
-              <p className="text-xs text-slate-500 font-semibold">
+            <div className="text-center pt-4 border-t border-stoneBorder/60 dark:border-slate-800">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
                 Already have an account?{' '}
-                <Link to="/login" className="font-extrabold text-brand-primary hover:underline">
+                <Link to="/login" className="font-extrabold text-brand-primary dark:text-brand-accent hover:underline">
                   Sign In Now
                 </Link>
               </p>

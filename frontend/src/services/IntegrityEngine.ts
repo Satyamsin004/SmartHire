@@ -45,6 +45,8 @@ class IntegrityEngine {
   private offscreenCtx: CanvasRenderingContext2D | null = null;
   private telemetryCanvas: HTMLCanvasElement | null = null;
   private telemetryCtx: CanvasRenderingContext2D | null = null;
+  private visibilityChangeHandler: (() => void) | null = null;
+  private departureTimeout: any = null;
 
   // Configuration constants
   private readonly SAMPLING_INTERVAL_MS = 1000; // 1.0 FPS on 320x240 canvas is lightning fast (<20ms)
@@ -56,28 +58,39 @@ class IntegrityEngine {
   public async loadModel(): Promise<CocoSsdModel | null> {
     if (this.model) return this.model;
     if (this.isModelLoading) {
-      while (this.isModelLoading) {
+      let waitCycles = 0;
+      while (this.isModelLoading && waitCycles < 40) {
         await new Promise(r => setTimeout(r, 100));
+        waitCycles++;
       }
       return this.model;
     }
 
     try {
       this.isModelLoading = true;
-      // Yield to the event loop so React can finish rendering the lobby/room UI
-      await new Promise(r => setTimeout(r, 150));
-      // Dynamic import: TensorFlow.js and COCO-SSD are NOT loaded until this line runs,
-      // preventing the 2-5s WebGL shader compilation from blocking page load
+      // Yield to the event loop so React can finish rendering UI without any frame drop
+      await new Promise(r => setTimeout(r, 100));
+      
+      // Dynamic import with cooperative yielding
       const tf = await import('@tensorflow/tfjs');
+      await new Promise(r => setTimeout(r, 20));
       await tf.ready();
-      // Another yield after TF.js init to let pending UI events drain
+      
+      // Yield after TF.js backend init to let pending UI, media, and audio events drain
       await new Promise(r => setTimeout(r, 50));
       const cocoSsd = await import('@tensorflow-models/coco-ssd');
-      this.model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      
+      // Load model with a strict 4.5-second timeout to guarantee the browser NEVER freezes or shows 'Wait or Stop'
+      const loadPromise = cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      const timeoutPromise = new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error("Model download timeout - switching to smooth vision fallback")), 4500)
+      );
+
+      this.model = await Promise.race([loadPromise, timeoutPromise]) as CocoSsdModel;
       console.log('✅ [IntegrityEngine] COCO-SSD Vision model loaded successfully.');
       return this.model;
     } catch (err) {
-      console.warn('⚠️ [IntegrityEngine] Failed to load COCO-SSD model, vision fallback active:', err);
+      console.warn('⚠️ [IntegrityEngine] Vision model init bypassed or timed out; smooth background proctoring active:', err);
       return null;
     } finally {
       this.isModelLoading = false;
@@ -114,10 +127,19 @@ class IntegrityEngine {
       this.telemetryCtx = this.telemetryCanvas.getContext('2d', { willReadFrequently: true });
     }
 
+    // Clean up any previously attached listener / departure timeout
+    if (this.visibilityChangeHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+      this.visibilityChangeHandler = null;
+    }
+    if (this.departureTimeout) {
+      clearTimeout(this.departureTimeout);
+      this.departureTimeout = null;
+    }
+
     // 1. Setup Tab Switching / Window Visibility Listeners (DEBOUNCED WITH WARNING LIMIT)
     let tabSwitchCount = 0;
     const MAX_TAB_SWITCH_LIMIT = 3;
-    let departureTimeout: any = null;
 
     const handleVisibilityChange = () => {
       if (document.hidden || document.visibilityState === 'hidden') {
@@ -157,7 +179,8 @@ class IntegrityEngine {
           }
 
           // If remaining away from tab for more than 15 continuous seconds, auto-terminate
-          departureTimeout = setTimeout(() => {
+          if (this.departureTimeout) clearTimeout(this.departureTimeout);
+          this.departureTimeout = setTimeout(() => {
             if (document.hidden && !this.isTerminated) {
               this.triggerTermination('TAB_SWITCH', {
                 event: 'away_timeout',
@@ -167,14 +190,15 @@ class IntegrityEngine {
           }, 15000);
         }
       } else {
-        if (departureTimeout) {
-          clearTimeout(departureTimeout);
-          departureTimeout = null;
+        if (this.departureTimeout) {
+          clearTimeout(this.departureTimeout);
+          this.departureTimeout = null;
         }
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    this.visibilityChangeHandler = handleVisibilityChange;
+    document.addEventListener('visibilitychange', this.visibilityChangeHandler);
 
     // 2. Start Vision Inference Sampling Loop (self-scheduling with non-blocking yields)
     this.loadModel().then((model) => {
@@ -188,31 +212,41 @@ class IntegrityEngine {
         if (!isDetecting && videoElement && videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
           isDetecting = true;
           try {
-            // Yield 1 tick before detection to keep main thread responsive
-            await new Promise(r => setTimeout(r, 0));
+            // Cooperative yield to keep browser event loop completely fluid
+            await new Promise(r => setTimeout(r, 16));
             if (model && this.offscreenCanvas && this.offscreenCtx && this.isMonitoring && !this.isTerminated) {
-              // Draw scaled video frame to offscreen canvas (instantly frees DOM video element)
+              // Draw scaled video frame to offscreen canvas
               this.offscreenCtx.drawImage(videoElement, 0, 0, 320, 240);
-              const rawPredictions = await model.detect(this.offscreenCanvas);
               
-              // Scale coordinates back to original video dimensions for accurate face crops
-              const scaleX = videoElement.videoWidth / 320;
-              const scaleY = videoElement.videoHeight / 240;
-              const predictions = rawPredictions.map(p => ({
-                ...p,
-                bbox: [p.bbox[0] * scaleX, p.bbox[1] * scaleY, p.bbox[2] * scaleX, p.bbox[3] * scaleY] as [number, number, number, number]
-              }));
+              // Frame detection with 800ms safety cap so frame analysis never hangs the tab
+              const rawPredictions = await Promise.race([
+                model.detect(this.offscreenCanvas),
+                new Promise<DetectedObject[]>((resolve) => setTimeout(() => resolve([]), 800))
+              ]);
+              
+              if (this.isMonitoring && !this.isTerminated) {
+                // Scale coordinates back to original video dimensions for accurate face crops
+                const scaleX = videoElement.videoWidth / 320;
+                const scaleY = videoElement.videoHeight / 240;
+                const predictions = rawPredictions.map(p => ({
+                  ...p,
+                  bbox: [p.bbox[0] * scaleX, p.bbox[1] * scaleY, p.bbox[2] * scaleX, p.bbox[3] * scaleY] as [number, number, number, number]
+                }));
 
-              this.processVisionPredictions(predictions);
+                this.processVisionPredictions(predictions);
+              }
+            } else if (!model && this.isMonitoring && !this.isTerminated) {
+              // Fallback: periodic frame-based telemetry to backend without local TF.js
+              this.processVisionPredictions([]);
             }
           } catch (err) {
-            // Ignore transient frame capture errors
+            console.warn("Vision inference cycle notice:", err);
           } finally {
             isDetecting = false;
           }
         }
 
-        // Schedule the next detection only after current one completes
+        // Schedule next detection with a cooperative delay
         if (this.isMonitoring && !this.isTerminated) {
           this.intervalId = setTimeout(runDetection, this.SAMPLING_INTERVAL_MS);
         }
@@ -224,12 +258,19 @@ class IntegrityEngine {
     // Return cleanup callback
     return () => {
       this.stopMonitoring();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }
 
   public stopMonitoring() {
     this.isMonitoring = false;
+    if (this.visibilityChangeHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+      this.visibilityChangeHandler = null;
+    }
+    if (this.departureTimeout) {
+      clearTimeout(this.departureTimeout);
+      this.departureTimeout = null;
+    }
     if (this.intervalId) {
       clearTimeout(this.intervalId);
       this.intervalId = null;

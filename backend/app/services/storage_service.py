@@ -144,25 +144,13 @@ class StorageService:
             return None
         clean_path = file_path_or_key.replace("/uploads/recordings/", "").replace("\\uploads\\recordings\\", "").lstrip("/\\")
         
-        # Check all alternate storage directories
+        # Check all alternate storage directories for the exact relative path
         for base in self.alt_base_dirs:
             candidate_path = os.path.normpath(os.path.join(base, clean_path))
-            try:
-                safe_path = self._sanitize_path(candidate_path)
-                if os.path.exists(safe_path) and os.path.getsize(safe_path) > 0:
-                    return safe_path
-            except Exception:
-                pass
+            safe_path = self._sanitize_path(candidate_path)
+            if os.path.exists(safe_path) and os.path.getsize(safe_path) > 0:
+                return safe_path
 
-        # If direct path not found, search by session_id or filename in all storage directories
-        base_name = os.path.basename(clean_path)
-        for base in self.alt_base_dirs:
-            if os.path.exists(base):
-                for root, _, files in os.walk(base):
-                    if base_name in files:
-                        p = os.path.join(root, base_name)
-                        if os.path.exists(p) and os.path.getsize(p) > 0:
-                            return p
         return None
 
     def exists(self, file_path_or_key: str) -> bool:

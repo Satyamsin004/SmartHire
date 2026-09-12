@@ -1,30 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, Users, FileText, CheckSquare,
   Video, BarChart2, TrendingUp, Settings, Plus, LogOut, Sparkles,
-  ChevronLeft, ChevronRight, Star, ClipboardList, Building2, UserCircle, Mail, History
+  ChevronLeft, ChevronRight, Star, ClipboardList, Building2, UserCircle, Mail, History, Trophy,
+  UserCheck, Cpu, Database, KeyRound, Activity, Shield
 } from 'lucide-react';
 import api from '../../services/api';
 
 export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('candidate');
 
+  const [avatarImgError, setAvatarImgError] = useState(false);
+
   useEffect(() => {
-    const raw = localStorage.getItem('user_data') || localStorage.getItem('user');
-    if (raw) {
-      try {
-        const u = JSON.parse(raw);
-        setUser(u);
-        setUserRole(u.role || 'candidate');
-      } catch (e) {
-        console.error(e);
+    const loadUserData = () => {
+      const raw = localStorage.getItem('user_data') || localStorage.getItem('user');
+      if (raw) {
+        try {
+          const u = JSON.parse(raw);
+          setUser(u);
+          setUserRole(u.role || 'candidate');
+          setAvatarImgError(false);
+        } catch (e) {
+          console.error(e);
+        }
       }
-    }
+    };
+    loadUserData();
+    window.addEventListener('user_profile_updated', loadUserData);
+    window.addEventListener('storage', loadUserData);
+    return () => {
+      window.removeEventListener('user_profile_updated', loadUserData);
+      window.removeEventListener('storage', loadUserData);
+    };
   }, []);
+
+  const avatarUrl = !avatarImgError ? (user?.profile_image || user?.avatar_url || null) : null;
 
   const handleLogout = () => {
     localStorage.clear();
@@ -37,101 +53,58 @@ export const Sidebar: React.FC = () => {
     ? user.full_name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
     : 'AB';
 
-  const navItems = [
-    // ── Common ──
-    {
-      name: 'Dashboard',
-      path: userRole === 'recruiter' ? '/recruiter' : userRole === 'admin' ? '/admin' : '/dashboard',
-      icon: LayoutDashboard,
-      roles: ['candidate', 'recruiter', 'admin'],
-    },
-    {
-      name: 'Jobs',
-      path: '/jobs',
-      icon: Briefcase,
-      roles: ['candidate', 'admin'],
-    },
-
-    // ── Candidate-only sidebar items (Unified AI Practice Hub + Core Portal) ──
-    {
-      name: 'My Applications',
-      path: '/applications',
-      icon: FileText,
-      roles: ['candidate'],
-    },
-    {
-      name: 'AI Practice Hub',
-      path: '/practice',
-      icon: Sparkles,
-      roles: ['candidate', 'admin'],
-    },
-
-    // ── Recruiter-only sidebar items ──
-    {
-      name: 'Posted Jobs',
-      path: '/recruiter/posted-jobs',
-      icon: Briefcase,
-      roles: ['recruiter'],
-    },
-    {
-      name: 'Applications',
-      path: '/recruiter/applications',
-      icon: ClipboardList,
-      roles: ['recruiter'],
-    },
-    {
-      name: 'Shortlisted',
-      path: '/recruiter/shortlisted',
-      icon: Star,
-      roles: ['recruiter'],
-    },
-    {
-      name: 'Assessments',
-      path: '/recruiter/assessments',
-      icon: CheckSquare,
-      roles: ['recruiter'],
-    },
-    {
-      name: 'Interviews',
-      path: '/recruiter/interviews',
-      icon: Video,
-      roles: ['recruiter'],
-    },
-    {
-      name: 'Offers',
-      path: '/recruiter/offers',
-      icon: Mail,
-      roles: ['recruiter'],
-    },
-    {
-      name: 'Reports',
-      path: '/recruiter/reports',
-      icon: BarChart2,
-      roles: ['recruiter'],
-    },
-    {
-      name: 'Analytics',
-      path: '/recruiter/analytics',
-      icon: TrendingUp,
-      roles: ['recruiter'],
-    },
-
-    // ── Common bottom items ──
-    {
-      name: 'Profile',
-      path: '/profile',
-      icon: UserCircle,
-      roles: ['candidate', 'recruiter', 'admin'],
-    },
-    {
-      name: 'Settings',
-      path: '/settings',
-      icon: Settings,
-      roles: ['candidate', 'recruiter', 'admin'],
-    },
+  // ── Candidate Navigation ──
+  const candidateNavItems = [
+    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Jobs', path: '/jobs', icon: Briefcase },
+    { name: 'My Applications', path: '/applications', icon: FileText },
+    { name: 'AI Practice Hub', path: '/practice', icon: Sparkles },
+    { name: 'Progress & Reports', path: '/reports', icon: BarChart2 },
+    { name: 'Profile', path: '/profile', icon: UserCircle },
+    { name: 'Settings', path: '/settings', icon: Settings },
   ];
 
-  const filteredNav = navItems.filter((item) => item.roles.includes(userRole));
+  // ── Recruiter Navigation ──
+  const recruiterNavItems = [
+    { name: 'Dashboard', path: '/recruiter', icon: LayoutDashboard },
+    { name: 'Posted Jobs', path: '/recruiter/posted-jobs', icon: Briefcase },
+    { name: 'Applications', path: '/recruiter/applications', icon: ClipboardList },
+    { name: 'Shortlisted', path: '/recruiter/shortlisted', icon: Star },
+    { name: 'Candidate Ranking', path: '/recruiter/ranking', icon: Trophy },
+    { name: 'Offers', path: '/recruiter/offers', icon: Mail },
+    { name: 'AI Analytics', path: '/recruiter/analytics', icon: TrendingUp },
+    { name: 'Settings', path: '/settings', icon: Settings },
+  ];
+
+  // ── Admin Governance Navigation (Tailored exclusively to platform administrative control) ──
+  const adminNavItems = [
+    { name: 'Overview & Stats', path: '/admin?tab=overview', icon: LayoutDashboard },
+    { name: 'Candidates', path: '/admin?tab=candidates', icon: UserCheck },
+    { name: 'Recruiters', path: '/admin?tab=recruiters', icon: Users },
+    { name: 'Interview Audits', path: '/admin?tab=interviews', icon: Video },
+    { name: 'AI Telemetry', path: '/admin?tab=ai_telemetry', icon: Cpu },
+    { name: 'Platform Usage', path: '/admin?tab=platform_usage', icon: Database },
+    { name: 'Audit Logs', path: '/admin?tab=audit_logs', icon: KeyRound },
+    { name: 'System Health', path: '/admin?tab=health', icon: Activity },
+    { name: 'Settings', path: '/settings', icon: Settings },
+  ];
+
+  const filteredNav = userRole === 'admin'
+    ? adminNavItems
+    : userRole === 'recruiter'
+      ? recruiterNavItems
+      : candidateNavItems;
+
+  const isItemActive = (itemPath: string) => {
+    const currentPath = location.pathname + location.search;
+    if (itemPath.includes('?')) {
+      return currentPath === itemPath;
+    }
+    if (itemPath === '/admin') {
+      return location.pathname === '/admin' && (!location.search || location.search === '?tab=overview');
+    }
+    return location.pathname === itemPath;
+  };
 
   return (
     <aside
@@ -166,57 +139,68 @@ export const Sidebar: React.FC = () => {
         {/* Section Label */}
         {!collapsed && (
           <div className="px-3 mb-2">
-            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
-              Workspace Navigation
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              {userRole === 'admin' ? 'Admin Governance' : userRole === 'recruiter' ? 'Recruiter Workspace' : 'Workspace Navigation'}
             </p>
           </div>
         )}
 
         {/* Navigation Workspace Links */}
         <nav className="space-y-1">
-          {filteredNav.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.path}
-              aria-label={item.name}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0B0F1B] ${
-                  isActive
-                    ? 'bg-slate-800/90 text-white shadow-inner font-extrabold border border-slate-700/60'
-                    : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                } ${collapsed ? 'justify-center' : ''}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`} />
-                  {!collapsed && <span>{item.name}</span>}
-                  {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-indigo-500 rounded-r-full" />
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
+          {filteredNav.map((item) => {
+            const active = isItemActive(item.path);
+            return (
+              <NavLink
+                key={item.name}
+                to={item.path}
+                aria-label={item.name}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0B0F1B] ${
+                  active
+                    ? 'bg-slate-800/90 text-white shadow-inner font-black border border-slate-700/60'
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white font-extrabold'
+                } ${collapsed ? 'justify-center' : ''}`}
+              >
+                <item.icon className={`w-4 h-4 shrink-0 transition-colors ${active ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`} />
+                {!collapsed && <span>{item.name}</span>}
+                {active && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-indigo-500 rounded-r-full" />
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
-        {/* Primary Action Button (+ Post New Job) */}
+        {/* Primary Action Button */}
         {!collapsed && (
           <div className="mt-6 mb-4 px-1">
-            <button
-              onClick={() => {
-                if (userRole === 'recruiter' || userRole === 'admin') {
-                  navigate('/recruiter?action=create-job');
-                } else {
-                  navigate('/interview');
-                }
-              }}
-              aria-label={userRole === 'candidate' ? 'Start Practice Session' : 'Post New Job'}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1B]"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>{userRole === 'candidate' ? 'Start Practice Session' : 'Post New Job'}</span>
-            </button>
+            {userRole === 'admin' ? (
+              <button
+                onClick={() => navigate('/admin?tab=health')}
+                aria-label="System Health Diagnostics"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1B] cursor-pointer"
+              >
+                <Activity className="w-4 h-4 stroke-[2.5]" />
+                <span>System Diagnostics</span>
+              </button>
+            ) : userRole === 'recruiter' ? (
+              <button
+                onClick={() => navigate('/recruiter?action=create-job')}
+                aria-label="Post New Job"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1B] cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Post New Job</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate('/interview')}
+                aria-label="Start Practice Session"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1B] cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Start Practice Session</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -225,15 +209,24 @@ export const Sidebar: React.FC = () => {
       <div className="pt-3 border-t border-slate-800/80">
         <div className={`flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800/80 ${collapsed ? 'justify-center' : ''}`}>
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-indigo-900/80 border border-indigo-500/40 text-indigo-200 font-extrabold text-xs flex items-center justify-center shrink-0">
-              {initials}
+            <div className="w-8 h-8 rounded-full bg-indigo-900/80 border border-indigo-500/40 text-indigo-200 font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={user?.full_name || 'User'}
+                  className="w-full h-full object-cover rounded-full"
+                  onError={() => setAvatarImgError(true)}
+                />
+              ) : (
+                initials
+              )}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-slate-100 truncate leading-tight">
+                <p className="text-xs font-black text-white truncate leading-tight">
                   {user?.full_name || 'User'}
                 </p>
-                <p className="text-[10px] font-medium text-slate-400 truncate leading-tight">
+                <p className="text-[11px] font-semibold text-slate-300 truncate leading-tight">
                   {user?.email || ''}
                 </p>
               </div>
@@ -243,7 +236,7 @@ export const Sidebar: React.FC = () => {
             <button 
               onClick={handleLogout}
               aria-label="Log out"
-              className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800/50 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800/50 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>

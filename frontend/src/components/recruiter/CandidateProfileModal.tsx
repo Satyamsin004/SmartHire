@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Phone, Briefcase, FileText, Download, Star, CheckCircle, Save, Sparkles, Award } from 'lucide-react';
+import { X, User, Mail, Phone, Briefcase, FileText, Download, Star, CheckCircle, Save, Sparkles, Award, Clock } from 'lucide-react';
 import api from '../../services/api';
 
 interface CandidateProfileModalProps {
@@ -81,21 +81,21 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-6">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-6 text-slate-900 dark:text-slate-100">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white font-black text-lg flex items-center justify-center shadow-md">
               {profile?.full_name?.substring(0, 2).toUpperCase() || 'SK'}
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-900">{profile?.full_name || 'Loading Candidate...'}</h2>
-              <p className="text-xs text-slate-500 font-semibold">{profile?.target_role} · {profile?.experience_level}</p>
+              <h2 className="text-xl font-black text-slate-900 dark:text-white">{profile?.full_name || 'Loading Candidate...'}</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">{profile?.target_role} · {profile?.experience_level}</p>
             </div>
           </div>
 
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-xl">
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -108,13 +108,13 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
           <div className="space-y-6">
 
             {/* Status & Rating Bar */}
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-slate-50 dark:bg-slate-800/70 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <label className="text-xs font-extrabold text-slate-700">Application Status:</label>
+                <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300">Application Status:</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  className="px-3.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
                 >
                   <option>Applied</option>
                   <option>Screened</option>
@@ -128,8 +128,8 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs font-extrabold text-slate-700">Recruiter Rating:</span>
-                <div className="flex items-center gap-1 bg-amber-50 px-3 py-1 rounded-xl border border-amber-200 text-amber-700 font-black text-xs">
+                <span className="text-xs font-extrabold text-slate-700 dark:text-slate-300">Recruiter Rating:</span>
+                <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-950/40 px-3 py-1 rounded-xl border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-black text-xs">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
                   {rating} / 5.0
                 </div>
@@ -138,27 +138,27 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
 
             {/* Contact & Overview Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-              <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
-                <Mail className="w-4 h-4 text-indigo-500" />
+              <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex items-center gap-3">
+                <Mail className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 block">Email Address</span>
-                  <span className="font-extrabold text-slate-800">{profile?.email || 'N/A'}</span>
+                  <span className="font-extrabold text-slate-800 dark:text-slate-200">{profile?.email || 'N/A'}</span>
                 </div>
               </div>
 
-              <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
-                <Phone className="w-4 h-4 text-indigo-500" />
+              <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex items-center gap-3">
+                <Phone className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 block">Phone Number</span>
-                  <span className="font-extrabold text-slate-800">{profile?.phone || 'N/A'}</span>
+                  <span className="font-extrabold text-slate-800 dark:text-slate-200">{profile?.phone || 'N/A'}</span>
                 </div>
               </div>
 
-              <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
-                <Award className="w-4 h-4 text-purple-500" />
+              <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex items-center gap-3">
+                <Award className="w-4 h-4 text-purple-500 dark:text-purple-400" />
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 block">ATS Resume Match</span>
-                  <span className="font-extrabold text-indigo-600 text-sm">
+                  <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-sm">
                     {profile?.ats_score !== null && profile?.ats_score !== undefined ? `${profile.ats_score}%` : 'Pending Match'}
                   </span>
                 </div>
@@ -166,19 +166,19 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
             </div>
 
             {/* Resume Summary & Extracted Skills */}
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-indigo-600" />
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                <h4 className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   Resume Analysis & Extracted Skills
                 </h4>
                 {profile?.resume_url ? (
                   <a
-                    href={profile.resume_url}
+                    href={profile.resume_url.startsWith('http') ? profile.resume_url : (profile.resume_url.startsWith('/') ? profile.resume_url : `/${profile.resume_url}`)}
                     download
                     target="_blank"
                     rel="noreferrer"
-                    className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
                   >
                     <Download className="w-3.5 h-3.5" />
                     Download Resume PDF
@@ -188,7 +188,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                 )}
               </div>
 
-              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
                 {profile?.resume_summary}
               </p>
 
@@ -196,7 +196,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                 <span className="text-[11px] font-bold text-slate-400 uppercase block mb-2">Verified Skill Stack</span>
                 <div className="flex flex-wrap gap-2">
                   {profile?.skills && Object.keys(profile.skills).map((skill) => (
-                    <span key={skill} className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 font-extrabold text-xs border border-slate-200/60">
+                    <span key={skill} className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-extrabold text-xs border border-slate-200/60 dark:border-slate-600">
                       {skill} ({profile.skills[skill]} pts)
                     </span>
                   ))}
@@ -204,8 +204,8 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
               </div>
             </div>
 
-             {/* AI Multimodal Evaluation Breakdown (CRITICAL ISSUE 5) */}
-            {profile?.latest_evaluation && (
+            {/* AI Multimodal Evaluation Breakdown */}
+            {profile?.latest_evaluation ? (
               <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 shadow-md space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div>
@@ -252,23 +252,33 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                   </div>
                 )}
               </div>
+            ) : (
+              <div className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-xs space-y-1 text-xs">
+                <div className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-100">
+                  <Clock className="w-4 h-4 text-amber-500" />
+                  <span>Official Recruiter Interview Not Conducted Yet</span>
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 font-medium text-[11px] leading-relaxed">
+                  Candidate has not yet completed an official recruiter interview session for this requisition. Evaluation scorecards and audio/video transcripts will automatically appear here once the scheduled recruiter interview is conducted.
+                </p>
+              </div>
             )}
 
             {/* Candidate Question & Answer Transcripts */}
             {profile?.qa_transcript?.length > 0 && (
-              <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
-                <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-indigo-600" />
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-sm space-y-3">
+                <h4 className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   Interview Q&A Transcripts ({profile.qa_transcript.length} Questions)
                 </h4>
                 <div className="space-y-3">
                   {profile.qa_transcript.map((qa: any, idx: number) => (
-                    <div key={idx} className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1.5 text-xs">
-                      <div className="font-extrabold text-indigo-600">Q{idx + 1}: {qa.question_text}</div>
-                      <div className="text-slate-800 font-medium bg-white p-2.5 rounded-lg border border-slate-100">
+                    <div key={idx} className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl space-y-1.5 text-xs">
+                      <div className="font-extrabold text-indigo-600 dark:text-indigo-400">Q{idx + 1}: {qa.question_text}</div>
+                      <div className="text-slate-800 dark:text-slate-200 font-medium bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700">
                         "{qa.answer_transcript}"
                       </div>
-                      <div className="flex gap-3 text-[10px] font-bold text-slate-400">
+                      <div className="flex gap-3 text-[10px] font-bold text-slate-400 dark:text-slate-400">
                         <span>Pace: {qa.speaking_pace_wpm} WPM</span>
                         <span>Eye Contact: {qa.eye_contact_percentage}%</span>
                         <span>Behavioral State: {formatBehavioralState(qa.dominant_emotion)}</span>
@@ -280,9 +290,9 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
             )}
 
             {/* Internal Recruiter Notes & Evaluation Comments */}
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
-              <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-600" />
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-sm space-y-3">
+              <h4 className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 Internal Recruiter Assessment Notes
               </h4>
               <textarea
@@ -290,16 +300,16 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Add confidential notes on candidate strengths, cultural fit, salary expectations..."
-                className="w-full p-3 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800"
+                className="px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors"
               >
                 Close
               </button>
@@ -307,7 +317,7 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                 type="button"
                 onClick={handleSaveNotes}
                 disabled={saving}
-                className="py-2.5 px-6 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all transform active:scale-95 disabled:opacity-50"
+                className="py-2.5 px-6 bg-slate-900 dark:bg-brand-primary hover:bg-slate-800 dark:hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all transform active:scale-95 disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
                 {saving ? 'Saving...' : 'Save Candidate Assessment'}

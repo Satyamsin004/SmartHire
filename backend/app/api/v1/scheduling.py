@@ -7,7 +7,7 @@ from pydantic import BaseModel
 import uuid
 
 from app.core.db import get_db
-from app.models.domain import ScheduledInterview, Notification, User, Candidate, Recruiter, JobDescription, InterviewTemplate, JobApplication, JobPosting, Resume
+from app.models.domain import ScheduledInterview, Notification, User, Candidate, Recruiter, JobDescription, InterviewTemplate, JobApplication, JobPosting, Resume, AssessmentSession, AssessmentResult
 from app.api.v1.websocket import ws_manager
 from app.dependencies.auth import get_current_user, require_role
 from app.services.interview_service import PipelineManager
@@ -20,6 +20,9 @@ router = APIRouter(prefix="/scheduling", tags=["Interview Scheduling"])
 
 from app.services.recruitment_pipeline_service import RecruitmentPipelineService
 from app.services.eligibility_service import eligibility_service
+from app.services.email_service import email_service
+from app.services.reminder_service import reminder_service
+from app.core.config import settings
 
 class CreateScheduleRequest(BaseModel):
     job_id: Optional[str] = None
@@ -82,12 +85,20 @@ async def create_scheduled_assessment(
     rec = res_rec.scalar_one_or_none()
     recruiter_id = rec.id if rec else None
 
+    res_j = await db.execute(select(JobPosting).where(JobPosting.id == body.job_id))
+    job_inst = res_j.scalar_one_or_none()
+    job_title = job_inst.title if job_inst else "Software Position"
+    company_name = job_inst.company_name if job_inst else "SmartHire Enterprise"
+
     scheduled_sessions = []
     for cand_id in body.candidate_ids:
         res_c = await db.execute(select(Candidate).where(Candidate.id == cand_id))
         cand = res_c.scalar_one_or_none()
         if not cand:
             continue
+
+        res_u = await db.execute(select(User).where(User.id == cand.user_id))
+        cand_user = res_u.scalar_one_or_none()
 
         res_app = await db.execute(
             select(JobApplication)
@@ -96,17 +107,21 @@ async def create_scheduled_assessment(
         )
         app = res_app.scalars().first()
 
+        pass_score = float(body.passing_score) if body.passing_score is not None else 70.0
+        dur_mins = body.duration_minutes or 15
+        topics_list = body.topics or ["Quantitative Aptitude", "Logical Reasoning", "Software Concepts"]
+
         session = AssessmentSession(
             candidate_id=cand.id,
             recruiter_id=recruiter_id,
             job_id=body.job_id,
             job_application_id=app.id if app else None,
-            title=body.title or "Online Aptitude & Technical Assessment",
-            topics=body.topics or ["Quantitative Aptitude", "Logical Reasoning", "Software Concepts"],
+            title=body.title or f"{job_title} - Online Skills Assessment",
+            topics=topics_list,
             difficulty=body.difficulty or "Medium",
             question_count=body.question_count or 10,
-            duration_minutes=body.duration_minutes or 15,
-            passing_score=body.passing_score or 70.0,
+            duration_minutes=dur_mins,
+            passing_score=pass_score,
             status="scheduled"
         )
         db.add(session)
@@ -118,10 +133,49 @@ async def create_scheduled_assessment(
             notif = Notification(
                 user_id=cand.user_id,
                 title="Online Assessment Scheduled",
-                message=f"Recruiter has scheduled an Online Assessment for your job application. Duration: {body.duration_minutes} Mins.",
-                notification_type="assessment_scheduled"
+                message=f"Recruiter scheduled your Online Assessment for {job_title}. Duration: {dur_mins} Mins · Passing Cutoff: {pass_score:.0f}%.",
+                notification_type="assessment_scheduled",
+                link="/applications"
             )
             db.add(notif)
+
+            # Dispatch transactional email to candidate (including OAuth users)
+            if cand_user and cand_user.email:
+                try:
+                    await email_service.send_assessment_scheduled_email(
+                        db=db,
+                        candidate_email=cand_user.email,
+                        candidate_name=cand_user.full_name or "Candidate",
+                        job_title=job_title,
+                        duration_minutes=dur_mins,
+                        passing_score=pass_score,
+                        topics=topics_list,
+                        company_name=company_name,
+                        candidate_user_id=cand.user_id,
+                        session_id=session.id
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send assessment email: {e}")
+
+            # Dispatch real-time WebSocket event for in-app pop-up / toast
+            ws_payload = {
+                "event": "ASSESSMENT_SCHEDULED",
+                "data": {
+                    "session_id": session.id,
+                    "candidate_id": cand.id,
+                    "candidate_name": cand_user.full_name if cand_user else "Candidate",
+                    "job_title": job_title,
+                    "company_name": company_name,
+                    "duration_minutes": dur_mins,
+                    "passing_score": pass_score,
+                    "topics": topics_list,
+                    "status": "Scheduled"
+                }
+            }
+            try:
+                await ws_manager.send_personal_message(ws_payload, cand.user_id)
+            except Exception as e:
+                logger.warning(f"Failed to dispatch assessment WS: {e}")
 
         scheduled_sessions.append(session)
 
@@ -243,17 +297,40 @@ async def create_scheduled_interview(
         db.add(new_schedule)
         await db.flush()
 
-        # Automatically update Application Pipeline Stage to "Interview Scheduled"
-        await PipelineManager.update_pipeline_stage(db, candidate_db.id, "Interview Scheduled")
+        # Automatically update Application Pipeline Stage to round-specific scheduled status
+        r_name = (body.round_type or "Interview").capitalize()
+        await PipelineManager.update_pipeline_stage(db, candidate_db.id, f"{r_name} Scheduled", job_id=cand_app.job_id if cand_app else None)
+
+        # Automatically schedule 24H, 1H, and 15M interview reminders
+        await reminder_service.schedule_reminders_for_interview(db, new_schedule, candidate_db.user_id)
 
         # Create Notification in DB
         new_notif = Notification(
             user_id=candidate_db.user_id,
             title=f"New Interview Scheduled: {body.round_type} Round",
             message=f"Recruiter scheduled your {body.round_type} round for {parsed_date.strftime('%b %d, %Y at %I:%M %p')}.",
-            notification_type="interview_scheduled"
+            notification_type="interview_scheduled",
+            interview_id=new_schedule.id,
+            link=f"/interview-lobby?schedule_id={new_schedule.id}"
         )
         db.add(new_notif)
+
+        # Dispatch Transactional Confirmation Email to Candidate
+        if cand_user and cand_user.email:
+            await email_service.send_interview_scheduled_email(
+                db=db,
+                candidate_email=cand_user.email,
+                candidate_name=cand_user.full_name or "Candidate",
+                interview_title=config_data.get("job_title", "Software Engineer"),
+                scheduled_date_str=parsed_date.strftime("%b %d, %Y at %I:%M %p"),
+                duration_minutes=body.duration_minutes or 30,
+                round_type=body.round_type,
+                interview_link=f"{settings.FRONTEND_URL}/interview-lobby?schedule_id={new_schedule.id}",
+                company_name=config_data.get("company_name", "SmartHire AI Platform"),
+                instructions=new_schedule.instructions,
+                interview_id=new_schedule.id,
+                candidate_user_id=candidate_db.user_id
+            )
 
         # Send Real-Time WebSocket Event to Candidate User
         ws_payload = {
@@ -272,7 +349,6 @@ async def create_scheduled_interview(
             }
         }
         await ws_manager.send_personal_message(ws_payload, candidate_db.user_id)
-        await ws_manager.broadcast(ws_payload)
 
         created_schedules.append({
             "id": new_schedule.id,
@@ -347,18 +423,88 @@ async def get_candidate_schedule(
         if is_completed:
             continue
 
+        sched_dt = s.scheduled_date
+        if sched_dt and sched_dt.tzinfo is not None:
+            sched_dt = sched_dt.replace(tzinfo=None)
+        now_utc = datetime.utcnow()
+        can_start = True
+        seconds_until_start = 0
+        if sched_dt and now_utc < sched_dt:
+            can_start = False
+            seconds_until_start = int((sched_dt - now_utc).total_seconds())
+
         out.append({
             "id": s.id,
             "candidate_id": s.candidate_id,
             "candidate_name": user.full_name,
             "round_type": s.round_type or "Technical",
-            "scheduled_date": s.scheduled_date.isoformat(),
+            "scheduled_date": (sched_dt.isoformat() + "Z") if sched_dt else None,
             "duration_minutes": s.duration_minutes or 30,
             "difficulty": s.difficulty or "Medium",
             "instructions": s.instructions or "Please be present 5 minutes early.",
             "status": s.status,
             "recruiter_name": "Recruiter Manager",
-            "company_name": "SmartHire AI Platform"
+            "company_name": "SmartHire AI Platform",
+            "can_start": can_start,
+            "seconds_until_start": max(0, seconds_until_start)
+        })
+    return out
+
+@router.get("/candidate-assessments")
+async def get_candidate_assessments(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetches real scheduled / active online assessments for authenticated candidate from PostgreSQL."""
+    res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+    cand = res_c.scalar_one_or_none()
+    if not cand:
+        return []
+
+    res = await db.execute(
+        select(AssessmentSession)
+        .where(
+            AssessmentSession.candidate_id == cand.id,
+            AssessmentSession.status.in_(["scheduled", "active", "Scheduled", "Active"])
+        )
+        .order_by(AssessmentSession.created_at.desc())
+    )
+    sessions = res.scalars().all()
+
+    out = []
+    for s in sessions:
+        # Check if already completed via AssessmentResult
+        res_r = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == s.id))
+        result = res_r.scalar_one_or_none()
+        if result:
+            s.status = "completed"
+            await db.commit()
+            continue
+
+        job_title = "Online Skills Assessment"
+        company_name = "SmartHire Enterprise"
+        if s.job_id:
+            res_j = await db.execute(select(JobPosting).where(JobPosting.id == s.job_id))
+            job = res_j.scalar_one_or_none()
+            if job:
+                job_title = job.title or job_title
+                company_name = job.company_name or company_name
+
+        out.append({
+            "id": s.id,
+            "session_id": s.id,
+            "title": s.title or f"{job_title} - Online Skills Assessment",
+            "job_title": job_title,
+            "company_name": company_name,
+            "duration_minutes": s.duration_minutes or 15,
+            "passing_score": s.passing_score or 70.0,
+            "question_count": s.question_count or 10,
+            "difficulty": s.difficulty or "Medium",
+            "topics": s.topics or ["Quantitative Aptitude", "Logical Reasoning", "Software Concepts"],
+            "status": s.status,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "job_id": s.job_id,
+            "job_application_id": s.job_application_id
         })
     return out
 
@@ -378,6 +524,19 @@ async def get_schedule_detail(
     
     cfg = s.config_json or {}
     job_title = cfg.get("job_title") or (cand.target_role if (cand and cand.target_role) else "Software Engineer")
+    company_name = cfg.get("company_name", "SmartHire Enterprise")
+
+    now_utc = datetime.utcnow()
+    sched_dt = s.scheduled_date
+    if sched_dt and sched_dt.tzinfo is not None:
+        sched_dt = sched_dt.replace(tzinfo=None)
+    
+    can_start = True
+    seconds_until_start = 0
+    if sched_dt:
+        if now_utc < sched_dt:
+            can_start = False
+            seconds_until_start = int((sched_dt - now_utc).total_seconds())
 
     return {
         "id": s.id,
@@ -388,15 +547,18 @@ async def get_schedule_detail(
         "job_id": s.job_id,
         "resume_id": s.resume_id,
         "round_type": s.round_type or cfg.get("round_type", "Technical"),
-        "scheduled_date": s.scheduled_date.isoformat() if s.scheduled_date else None,
+        "scheduled_date": (sched_dt.isoformat() + "Z") if sched_dt else None,
         "duration_minutes": s.duration_minutes or cfg.get("duration_minutes", 30),
         "difficulty": s.difficulty or cfg.get("difficulty", "Medium"),
         "question_count": s.question_count or cfg.get("question_count", 6),
         "instructions": s.instructions,
         "job_title": job_title,
         "role_target": job_title,
+        "company_name": company_name,
         "config_json": cfg,
-        "status": s.status
+        "status": s.status,
+        "can_start": can_start,
+        "seconds_until_start": max(0, seconds_until_start)
     }
 
 @router.get("/recruiter")
@@ -447,16 +609,138 @@ async def update_interview_status(
     if not interview:
         raise HTTPException(status_code=404, detail="Scheduled interview not found.")
 
+    old_status = interview.status
     interview.status = new_status
+
+    res_c = await db.execute(select(Candidate).where(Candidate.id == interview.candidate_id))
+    cand = res_c.scalar_one_or_none()
+    cand_user = None
+    if cand and cand.user_id:
+        res_u = await db.execute(select(User).where(User.id == cand.user_id))
+        cand_user = res_u.scalar_one_or_none()
+
+    if new_status.lower() == "cancelled":
+        await reminder_service.invalidate_reminders(db, interview.id, reason="CANCELLED")
+        if cand and cand.user_id:
+            notif = Notification(
+                user_id=cand.user_id,
+                title="Interview Cancelled",
+                message=f"Your {interview.round_type} interview has been cancelled by the recruiter.",
+                notification_type="interview_cancelled",
+                interview_id=interview.id
+            )
+            db.add(notif)
+        if cand_user and cand_user.email:
+            cfg = interview.config_json or {}
+            job_title = cfg.get("job_title") or interview.round_type or "Interview"
+            sched_str = interview.scheduled_date.strftime("%b %d, %Y at %I:%M %p") if interview.scheduled_date else "Scheduled date"
+            await email_service.send_interview_cancelled_email(
+                db=db,
+                candidate_email=cand_user.email,
+                candidate_name=cand_user.full_name or "Candidate",
+                interview_title=job_title,
+                scheduled_date_str=sched_str,
+                company_name=cfg.get("company_name", "SmartHire AI Platform"),
+                interview_id=interview.id,
+                candidate_user_id=cand.user_id
+            )
+    elif new_status.lower() == "completed":
+        await reminder_service.invalidate_reminders(db, interview.id, reason="SKIPPED")
+
     await db.commit()
 
     # Emit socket event
-    res_c = await db.execute(select(Candidate).where(Candidate.id == interview.candidate_id))
-    cand = res_c.scalar_one_or_none()
-    if cand:
+    if cand and cand.user_id:
         await ws_manager.send_personal_message({
             "event": "STATUS_CHANGED",
             "data": {"interview_id": interview.id, "status": new_status}
         }, cand.user_id)
 
     return {"status": "success", "interview_id": interview.id, "new_status": new_status}
+
+class RescheduleRequest(BaseModel):
+    new_scheduled_date: str # ISO string
+
+@router.post("/{interview_id}/reschedule")
+async def reschedule_interview(
+    interview_id: str,
+    body: RescheduleRequest,
+    user: User = Depends(require_role(["recruiter", "admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """Reschedules an interview, invalidates prior reminders, creates new reminders, and notifies candidate."""
+    res = await db.execute(select(ScheduledInterview).where(ScheduledInterview.id == interview_id))
+    interview = res.scalar_one_or_none()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Scheduled interview not found.")
+
+    parsed_date = datetime.fromisoformat(body.new_scheduled_date.replace('Z', '+00:00')).replace(tzinfo=None)
+    interview.scheduled_date = parsed_date
+    interview.status = "Scheduled"
+
+    res_c = await db.execute(select(Candidate).where(Candidate.id == interview.candidate_id))
+    cand = res_c.scalar_one_or_none()
+    cand_user = None
+    if cand and cand.user_id:
+        res_u = await db.execute(select(User).where(User.id == cand.user_id))
+        cand_user = res_u.scalar_one_or_none()
+
+    # Invalidate old reminders & schedule fresh ones for the updated date
+    await reminder_service.reschedule_reminders(db, interview, cand.user_id if cand else None)
+
+    # In-app notification
+    if cand and cand.user_id:
+        notif = Notification(
+            user_id=cand.user_id,
+            title="Interview Rescheduled",
+            message=f"Your {interview.round_type} interview has been rescheduled for {parsed_date.strftime('%b %d, %Y at %I:%M %p')}.",
+            notification_type="interview_rescheduled",
+            interview_id=interview.id,
+            link=f"/interview-lobby?schedule_id={interview.id}"
+        )
+        db.add(notif)
+
+    # Dispatch email
+    if cand_user and cand_user.email:
+        cfg = interview.config_json or {}
+        job_title = cfg.get("job_title") or interview.round_type or "Interview"
+        await email_service.send_interview_rescheduled_email(
+            db=db,
+            candidate_email=cand_user.email,
+            candidate_name=cand_user.full_name or "Candidate",
+            interview_title=job_title,
+            new_date_str=parsed_date.strftime('%b %d, %Y at %I:%M %p'),
+            duration_minutes=interview.duration_minutes or 30,
+            round_type=interview.round_type or "Technical",
+            interview_link=f"{settings.FRONTEND_URL}/interview-lobby?schedule_id={interview.id}",
+            company_name=cfg.get("company_name", "SmartHire AI Platform"),
+            interview_id=interview.id,
+            candidate_user_id=cand.user_id if cand else None
+        )
+
+    await db.commit()
+
+    if cand and cand.user_id:
+        await ws_manager.send_personal_message({
+            "event": "INTERVIEW_RESCHEDULED",
+            "data": {
+                "interview_id": interview.id,
+                "new_scheduled_date": interview.scheduled_date.isoformat(),
+                "status": interview.status
+            }
+        }, cand.user_id)
+
+    return {
+        "status": "success",
+        "interview_id": interview.id,
+        "new_scheduled_date": interview.scheduled_date.isoformat()
+    }
+
+@router.post("/reminders/process")
+async def trigger_process_reminders(
+    db: AsyncSession = Depends(get_db)
+):
+    """Processes and dispatches all due interview reminders (24h, 1h, 15m) across the system."""
+    summary = await reminder_service.process_due_reminders(db)
+    return {"status": "success", "summary": summary}
+

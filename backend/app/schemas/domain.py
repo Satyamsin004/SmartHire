@@ -44,6 +44,7 @@ class CandidateProfileResponse(BaseModel):
     email: str
     role: str
     profile_image: Optional[str] = None
+    avatar_url: Optional[str] = None
     target_role: Optional[str] = None
     experience_level: Optional[str] = None
     total_interviews: int = 0

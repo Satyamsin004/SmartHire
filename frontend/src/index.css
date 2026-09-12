@@ -1,10 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   :root {
     --bg-main: #F8FAFC;
     --bg-card: #FFFFFF;
@@ -28,6 +33,19 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-display tracking-tight text-slate-900 dark:text-white;
   }
+}
+
+/* GPU acceleration for butter-smooth 60fps animations */
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Content visibility optimization for smooth long-list rendering */
+.content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 120px;
 }
 
 /* Glassmorphism & Enterprise Luxury Cards */
@@ -107,6 +125,177 @@
   border-color: rgba(99, 102, 241, 0.35);
   box-shadow: 0 16px 36px -8px rgba(79, 70, 229, 0.12);
   transform: translateY(-2px);
+}
+
+.dark .text-brand-ink {
+  color: #F8FAFC !important;
+}
+
+.dark .text-brand-primary {
+  color: #818CF8 !important;
+}
+
+.dark .bg-cream-50,
+.dark .bg-cream-100 {
+  background-color: #111827 !important;
+}
+
+.dark .bg-cream-200 {
+  background-color: #1F2937 !important;
+}
+
+.dark .bg-cream-300 {
+  background-color: #374151 !important;
+}
+
+.dark .bg-cream-400 {
+  background-color: #4B5563 !important;
+}
+
+.dark .border-stoneBorder {
+  border-color: #1E293B !important;
+}
+
+/* Enforce dark card background even if bg-white class is present */
+.dark .card-luxury {
+  background-color: #111827 !important;
+  border-color: #1E293B !important;
+}
+
+/* Universal Dark Mode High-Contrast Safety Overrides for Complete Text Readability */
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+  color: #F8FAFC !important;
+}
+
+.dark .text-slate-900 {
+  color: #F8FAFC !important;
+}
+
+.dark .text-slate-800 {
+  color: #F1F5F9 !important;
+}
+
+.dark .text-slate-700 {
+  color: #E2E8F0 !important;
+}
+
+.dark .text-slate-600 {
+  color: #CBD5E1 !important;
+}
+
+.dark .text-stone-900,
+.dark .text-stone-800 {
+  color: #F8FAFC !important;
+}
+
+.dark .text-stone-700,
+.dark .text-stone-600 {
+  color: #E2E8F0 !important;
+}
+
+.dark .border-slate-100 {
+  border-color: #1E293B !important;
+}
+
+.dark .border-slate-200 {
+  border-color: #1E293B;
+}
+
+/* Universal Dark Mode Background Fallbacks: Prevents any card from remaining white in dark mode */
+.dark .bg-white {
+  background-color: #111827;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-50\/90,
+.dark .bg-slate-50\/80,
+.dark .bg-slate-50\/70,
+.dark .bg-slate-50\/60,
+.dark .bg-slate-50\/50,
+.dark tr.bg-slate-50\/50,
+.dark thead tr {
+  background-color: #1a2234 !important;
+}
+
+.dark .bg-cream-100,
+.dark .bg-cream-200 {
+  background-color: #1e293b !important;
+}
+
+.dark thead th {
+  color: #E2E8F0 !important;
+  background-color: #0F172A !important;
+  font-weight: 800 !important;
+}
+
+.dark table tbody tr:hover {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+}
+
+.dark .text-brand-ink {
+  color: #F8FAFC !important;
+}
+
+/* Global Dark Mode Form Controls Defaults */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="file"]),
+.dark textarea {
+  background-color: #1E293B !important;
+  color: #F8FAFC !important;
+  border-color: #334155 !important;
+}
+
+.dark select {
+  background-color: #1E293B !important;
+  color: #F8FAFC !important;
+  border-color: #334155 !important;
+}
+
+.dark select option {
+  background-color: #0F172A !important;
+  color: #F8FAFC !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* Chrome/Safari Autofill Dark Mode Fix */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover, 
+.dark input:-webkit-autofill:focus,
+.dark textarea:-webkit-autofill,
+.dark select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #0F172A inset !important;
+  -webkit-text-fill-color: #F8FAFC !important;
+  caret-color: #F8FAFC !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Recharts Dark Mode Visual Enhancement */
+.dark .recharts-text {
+  fill: #94A3B8 !important;
+}
+
+.dark .recharts-cartesian-grid line {
+  stroke: #334155 !important;
+  opacity: 0.6;
+}
+
+.dark .recharts-cartesian-axis-line {
+  stroke: #475569 !important;
+}
+
+.dark .recharts-legend-item-text {
+  color: #CBD5E1 !important;
+}
+
+.dark .recharts-default-tooltip {
+  background-color: #0F172A !important;
+  border-color: #334155 !important;
+  color: #F8FAFC !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
 }
 
 /* Luminous Glow & Shimmer FX */

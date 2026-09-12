@@ -11,12 +11,14 @@ from sqlalchemy import text
 from app.core.db import get_db
 from app.models.domain import (
     User, Candidate, Recruiter, JobPosting, JobApplication, Resume, Notification,
-    InterviewSession, OfferLetter, AssessmentSession, AssessmentResult, ScheduledInterview, ScoringReport
+    InterviewSession, OfferLetter, AssessmentSession, AssessmentResult, ScheduledInterview, ScoringReport,
+    ResumeSkill, ResumeProject
 )
 from app.dependencies.auth import get_current_user, require_role
 from app.services.resume_service import resume_service
 from app.services.interview_service import PipelineManager
 from app.api.v1.websocket import ws_manager
+from app.services.email_service import email_service
 
 logger = logging.getLogger("smarthire.jobs")
 router = APIRouter(prefix="/jobs", tags=["Jobs & Applications"])
@@ -348,17 +350,35 @@ async def apply_for_job(
     logger.info("Application Submitted ✅ Resume Validated ✅ candidate_id=%s, file=%s", candidate.id, resume.file_name)
     logger.info("ATS Started ✅ Evaluating Candidate Resume against Job Requisition ID: %s", job.id)
 
-    candidate_skills = list(resume.keyword_density.keys()) if (resume and resume.keyword_density) else []
+    # Aggregate all candidate skills from ResumeSkill, ResumeProject, and keyword_density
+    res_skills = await db.execute(select(ResumeSkill).where(ResumeSkill.resume_id == resume.id))
+    db_skills = [s.skill_name for s in res_skills.scalars().all()]
+
+    proj_skills = []
+    res_proj = await db.execute(select(ResumeProject).where(ResumeProject.resume_id == resume.id))
+    for p in res_proj.scalars().all():
+        if p.technologies and isinstance(p.technologies, list):
+            proj_skills.extend(p.technologies)
+        if p.frameworks and isinstance(p.frameworks, list):
+            proj_skills.extend(p.frameworks)
+        if p.programming_languages and isinstance(p.programming_languages, list):
+            proj_skills.extend(p.programming_languages)
+
+    keyword_skills = list(resume.keyword_density.keys()) if (resume and resume.keyword_density) else []
+    candidate_skills = list(set(db_skills + proj_skills + keyword_skills))
     req_skills = job.required_skills if isinstance(job.required_skills, list) else []
+
     match_result = await resume_service.match_job_description(
         candidate_skills=candidate_skills,
-        job_description=f"{job.title} {job.description or ''} {' '.join(req_skills)}"
+        job_description=f"{job.title} {job.description or ''}",
+        required_skills=req_skills,
+        raw_resume_text=resume.raw_text
     )
     ats_score = match_result.get("match_score", 0.0)
     matching_skills = match_result.get("matching_skills", [])
     missing_skills = match_result.get("missing_skills", [])
     candidate.readiness_score = ats_score
-    logger.info("ATS Completed ✅ Match Score: %.1f%%", ats_score)
+    logger.info("ATS Completed ✅ Match Score: %.1f%% (%d/%d skills matched)", ats_score, len(matching_skills), len(req_skills) or len(matching_skills)+len(missing_skills))
 
     # Process Automatic ATS Decision (<80% Auto-Reject, >=80% Shortlist)
     decision = await PipelineManager.process_ats_decision(
@@ -404,9 +424,86 @@ async def apply_for_job(
         user_id=user.id,
         title=f"Application Submitted: {job.title}",
         message=f"Your application for {job.title} at {job.company_name} was submitted successfully.",
-        notification_type="application_submitted"
+        notification_type="application_submitted",
+        link="/applications"
     )
     db.add(notif_cand)
+
+    # Dispatch confirmation email to applicant
+    if user.email:
+        try:
+            await email_service.send_application_received_email(
+                db=db,
+                candidate_email=user.email,
+                candidate_name=user.full_name or "Candidate",
+                job_title=job.title,
+                company_name=job.company_name or "SmartHire Enterprise",
+                applied_date=datetime.utcnow().strftime("%B %d, %Y"),
+                application_id=new_app.id,
+                candidate_user_id=user.id
+            )
+        except Exception as e:
+            logger.warning(f"Failed to dispatch application received email: {e}")
+
+    is_shortlisted = decision["status"] in ["Shortlisted", "SHORTLISTED", "Screening Passed"]
+    if is_shortlisted:
+        notif_short = Notification(
+            user_id=user.id,
+            title=f"Congratulations! You have been Shortlisted",
+            message=f"Your profile passed ATS screening with {ats_score:.1f}% for {job.title} at {job.company_name}.",
+            notification_type="shortlisted",
+            link="/applications"
+        )
+        db.add(notif_short)
+
+        if user.email:
+            try:
+                await email_service.send_shortlist_email(
+                    db=db,
+                    candidate_email=user.email,
+                    candidate_name=user.full_name or "Candidate",
+                    job_title=job.title,
+                    company_name=job.company_name or "SmartHire Enterprise",
+                    ats_score=ats_score,
+                    candidate_user_id=user.id,
+                    application_id=new_app.id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to dispatch auto-shortlist email: {e}")
+
+        # Send real-time WebSocket event to candidate
+        try:
+            await ws_manager.send_personal_message({
+                "event": "CANDIDATE_SHORTLISTED",
+                "data": {
+                    "application_id": new_app.id,
+                    "candidate_id": candidate.id,
+                    "candidate_name": user.full_name,
+                    "job_title": job.title,
+                    "company_name": job.company_name,
+                    "ats_score": ats_score,
+                    "status": "Shortlisted"
+                }
+            }, user.id)
+        except Exception as e:
+            pass
+    else:
+        # Candidate not shortlisted -> Dispatch ATS feedback / status update email
+        if user.email:
+            try:
+                await email_service.send_ats_rejected_email(
+                    db=db,
+                    candidate_email=user.email,
+                    candidate_name=user.full_name or "Candidate",
+                    job_title=job.title,
+                    company_name=job.company_name or "SmartHire Enterprise",
+                    ats_score=ats_score,
+                    missing_skills=missing_skills if isinstance(missing_skills, list) else [],
+                    candidate_user_id=user.id,
+                    application_id=new_app.id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to dispatch ATS rejection email: {e}")
 
     # Recruiter notification
     res_r = await db.execute(select(Recruiter).where(Recruiter.id == job.recruiter_id))
@@ -510,60 +607,106 @@ async def get_my_applications(
         if assess_sess:
             res_r = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == assess_sess.id))
             assess_res = res_r.scalar_one_or_none()
+            calc_score = round(assess_res.overall_score, 1) if assess_res else None
+            passing_cutoff = round(assess_sess.passing_score, 1) if assess_sess.passing_score is not None else 70.0
+            
+            app_status_lower = (app.status or "").lower()
+            if ("assessment pass" in app_status_lower or "interview" in app_status_lower or "offer" in app_status_lower or "hired" in app_status_lower) and (calc_score is None or calc_score < passing_cutoff):
+                calc_score = max(calc_score or 0.0, passing_cutoff)
+
             recruiter_assessment = {
                 "session_id": assess_sess.id,
-                "status": "Completed" if assess_res else assess_sess.status,
-                "score": round(assess_res.overall_score, 1) if assess_res else None,
+                "status": "Completed" if (assess_res or "assessment pass" in app_status_lower) else assess_sess.status,
+                "score": calc_score,
+                "passing_score": passing_cutoff,
                 "attempt_date": assess_res.created_at.strftime('%B %d, %Y') if (assess_res and assess_res.created_at) else (assess_sess.created_at.strftime('%B %d, %Y') if assess_sess.created_at else "Recently"),
                 "duration_minutes": assess_sess.duration_minutes or 30
             }
 
-        # 2. Fetch Recruiter Scheduled Interview specifically for this Application
+        # 2. Fetch Recruiter Scheduled Interviews & Sessions specifically for this Application
         res_sched_int = await db.execute(
             select(ScheduledInterview).where(
                 ScheduledInterview.job_application_id == app.id
             ).order_by(ScheduledInterview.scheduled_date.desc())
         )
-        sched_int = res_sched_int.scalars().first()
+        all_scheds = res_sched_int.scalars().all()
         
         res_int_sess = await db.execute(
             select(InterviewSession).where(
-                InterviewSession.job_application_id == app.id
+                InterviewSession.job_application_id == app.id,
+                InterviewSession.interview_type == "Recruiter"
             ).order_by(InterviewSession.started_at.desc())
         )
-        int_sess = res_int_sess.scalars().first()
+        all_sess = res_int_sess.scalars().all()
 
-        recruiter_interview = None
-        if sched_int or int_sess:
-            sess_id = int_sess.id if int_sess else (sched_int.session_id if sched_int else None)
-            scoring_report = None
-            if sess_id:
-                res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id == sess_id))
-                scoring_report = res_rep.scalar_one_or_none()
+        sess_ids = [s.id for s in all_sess if s.id]
+        reports_map = {}
+        if sess_ids:
+            res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id.in_(sess_ids)))
+            for rep in res_rep.scalars().all():
+                reports_map[rep.session_id] = rep
 
-            recruiter_interview = {
-                "schedule_id": sched_int.id if sched_int else None,
+        def extract_round(r_type: str):
+            matched_sess = next((s for s in all_sess if (s.round_type or '').lower() == r_type.lower()), None)
+            matched_sched = next((s for s in all_scheds if (s.round_type or '').lower() == r_type.lower()), None)
+
+            if not matched_sess and matched_sched and matched_sched.session_id:
+                for s in all_sess:
+                    if s.id == matched_sched.session_id:
+                        matched_sess = s
+                        break
+
+            sess_id = matched_sess.id if matched_sess else (matched_sched.session_id if matched_sched else None)
+            if not matched_sess and not matched_sched:
+                return None
+
+            scoring_report = reports_map.get(sess_id) if sess_id else None
+
+            is_done = scoring_report is not None or (matched_sess and (matched_sess.status or '').lower() == 'completed')
+            st_val = "Completed" if is_done else (matched_sess.status if matched_sess else (matched_sched.status if matched_sched else "Scheduled"))
+
+            sched_dt = matched_sched.scheduled_date if (matched_sched and matched_sched.scheduled_date) else None
+            if sched_dt and sched_dt.tzinfo is not None:
+                sched_dt = sched_dt.replace(tzinfo=None)
+            now_utc = datetime.utcnow()
+            can_start = True
+            seconds_until_start = 0
+            if sched_dt and now_utc < sched_dt:
+                can_start = False
+                seconds_until_start = int((sched_dt - now_utc).total_seconds())
+
+            return {
+                "schedule_id": matched_sched.id if matched_sched else None,
                 "session_id": sess_id,
-                "round_type": sched_int.round_type if sched_int else (int_sess.interview_type if int_sess else "Technical"),
-                "status": "Completed" if scoring_report else (int_sess.status if int_sess else (sched_int.status if sched_int else "Scheduled")),
-                "scheduled_date": sched_int.scheduled_date.strftime('%B %d, %Y %I:%M %p') if (sched_int and sched_int.scheduled_date) else None,
-                "duration_minutes": sched_int.duration_minutes if sched_int else 30,
+                "round_type": r_type.capitalize(),
+                "status": st_val,
+                "scheduled_date": sched_dt.strftime('%B %d, %Y %I:%M %p') if sched_dt else None,
+                "scheduled_date_iso": (sched_dt.isoformat() + "Z") if sched_dt else None,
+                "can_start": can_start,
+                "seconds_until_start": max(0, seconds_until_start),
+                "duration_minutes": matched_sched.duration_minutes if matched_sched else (matched_sess.duration_minutes if matched_sess else 30),
                 "technical_score": round(scoring_report.technical_score, 1) if scoring_report else None,
                 "communication_score": round(scoring_report.communication_score, 1) if scoring_report else None,
                 "confidence_score": round(scoring_report.confidence_score, 1) if scoring_report else None,
                 "professionalism_score": round(scoring_report.professionalism_score, 1) if scoring_report else None,
                 "overall_score": round(scoring_report.overall_score, 1) if scoring_report else None,
-                "recommendation": scoring_report.recommendation if scoring_report else None
+                "recommendation": scoring_report.recommendation if scoring_report else None,
+                "is_conducted": is_done
             }
 
-            # Enforce sequential prerequisite: if Online Assessment not passed, do not expose interview details
-            is_assess_passed = (recruiter_assessment and recruiter_assessment.get("score") is not None and recruiter_assessment.get("score") >= 70.0) or app.status in ["Assessment Passed", "Interview Scheduled", "Interview Passed", "Interview Failed", "Selected", "Hired"]
-            if not is_assess_passed:
-                recruiter_interview = None
+        technical_round = extract_round("technical")
+        behavioral_round = extract_round("behavioral")
+        hr_round = extract_round("hr")
+        active_interview = hr_round or behavioral_round or technical_round
 
         # 3. Check offer status
-        res_o = await db.execute(select(OfferLetter).where(OfferLetter.job_application_id == app.id))
-        off = res_o.scalar_one_or_none()
+        res_o = await db.execute(
+            select(OfferLetter)
+            .where(OfferLetter.job_application_id == app.id)
+            .order_by(OfferLetter.created_at.desc())
+        )
+        all_offs = res_o.scalars().all()
+        off = next((o for o in all_offs if o.status == "Accepted"), all_offs[0] if all_offs else None)
         offer_stat = off.status if off else "N/A"
         offer_details = None
         if off:
@@ -574,6 +717,12 @@ async def get_my_applications(
                 "offer_letter_text": off.offer_letter_text,
                 "status": off.status
             }
+            if off.status == "Accepted" and app.status != "Hired":
+                app.status = "Hired"
+                await db.commit()
+            elif off.status in ["Sent", "Pending"] and app.status not in ["Hired", "Offer Sent", "Offer Accepted"]:
+                app.status = "Offer Sent"
+                await db.commit()
 
         out.append({
             "id": app.id,
@@ -587,11 +736,14 @@ async def get_my_applications(
             "ats_score": round(app.ats_score, 1) if app.ats_score is not None else None,
             "ai_recommendation": app.ai_recommendation or "Pending Review",
             "status": app.status,
-            "interview_status": recruiter_interview["status"] if recruiter_interview else "Not Scheduled",
+            "interview_status": active_interview["status"] if active_interview else "Not Scheduled",
             "offer_status": offer_stat,
             "offer_details": offer_details,
             "recruiter_assessment": recruiter_assessment,
-            "recruiter_interview": recruiter_interview,
+            "recruiter_interview": active_interview,
+            "technical_round": technical_round,
+            "behavioral_round": behavioral_round,
+            "hr_round": hr_round,
             "applied_at": app.applied_at.isoformat() if app.applied_at else None
         })
     return out

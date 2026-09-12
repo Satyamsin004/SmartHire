@@ -4,8 +4,10 @@ logging.getLogger("smarthire.auth").setLevel(logging.DEBUG)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy import text
 from app.core.config import settings
 from app.core.db import engine, Base
 from app.services.ai_engine import ai_engine
@@ -21,10 +23,21 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# High-Performance GZip Compression (compresses payloads > 1000 bytes by 70-85%)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # CORS Configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+is_production = settings.ENVIRONMENT.lower() == "production"
+
+cors_origins = [settings.FRONTEND_URL]
+if settings.CORS_ORIGINS:
+    for o in settings.CORS_ORIGINS.split(","):
+        clean_o = o.strip()
+        if clean_o and clean_o not in cors_origins:
+            cors_origins.append(clean_o)
+
+if not is_production:
+    dev_origins = [
         "http://localhost:3001",
         "http://127.0.0.1:3001",
         "http://localhost:3000",
@@ -33,12 +46,21 @@ app.add_middleware(
         "http://127.0.0.1:3002",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-    ],
-    allow_origin_regex=r"https?://.*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    ]
+    for d_o in dev_origins:
+        if d_o not in cors_origins:
+            cors_origins.append(d_o)
+
+cors_kwargs = {
+    "allow_origins": cors_origins,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if not is_production:
+    cors_kwargs["allow_origin_regex"] = r"https?://.*"
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 @app.on_event("startup")
 async def startup():
@@ -88,7 +110,26 @@ async def startup():
             "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE interview_speech_metrics ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';",
             "ALTER TABLE interview_transcript_segments ADD COLUMN IF NOT EXISTS is_test_data BOOLEAN DEFAULT FALSE;",
-            "ALTER TABLE interview_transcript_segments ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';"
+            "ALTER TABLE interview_transcript_segments ADD COLUMN IF NOT EXISTS environment VARCHAR(50) DEFAULT 'PRODUCTION';",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS interview_id VARCHAR(36);",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link VARCHAR(500);",
+            "CREATE INDEX IF NOT EXISTS ix_interview_sessions_candidate_id ON interview_sessions (candidate_id);",
+            "CREATE INDEX IF NOT EXISTS ix_interview_sessions_job_app_id ON interview_sessions (job_application_id);",
+            "CREATE INDEX IF NOT EXISTS ix_interview_sessions_status ON interview_sessions (status);",
+            "CREATE INDEX IF NOT EXISTS ix_scoring_reports_session_id ON scoring_reports (session_id);",
+            "CREATE INDEX IF NOT EXISTS ix_scoring_reports_candidate_id ON scoring_reports (candidate_id);",
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_interviews_candidate_id ON scheduled_interviews (candidate_id);",
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_interviews_job_id ON scheduled_interviews (job_id);",
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_interviews_job_app_id ON scheduled_interviews (job_application_id);",
+            "CREATE INDEX IF NOT EXISTS ix_offer_letters_candidate_id ON offer_letters (candidate_id);",
+            "CREATE INDEX IF NOT EXISTS ix_offer_letters_job_app_id ON offer_letters (job_application_id);",
+            "CREATE INDEX IF NOT EXISTS ix_resumes_candidate_id ON resumes (candidate_id);",
+            "CREATE INDEX IF NOT EXISTS ix_assessment_sessions_job_app_id ON assessment_sessions (job_application_id);",
+            "CREATE INDEX IF NOT EXISTS ix_assessment_sessions_candidate_id ON assessment_sessions (candidate_id);",
+            "CREATE INDEX IF NOT EXISTS ix_assessment_sessions_job_id ON assessment_sessions (job_id);",
+            "CREATE INDEX IF NOT EXISTS ix_assessment_results_session_id ON assessment_results (session_id);",
+            "CREATE INDEX IF NOT EXISTS ix_job_applications_cand_job ON job_applications (candidate_id, job_id);",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_interview_type ON notifications(user_id, interview_id, notification_type) WHERE interview_id IS NOT NULL;"
         ]:
             try:
                 async with engine.begin() as conn:
@@ -109,6 +150,35 @@ async def startup():
         print(f"  {methods_str:<12} {path}")
     print("================================================================================\n")
 
+    # Start periodic reminder background worker
+    import asyncio
+    global _reminder_worker_task
+    _reminder_worker_task = asyncio.create_task(_periodic_reminder_worker())
+
+@app.on_event("shutdown")
+async def shutdown():
+    global _reminder_worker_task
+    if _reminder_worker_task:
+        _reminder_worker_task.cancel()
+
+_reminder_worker_task = None
+
+async def _periodic_reminder_worker():
+    """Background task running every 60 seconds to process due interview reminders."""
+    import asyncio
+    from app.core.db import AsyncSessionLocal
+    from app.services.reminder_service import reminder_service
+
+    while True:
+        try:
+            await asyncio.sleep(60)
+            async with AsyncSessionLocal() as db:
+                await reminder_service.process_due_reminders(db)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logging.getLogger("smarthire.scheduler").warning("Background reminder worker notice: %s", e)
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     import traceback
@@ -118,12 +188,21 @@ async def global_exception_handler(request, exc):
 
 import os
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+
+class CachedStaticFiles(StaticFiles):
+    """Static file server with automatic HTTP 1-day browser cache headers."""
+    async def get_response(self, path: str, scope) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
 
 uploads_dir = os.path.join(os.getcwd(), "static", "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+app.mount("/uploads", CachedStaticFiles(directory=uploads_dir), name="uploads")
 
-from app.api.v1 import auth, users, resume, interview, coding, aptitude, recruiter, admin, scheduling, websocket, jobs, offers, notifications, uploads, applications
+from app.api.v1 import auth, users, resume, interview, coding, aptitude, recruiter, admin, scheduling, websocket, jobs, offers, notifications, uploads, applications, analytics
 
 # Mount API V1 Router Modules
 app.include_router(auth.router, prefix=settings.API_V1_STR)
@@ -140,6 +219,7 @@ app.include_router(aptitude.router, prefix=settings.API_V1_STR)
 app.include_router(recruiter.router, prefix=settings.API_V1_STR)
 app.include_router(scheduling.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
+app.include_router(analytics.router, prefix=settings.API_V1_STR)
 app.include_router(websocket.router)
 
 def custom_openapi():
@@ -224,6 +304,16 @@ async def reset_provider_health(provider: str = "gemini"):
     """Reset provider state to healthy for testing."""
     ai_provider.reset_provider_health(provider)
     return {"status": "health_reset", "provider": provider}
+
+@app.get("/health", tags=["Health Check"])
+@app.get("/api/v1/health", tags=["Health Check"])
+async def health():
+    return {
+        "status": "healthy",
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT,
+        "service": settings.PROJECT_NAME
+    }
 
 @app.get("/", tags=["Health Check"])
 async def root():

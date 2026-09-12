@@ -1,487 +1,404 @@
-<div align="center">
+# SmartHire AI
 
-# 🚀 SmartHire AI
-### Next-Generation Autonomous AI Mock Interview & Candidate Assessment Platform
-
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18.2+-61DAFB.svg?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C.svg?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.2+-3178C6.svg?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-5.1+-646CFF.svg?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-
-<p align="center">
-  <b>SmartHire AI</b> bridges the gap between hiring teams and candidates by delivering high-fidelity, real-time autonomous technical interviews, multi-modal behavioral computer vision, automated integrity verification, and instant evidence-based assessment reports.
-</p>
-
-[✨ Key Features](#-key-features) • [🏛 System Architecture](#-system-architecture) • [🚀 Quick Start](#-quick-start) • [🧠 AI & ML Engine](#-ai--behavioral-ml-engine) • [🖥 Portal Walkthroughs](#-portal-walkthroughs) • [📡 API Reference](#-api-reference) • [🐳 Docker Setup](#-docker-deployment) • [🤝 Contributing](#-contributing)
+SmartHire AI is an enterprise-grade autonomous AI-powered interview and candidate assessment platform designed to deliver high-fidelity, real-time technical and behavioral assessments, automated proctoring verification, multi-dimensional scoring rubrics, and executive evaluation reports.
 
 ---
 
-</div>
+## Overview
 
-## 📌 Overview
-
-**SmartHire** is an enterprise-grade, end-to-end recruitment intelligence platform designed to conduct dynamic, conversational technical and behavioral interviews. Powered by an ensemble of multi-provider LLMs (Gemini, Groq, OpenRouter) and custom-trained PyTorch computer vision models, SmartHire objectively evaluates candidates while drastically shortening the hiring cycle from weeks to minutes.
-
-### 🌟 Why SmartHire?
-- ⏱️ **Zero Waiting Time**: Real-time conversational interview loop with sub-second speech-to-text and streaming responses.
-- 🎯 **Objective Evidence-Based Scoring**: Replaces subjective feedback with structured rubrics (Technical Depth, Problem Solving, Communication, Confidence).
-- 🛡️ **Autonomous Proctoring & Integrity**: In-browser and server-side integrity engine tracking gaze diversion, multi-person presence, and window blurs.
-- 🔄 **Fault-Tolerant AI Engine**: Automated multi-key rotation and multi-provider failover (Google Gemini ↔ Groq LLaMA 3.3 ↔ OpenRouter).
-- 📄 **Executive PDF Generation**: Automated multi-page evaluation reports ready for engineering managers and talent partners.
+SmartHire AI bridges the gap between hiring teams and job seekers by modernizing traditional recruitment workflows. By orchestrating a multi-provider Large Language Model (LLM) layer with real-time speech transcription, client-side proctoring, and deep behavioral computer vision, SmartHire conducts realistic conversational interviews, evaluates candidate proficiency objectively, and empowers recruiters to make evidence-based hiring decisions.
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### 🎙️ 1. Dynamic Live AI Interviewer
-- **Adaptive Follow-Up Planner**: Evaluates candidates' spoken and coded responses on-the-fly and generates targeted contextual follow-up questions.
-- **Bi-Directional Real-Time Interaction**: Real-time WebSockets handle streaming audio, text transcripts, and visual telemetry synchronously.
-- **Multi-Track Sessions**: Dedicated tracks for Software Engineering, System Design, Data Structures & Algorithms, Frontend, Backend, and DevOps.
+### Candidate Portal
+* **Registration & Authentication**: Secure JWT-based registration and login, including Google OAuth 2.0 single sign-on support.
+* **Profile & Resume Parsing**: Automated parsing of PDF/DOCX resumes extracting key technical skills, experience history, and educational background.
+* **Job Discovery & Application**: Browse active job requisitions across engineering and product disciplines, review compensation and role specifications, and apply with a single click.
+* **Interview Scheduling & Lobby**: Schedule interview slots and conduct automated hardware diagnostics (microphone, camera, speaker, and network latency) before entering live sessions.
+* **AI Live Interviewer**: Interactive real-time interview room supporting Technical, Behavioral, System Design, and HR rounds.
+* **Real-Time Transcription (STT)**: High-accuracy live speech-to-text capturing spoken candidate answers with low latency.
+* **Speech & Acoustic Intelligence**: Evaluates speaking pace (Words Per Minute), vocal clarity, filler word frequency (*um*, *uh*, *like*), and hesitation markers.
+* **Visual & Behavioral Telemetry**: Real-time facial emotion categorization and eye gaze tracking to observe engagement, focus, and poise.
+* **In-Browser Integrity & Proctoring**: Real-time detection of tab switching, window blur, developer tools activation, and unauthorized multi-person presence.
+* **Session Recording**: Authenticated audio/video stream capture for complete interview auditing.
+* **Candidate Analytics & Practice Hub**: Personalized candidate dashboards displaying score breakdowns, radar charts, and targeted practice recommendations with interactive code editors.
+* **Notifications**: Real-time in-app alerts and notifications regarding application progress, interview invitations, and status changes.
 
-### 👁️ 2. Computer Vision & Behavioral Analysis
-- **Custom PyTorch Behavioral CNN (`SmartHireBehaviorCNN`)**: Analyzes candidate expressions into 8 evidence-based behavioral states (*confident, focused, thinking, hesitant, neutral, confused, stressed, frustrated*).
-- **Gaze & Focus Tracking**: Calculates eye gaze vectors and head-pose orientation to ensure natural conversational engagement.
-- **Temporal EMA Smoothing**: Exponential Moving Average filtering eliminates frame-to-frame classification jitter.
+### Recruiter Hub
+* **Command Center Dashboard**: Live recruitment metrics, active job requisitions, pipeline conversion rates, and recent candidate assessments.
+* **Job Creation & Management**: Create and manage detailed job postings specifying required competencies, assessment criteria, salary ranges, and job locations.
+* **Candidate Management**: Search, filter, and review candidates across distinct pipeline stages (*Applied*, *Shortlisted*, *Interviewed*, *Evaluated*, *Offered*).
+* **Interview Scheduling & Invitations**: Dispatch automated interview invitations and calendar slots to prospective candidates.
+* **Candidate Comparison**: Side-by-side comparative analysis of multiple applicants evaluating core metrics, behavioral traits, and technical competency scores.
+* **Executive Evaluation Reports**: Drill down into question-by-question scoring, transcribed answers, integrity incident logs, and audio/video playback.
+* **PDF Report Generation**: Export authoritative, publication-ready multi-page PDF evaluation dossiers for hiring managers and stakeholders.
+* **Offer Management**: Draft, configure, and issue formal employment offers with customized compensation, benefits, and start dates.
+* **Recruiter Settings & Notifications**: Notification center and company profile settings including custom branding and logo uploads.
 
-### 🔊 3. Speech & Acoustic Intelligence
-- **Vocal Metric Extraction**: Measures Words-Per-Minute (WPM) speaking velocity, filler-word frequency (*"um", "uh", "like"*), pause durations, and vocal confidence.
-- **Accurate Audio Transcription**: Whisper-compatible multi-language acoustic processing pipeline.
-
-### 🛡️ 4. Proctoring & Anti-Cheating Integrity Engine
-- **Tab & Window Monitor**: Immediate detection and logging of tab-switching or developer-tools activation.
-- **Multi-Person & Device Detection**: Object-detection models flag unauthorized individuals or external smartphones in the camera frame.
-- **Chronological Incident Audit**: Every flag is timestamped and attached with screenshot evidence directly into the recruiter audit trail.
-
-### 💼 5. Recruiter Intelligence Hub
-- **Recruitment Pipeline Kanban**: Interactive workflow tracking candidates from *Applied* ➔ *Shortlisted* ➔ *Interviewed* ➔ *Evaluated* ➔ *Offered*.
-- **Comprehensive Candidate Profiles**: Interactive resume parser, scoring radar charts, video recording playback, and synchronized question timelines.
-- **One-Click Formal Offer Generation**: Automated offer letters with role specifics, compensation packages, and customizable onboarding timelines.
-
-### 🎓 6. Candidate Practice & Upskilling Hub
-- **Mock Interview Simulator**: Safe sandbox for candidates to rehearse behavioral and technical interviews with instant AI feedback.
-- **Interactive Coding Environment**: Integrated Monaco code editor with multi-language execution syntax highlighting.
-- **Curated Practice Recommendations**: AI pinpoints specific knowledge gaps (e.g., *Concurrency in Go*, *SQL Indexing*) with direct study links.
+### Administrative Monitoring
+* **Administrative Monitoring**: System-wide operational dashboards tracking user registrations, active sessions, and database entity counts.
+* **System Statistics**: Metric aggregation measuring platform throughput, assessment completion rates, and average scoring curves.
+* **User & Role Management**: Administrative visibility across candidate, recruiter, and administrator user accounts.
 
 ---
 
-## 🏛 System Architecture
+## AI Capabilities
 
-SmartHire utilizes a decoupled, event-driven microservices architecture built for high-concurrency real-time workloads:
+SmartHire AI incorporates a multi-tiered artificial intelligence and machine learning pipeline:
 
-```mermaid
-graph TB
-    subgraph Client Layer
-        Candidate[Candidate Web App\nReact 18 + Vite + TS]
-        Recruiter[Recruiter Command Center\nReact 18 + TailwindCSS]
-    end
+* **Adaptive Question Generation**: Dynamically drafts contextual interview questions tailored to the candidate's declared target role, experience level, and responses to previous questions.
+* **Evidence-Based Answer Scoring**: Scores candidate responses across four standard industry dimensions:
+  * *Technical Depth & Correctness* (0–100)
+  * *Communication & Articulation* (0–100)
+  * *Confidence & Composure* (0–100)
+  * *Professionalism & Problem Solving* (0–100)
+* **Speech & Acoustic Analytics**: Measures pacing, pause durations, and verbal fluency to highlight communicative strengths and areas for improvement.
+* **Behavioral & Visual Analysis**: Custom neural networks and computer vision models analyze facial engagement, head-pose consistency, and gaze vectors during video interviews.
+* **Multi-Provider AI Fallback Engine**: A resilient, load-balanced model gateway supporting Google Gemini, Groq, and OpenRouter. In the event of rate limits, latency spikes, or provider downtime, the system automatically rotates through configured API keys and falls back to alternate models without disrupting the candidate's session.
 
-    subgraph Gateway & Realtime
-        WS[WebSocket Hub\n/ws/interview]
-        API[FastAPI REST Gateway\n/api/v1/*]
-    end
+---
 
-    subgraph Intelligence Services
-        AI_Orch[Multi-LLM Orchestrator\nGemini 2.0 | Groq LLaMA 3.3 | OpenRouter]
-        Vision_Svc[Computer Vision Engine\nSmartHireBehaviorCNN + Gaze]
-        Audio_Svc[Acoustic & Speech Service\nWhisper Pipeline + Audio Metrics]
-        Scoring_Eng[Comprehensive Scoring Engine\nRubrics + Radar Analytics]
-        Integrity_Eng[Anti-Cheating Integrity Engine\nTab, Multi-Face & Device Proctor]
-    end
+## Interview Architecture
 
-    subgraph Data & Storage Layer
-        DB[(PostgreSQL / SQLite\nSQLAlchemy Async Engine)]
-        Media[Local / Cloud Media Storage\nVideos & Transcripts]
-        Reports[PDF Reporting Engine\nReportLab Synthesis]
-    end
+SmartHire enforces a deterministic, strictly tracked interview lifecycle:
 
-    Candidate -->|WebRTC / WS Audio & Video| WS
-    Candidate -->|REST Requests| API
-    Recruiter -->|Admin REST Requests| API
-
-    WS --> Vision_Svc
-    WS --> Audio_Svc
-    WS --> Integrity_Eng
-
-    API --> AI_Orch
-    API --> Scoring_Eng
-    API --> Reports
-
-    Vision_Svc --> DB
-    Audio_Svc --> DB
-    Scoring_Eng --> DB
-    Integrity_Eng --> DB
-    Reports --> Media
+```
+Candidate
+   └──> Job Application
+           └──> Scheduled Interview
+                   └──> Interview Session
+                           ├──> Dynamic Questions
+                           ├──> Spoken / Written Answers
+                           ├──> Real-Time Transcript
+                           ├──> Multi-Modal Telemetry (Gaze, Voice, Integrity)
+                           ├──> Session Video Recording
+                           └──> AI Evaluation & Scoring Report
 ```
 
-### 🔄 Real-Time Interview Session Lifecycle
+Every interview recording, transcript segment, and evaluation metric is cryptographically and relationally bound to its specific `session_id` and authorized `candidate_id`, preventing cross-session leakage or improper data binding.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Candidate
-    participant Frontend as Web Client
-    participant WS as WebSocket Gateway
-    participant Vision as Vision Engine (PyTorch)
-    participant AI as LLM Orchestrator
-    participant Scoring as Scoring Engine
-    actor Recruiter
+---
 
-    Candidate->>Frontend: Enter Interview Lobby & Run System Check
-    Frontend->>WS: Connect WebSocket (/api/v1/ws/interview/{session_id})
-    WS-->>Frontend: Ready Handshake (Session Active)
-    
-    loop Interview Question Loop
-        WS->>Frontend: Send AI Question Prompt & Trigger Speech Synthesis
-        Candidate->>Frontend: Speaks Answer & Codes Solution
-        Frontend->>WS: Stream Audio Chunks + Video Frames
-        WS->>Vision: Classify Emotion & Gaze Tracking
-        WS->>AI: Transcribe & Synthesize Contextual Follow-up
-        AI-->>WS: Return Next Dynamic Question
-    end
+## Security & Recording Isolation
 
-    Candidate->>Frontend: Complete Interview
-    Frontend->>WS: Finalize Session
-    WS->>Scoring: Aggregate Vision, Speech & Technical Metrics
-    Scoring->>Recruiter: Generate Audit Report & Real-Time Alert
+* **JSON Web Token (JWT) Cryptography**: Stateless token authentication utilizing cryptographic signatures (HS256) with configurable access and refresh expirations.
+* **Role-Based Access Control (RBAC)**: Enforced endpoint-level authorization separating Candidate, Recruiter, and Admin operations.
+* **Candidate Ownership Validation & IDOR Prevention**: Every interaction with application data, interview sessions, transcripts, and evaluation dossiers strictly verifies resource ownership against the authenticated user ID.
+* **Deterministic Recording Isolation**: Video and audio recording artifacts are saved in isolated directories structured by candidate and session identifiers (`/uploads/recordings/{candidate_id}/{session_id}/`). Unsafe directory scanning, global array indexing, and ambiguous path matching are strictly prohibited.
+* **Authenticated Media Streaming**: Video and audio playback endpoints support HTTP 206 Partial Content (range requests) and require Bearer token authorization; unauthenticated access is rejected.
+* **Path Traversal Protection**: File storage managers sanitize all path inputs against directory traversal vulnerabilities (`../`).
+* **Environment-Driven Credential Management**: Database credentials, encryption keys, and external API tokens are managed exclusively through external environment variables.
+* **Network Boundary Protection**: Database and Redis caches reside in internal application networks with strict access control.
+
+---
+
+## Tech Stack
+
+### Frontend
+* **Core Framework**: React 18 with TypeScript
+* **Build System**: Vite
+* **Styling**: TailwindCSS, Vanilla CSS tokens, PostCSS, Lucide Icons
+* **Rich Components**: Monaco Editor (`@monaco-editor/react`), Recharts, Canvas-based gauge and spline visualizations
+* **Machine Learning & Proctoring**: TensorFlow.js, COCO-SSD
+
+### Backend
+* **Web Framework**: FastAPI (Python 3.10+) with Uvicorn / Starlette
+* **Asynchronous ORM**: SQLAlchemy 2.0 (Async Engine) with Alembic migration patterns
+* **Relational Database**: PostgreSQL 18 (with SQLite support for lightweight development)
+* **Caching & Broker**: Redis 7
+* **PDF Synthesis**: ReportLab Enterprise Engine
+* **Machine Learning**: PyTorch, Torchvision, Pillow, NumPy
+
+### Infrastructure & Deployment
+* **Containerization**: Docker, Docker Compose
+* **Web Server & Reverse Proxy**: Nginx (Alpine-based production image)
+
+---
+
+## Architecture Diagram
+
 ```
-
----
-
-## 🛠 Tech Stack
-
-| Domain | Technology | Description |
-| :--- | :--- | :--- |
-| **Frontend Framework** | React 18, TypeScript, Vite | Ultra-fast SPA with strict type safety |
-| **Styling & UI** | TailwindCSS, Framer Motion, Lucide | Modern glassmorphism design with Dark/Light mode |
-| **Code Editor** | Monaco Editor (`@monaco-editor/react`) | In-browser VS Code editing experience |
-| **Charts & Radar** | Recharts | Interactive visual performance matrices |
-| **Backend Framework** | FastAPI (Python 3.10+) | High-throughput asynchronous REST & WebSocket API |
-| **Deep Learning** | PyTorch, Torchvision, PIL, NumPy | Custom behavioral 8-class facial expression CNN |
-| **Proctoring AI** | TensorFlow.js, COCO-SSD | Client-side zero-latency object & multi-face verification |
-| **AI / LLM Core** | Google Gemini 2.0, Groq LLaMA 3.3, OpenRouter | Multi-provider load-balanced intelligence pool |
-| **Database & ORM** | PostgreSQL 18 / SQLite 3, SQLAlchemy Async | Dual-mode enterprise ORM with dynamic migrations |
-| **Containerization** | Docker, Docker Compose, Nginx | Multi-container reproducible production stack |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- **Python 3.10+** (Python 3.11 or 3.12 recommended)
-- **Node.js 18+** & `npm`
-- **Git**
-
----
-
-### 📥 1. Clone the Repository
-```bash
-git clone https://github.com/Satyamsin004/SmartHire.git
-cd SmartHire
++-----------------------------------------------------------------------------+
+|                                CLIENT LAYER                                 |
+|                                                                             |
+|      +-------------------------+            +-------------------------+     |
+|      |    Candidate Portal     |            |  Recruiter Command Ctr  |     |
+|      |   (React 18 / Vite / TS)|            |  (React 18 / Vite / TS) |     |
+|      +------------+------------+            +------------+------------+     |
++-------------------|--------------------------------------|------------------+
+                    | HTTPS / WSS                          | HTTPS
++-------------------|--------------------------------------|------------------+
+|                   v                                      v                  |
+|                             NGINX REVERSE PROXY                             |
+|                           (Port 3001 / Port 80)                             |
++-------------------|--------------------------------------|------------------+
+                    |                                      |
+                    +------------------+-------------------+
+                                       |
+                                       v
++-----------------------------------------------------------------------------+
+|                                BACKEND LAYER                                |
+|                                                                             |
+|                   FastAPI Enterprise Gateway (Port 8000)                    |
+|                                                                             |
+|  +-----------------------------------------------------------------------+  |
+|  | Routers: /auth, /interview, /recruiter, /jobs, /uploads, /analytics  |  |
+|  +-----------------------------------------------------------------------+  |
+|  | Core Services:                                                        |  |
+|  |   - Multi-LLM Provider Engine (Gemini / Groq / OpenRouter)           |  |
+|  |   - Behavioral Vision Engine (PyTorch SmartHireBehaviorCNN)          |  |
+|  |   - Acoustic & Speech Analysis (Whisper & Speech Metrics)            |  |
+|  |   - Anti-Cheating Integrity Engine & Proctoring Auditor              |  |
+|  |   - ReportLab Enterprise PDF Synthesis Engine                        |  |
+|  |   - Storage Service (Isolated Session Storage & Range Streaming)     |  |
+|  +-----------------------------------------------------------------------+  |
++--------------------------------------|--------------------------------------+
+                                       |
+        +------------------------------+------------------------------+
+        |                                                             |
+        v                                                             v
++--------------------------------+           +--------------------------------+
+|       PERSISTENCE LAYER        |           |        CACHING & MEDIA         |
+|                                |           |                                |
+|   PostgreSQL 18 Database       |           |   Redis 7 In-Memory Cache      |
+|   (Relational Data, Users,     |           |   (Token Blacklists, Events)   |
+|    Applications, Reports)      |           |                                |
+|                                |           |   Isolated File Volume         |
+|                                |           |   (Session Recordings, PDFs)   |
++--------------------------------+           +--------------------------------+
 ```
 
 ---
 
-### ⚙️ 2. Environment Configuration
-Create your `.env` file in the root directory from the template:
+## Environment Variables
+
+Configure your local or production environment by creating a `.env` file from the provided template:
+
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and add at least one AI API key (Gemini, Groq, or OpenRouter):
-```env
-# Instant zero-config local setup:
-USE_SQLITE=true
 
-# Add at least one of the following:
-GEMINI_API_KEY_1=your_google_gemini_api_key
-GROQ_API_KEY_1=your_groq_api_key
-OPENROUTER_API_KEY_1=your_openrouter_api_key
+Ensure all placeholder values in `.env` are updated with your credentials:
+
+```ini
+# Core Environment
+ENVIRONMENT=development
+PROJECT_NAME="SmartHire AI Engine"
+VERSION="1.0.0"
+
+# Application Security
+SECRET_KEY=<generate-a-strong-64-character-secret>
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+
+# PostgreSQL Database Configuration
+USE_SQLITE=false
+POSTGRES_SERVER=postgres
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=<your-secure-postgres-password>
+POSTGRES_DB=smarthire_db
+
+# Redis
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# Domains & CORS
+FRONTEND_URL=http://localhost:3001
+CORS_ORIGINS=http://localhost:3001
+
+# AI Provider API Keys (Configure at least one)
+GEMINI_API_KEY_1=<your-gemini-api-key>
+GEMINI_MODEL=gemini-2.5-flash
+GROQ_API_KEY_1=<your-groq-api-key>
+GROQ_MODEL=llama-3.3-70b-versatile
+OPENROUTER_API_KEY_1=<your-openrouter-api-key>
+OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct
+
+# OAuth & Email (Optional)
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=<your-email-address>
+SMTP_PASSWORD=<your-smtp-app-password>
 ```
 
 ---
 
-### 🐍 3. Backend Setup
+## Docker Setup
+
+Run the entire platform with Docker Compose:
 
 ```bash
-# Navigate to backend directory
+# 1. Build and start all containers
+docker compose up --build -d
+
+# 2. Check container status
+docker compose ps
+
+# 3. View backend logs
+docker compose logs -f backend
+```
+
+Exposed service endpoints:
+* **Frontend Application**: `http://localhost:3001`
+* **FastAPI Backend & Swagger**: `http://localhost:8000/docs`
+* **pgAdmin 4**: `http://localhost:5050`
+* **PostgreSQL Database**: `localhost:5432`
+* **Redis Cache**: `localhost:6379`
+
+---
+
+## Database
+
+SmartHire AI uses an asynchronous SQLAlchemy ORM layer targeting PostgreSQL 18 (with automatic fallback to SQLite for local development when `USE_SQLITE=true`).
+
+* **Dynamic Schema Migration**: The backend includes automated schema synchronization (`backend/ensure_db_schema.py` and `backend/app/core/migrations.py`) executed on application startup to ensure all tables, relationships, and indexes are up to date.
+* **Manual Schema Verification**:
+  ```bash
+  cd backend
+  python ensure_db_schema.py
+  ```
+
+---
+
+## Running Locally
+
+### Backend Service
+```bash
 cd backend
 
 # Create and activate virtual environment
-# Windows (PowerShell):
 python -m venv venv
-.\venv\Scripts\Activate.ps1
 
+# Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
 # Linux / macOS:
-# python3 -m venv venv
-# source venv/bin/activate
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# (Optional) Seed sample job postings & test accounts
-python seed_clean_jobs.py
-
-# Start FastAPI development server
+# Start development server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-> 📍 **Backend API**: `http://localhost:8000`  
-> 📖 **Interactive Swagger UI**: `http://localhost:8000/docs`  
-> 📑 **ReDoc Documentation**: `http://localhost:8000/redoc`
 
----
-
-### 💻 4. Frontend Setup
-
-Open a new terminal window:
+### Frontend Service
 ```bash
-# Navigate to frontend directory
 cd frontend
 
-# Install node dependencies
+# Install Node dependencies
 npm install
 
-# Launch frontend in development mode
+# Start Vite dev server
 npm run dev
 ```
-> 🌐 **Application UI**: `http://localhost:3001` (or `http://localhost:5173`)
 
 ---
 
-## 🐳 Docker Deployment
+## Testing & Verification
 
-Run the complete production-grade stack (PostgreSQL + Redis + pgAdmin + Backend + Frontend) in one command:
+SmartHire features comprehensive automated test suites covering API contracts, RBAC authorization, scoring engines, PDF generation, and full interview workflows:
 
 ```bash
-# Launch all microservices
-docker-compose up --build -d
-
-# Verify running services
-docker-compose ps
-```
-
-| Service | Container Name | Port Mapping | Healthcheck |
-| :--- | :--- | :--- | :--- |
-| **FastAPI Backend** | `smarthire_backend` | `http://localhost:8000` | Automated |
-| **Frontend Web** | `smarthire_frontend` | `http://localhost:3001` | Nginx Alpine |
-| **PostgreSQL 18** | `smarthire_postgres` | `localhost:5432` | `pg_isready` |
-| **Redis 7** | `smarthire_redis` | `localhost:6379` | `redis-cli ping` |
-| **pgAdmin 4** | `smarthire_pgadmin` | `http://localhost:5050` | Web Interface |
-
----
-
-## 🧠 AI & Behavioral ML Engine
-
-SmartHire includes a custom PyTorch Convolutional Neural Network trained specifically for candidate behavioral recognition during remote assessments.
-
-```
-Input Frame (48x48 Grayscale)
-      │
-      ├──> Conv2D(32) + BatchNorm + ReLU ──> MaxPool2D(2x2) + Dropout(0.25)
-      ├──> Conv2D(64) + BatchNorm + ReLU ──> MaxPool2D(2x2) + Dropout(0.25)
-      ├──> Conv2D(128) + BatchNorm + ReLU ──> MaxPool2D(2x2) + Dropout(0.35)
-      ├──> Conv2D(256) + BatchNorm + ReLU ──> AdaptiveAvgPool2D
-      │
-      └──> Flatten ──> Dense(512) + ReLU + Dropout(0.5) ──> Dense(8 Classes)
-```
-
-<details>
-<summary><b>🔍 Expand: Behavioral Classes & Evidence Language Rubric</b></summary>
-
-| Class | Evidence-Based Interpretation | Recruiter Insight |
-| :--- | :--- | :--- |
-| **Confident** | Open posture, steady eye contact, fluid vocal pacing | Candidate exhibits strong mastery and communication ease |
-| **Focused** | Direct screen gaze, consistent attention, analytical posture | High technical engagement and active problem-solving |
-| **Thinking** | Upward/lateral gaze fixation, deliberate paused cadence | Formulating algorithmic design or considering edge cases |
-| **Hesitant** | Pauses exceeding 3 seconds, frequent filler vocalizations | May be seeking clarification or unsure of technical approach |
-| **Confused** | Furrowed brow, repeated question scanning | Question phrasing may require clarification |
-| **Neutral** | Baseline calm listening posture | Standard conversational state |
-| **Stressed** | Rapid eye shifts, elevated speaking rate | High-pressure scenario; observation only |
-| **Frustrated** | Negative vocal inflection, disengagement signals | Candidate encountering friction with compiler/problem |
-
-</details>
-
-<details>
-<summary><b>📈 Expand: Model Validation & Training Reports</b></summary>
-
-The pre-trained model weights are bundled at `backend/ml/emotion/models/checkpoints/best_behavior_model.pt`.
-- **Validation Accuracy**: ~71.4% top-1 accuracy on 8-class facial expression evaluation benchmarks.
-- **Dataset**: FER2013 augmented with balanced behavioral interview video frames.
-- **Inference Latency**: `< 18ms` per frame on CPU (`< 3ms` on CUDA GPU).
-- **Confusion Matrix & Metrics**: Available under `backend/ml/emotion/reports/`.
-
-To retrain the model on your own dataset:
-```bash
-python backend/ml/emotion/download_dataset.py --dir data/
-python backend/ml/emotion/train.py --epochs 40 --batch-size 64
-python backend/ml/emotion/evaluate.py
-```
-</details>
-
----
-
-## 🖥 Portal Walkthroughs
-
-### 🧑‍💼 For Candidates
-1. **Resume Ingestion & Profile Setup**: Upload PDF/DOCX resumes to instantly parse skills, experience, and educational background.
-2. **Interview Lobby Checklist**: Run automated microphone, camera, speaker, and network latency diagnostics.
-3. **Interactive Live Interview**:
-   - Spoken natural dialogue with the AI interviewer.
-   - Built-in Monaco code editor for real-time live coding challenges.
-   - Immediate feedback upon session conclusion.
-4. **Performance Breakdown**: View historical reports, question-by-question scoring, and customized study roadmaps.
-
-### 👔 For Recruiters & Hiring Managers
-1. **Pipeline Dashboard**: Monitor live interview stats, active applicant counts, and overall passing rates.
-2. **Candidate Evaluation Modal**: Deep dive into aggregated scores:
-   - Technical Competency Score (0-100)
-   - Communication & Articulation Score (0-100)
-   - Code Quality & Optimization Score (0-100)
-   - Proctoring Integrity Audit Log (Tab-switches, gaze deviations)
-3. **One-Click Executive PDF Export**: Download beautiful formatted reports ready for stakeholders.
-4. **Job Posting & Scheduling Engine**: Create customized job descriptions with required interview tracks and automated email invitations.
-
----
-
-## 📡 API Reference
-
-Interactive OpenAPI documentation is hosted natively at `/docs`. Below are key endpoints:
-
-<details>
-<summary><b>🔐 Authentication & User Endpoints</b></summary>
-
-- `POST /api/v1/auth/register` — Register candidate or recruiter account
-- `POST /api/v1/auth/login` — OAuth2 password flow; returns JWT bearer token
-- `GET /api/v1/auth/google/login` — Initiate Google OAuth 2.0 SSO
-- `GET /api/v1/auth/google/callback` — Google OAuth 2.0 redirect callback
-- `GET /api/v1/users/me` — Retrieve current authenticated user profile
-</details>
-
-<details>
-<summary><b>🎙️ Interview & Assessment Endpoints</b></summary>
-
-- `POST /api/v1/interview/create` — Initialize a new AI interview session
-- `GET /api/v1/interview/{session_id}` — Fetch session metadata and state
-- `WS /api/v1/ws/interview/{session_id}` — Bi-directional WebSocket stream for live interview audio/video/text
-- `POST /api/v1/interview/{session_id}/complete` — Conclude interview and initiate scoring pipeline
-- `GET /api/v1/interview/{session_id}/report` — Retrieve detailed evaluation report
-- `GET /api/v1/interview/{session_id}/report/pdf` — Stream generated PDF assessment report
-</details>
-
-<details>
-<summary><b>💼 Recruiter & Management Endpoints</b></summary>
-
-- `GET /api/v1/recruiter/candidates` — List candidates with search, filter, and pagination
-- `GET /api/v1/recruiter/pipeline` — Fetch hiring stage pipeline metrics
-- `POST /api/v1/jobs` — Create new job requisition
-- `POST /api/v1/scheduling/invite` — Send candidate interview invitation
-- `POST /api/v1/offers/generate` — Generate official offer letter
-</details>
-
----
-
-## 🧪 Testing & Verification
-
-SmartHire features comprehensive backend and frontend test suites:
-
-```bash
-# Run backend unit, integration, and E2E interview tests
 cd backend
-pytest tests/ app/tests/ -v
 
-# Run live interview pipeline verification
-python test_complete_interview_workflow.py
+# Run the primary test suite
+pytest tests/test_api.py -v
 
-# Test frontend typecheck and build
+# Run RBAC and authorization verification
+pytest tests/test_rbac_and_idor.py -v
+
+# Run scoring engine and resume parsing stress tests
+pytest tests/test_scoring_and_resume_stress.py -v
+
+# Run PDF report generation stress tests
+pytest tests/test_pdf_stress.py -v
+
+# Verify frontend production build
 cd ../frontend
 npm run build
 ```
 
 ---
 
-## 📁 Repository Structure
+## Production Deployment
+
+SmartHire AI is packaged for deployment using Docker and container orchestration platforms (e.g., AWS ECS, DigitalOcean App Platform, Kubernetes, or self-hosted Docker hosts):
+
+1. **Reverse Proxy Configuration**: Nginx is configured in `frontend/nginx.conf` to serve pre-built static assets, route `/api/v1` to the backend upstream, and proxy WebSocket connections (`/ws/`) with HTTP/1.1 upgrade headers.
+2. **Persistent Storage Volumes**: Mount dedicated volumes for `postgres_data` and uploaded media (`/app/static/uploads`) to ensure persistence across container updates.
+3. **Zero Secrets in Images**: Docker images contain only application code and pre-trained weights; all sensitive configurations and keys are injected at runtime via environment variables.
+
+---
+
+## Project Structure
 
 ```
 SmartHire/
+├── .env.example                          # Environment variable template
+├── .gitignore                            # Comprehensive git exclusion rules
+├── docker-compose.yml                    # Multi-container orchestration
+├── README.md                             # Repository documentation
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/               # REST & WebSocket API Routers
-│   │   │   ├── auth.py           # JWT & OAuth 2.0
-│   │   │   ├── interview.py      # Live Interview Lifecycle
-│   │   │   ├── recruiter.py      # Candidate & Job Pipeline
-│   │   │   ├── websocket.py      # Real-time WebSocket Protocol
-│   │   │   └── ...
-│   │   ├── core/                 # App Settings, Database & Event Bus
-│   │   ├── dependencies/         # Auth & Session Dependencies
-│   │   ├── models/domain.py      # 25+ SQLAlchemy Domain Entities
-│   │   ├── services/             # Core Business & AI Logic
-│   │   │   ├── ai_engine.py      # Multi-LLM Orchestrator
-│   │   │   ├── ai_provider.py    # Gemini, Groq, OpenRouter Load Balancer
-│   │   │   ├── emotion_service.py# Vision & Facial Behavior Service
-│   │   │   ├── gaze_analyzer.py  # Eye Gaze Vector Computation
-│   │   │   ├── integrity_service.py # Anti-Cheating Incident Auditor
-│   │   │   ├── scoring_engine.py # Evaluation & Rubric Calculator
-│   │   │   ├── pdf_service.py    # Executive PDF Generator
-│   │   │   └── ...
-│   │   └── main.py               # FastAPI Application Entrypoint
-│   ├── ml/                       # Machine Learning Subsystem
-│   │   └── emotion/              # PyTorch Behavior CNN
-│   │       ├── model.py          # CNN Architecture
-│   │       ├── train.py          # PyTorch Training Loop
-│   │       ├── inference.py      # Real-time Inference Engine
-│   │       └── models/checkpoints/ # Trained Model Checkpoints (.pt)
-│   ├── requirements.txt          # Python Dependencies
-│   └── seed_clean_jobs.py        # Seed Script for Demo Data
-├── frontend/
-│   ├── src/
-│   │   ├── components/           # Reusable UI & Interview Components
-│   │   ├── context/              # Auth, Theme & WebSocket Contexts
-│   │   ├── pages/                # Candidate & Recruiter Views
-│   │   │   ├── CandidateDashboard.tsx
-│   │   │   ├── RecruiterDashboard.tsx
-│   │   │   ├── interview/        # Live Interview Room & Lobby
-│   │   │   └── practice/         # Candidate Practice Hub
-│   │   ├── services/             # Axios API & Integrity Engine
-│   │   └── App.tsx               # Main Application Routing
-│   ├── package.json              # NPM Dependencies & Scripts
-│   └── vite.config.ts            # Vite Configuration
-├── docker-compose.yml            # Multi-Container Deployment Orchestration
-├── .env.example                  # Environment Configuration Template
-├── .gitignore                    # Git Exclusion Rules
-└── README.md                     # Project Documentation
+│   │   ├── api/v1/                       # REST and WebSocket endpoints
+│   │   │   ├── admin.py                  # Administrative statistics
+│   │   │   ├── analytics.py              # Candidate & recruiter analytics
+│   │   │   ├── aptitude.py               # Practice assessments
+│   │   │   ├── auth.py                   # Authentication & token endpoints
+│   │   │   ├── interview.py              # Live interview lifecycle
+│   │   │   ├── jobs.py                   # Requisition management
+│   │   │   ├── notifications.py          # Real-time user notifications
+│   │   │   ├── recruiter.py              # Hiring pipeline & candidates
+│   │   │   ├── resume.py                 # Resume parsing
+│   │   │   ├── scheduling.py             # Interview invitations & calendar
+│   │   │   ├── uploads.py                # Uploads, recordings & streaming
+│   │   │   └── users.py                  # User profiles
+│   │   ├── core/                         # Configuration, database & migrations
+│   │   ├── models/domain.py              # SQLAlchemy domain entities
+│   │   ├── schemas/domain.py             # Pydantic validation schemas
+│   │   ├── services/                     # Business logic and AI services
+│   │   │   ├── ai_engine.py              # Multi-LLM query and prompt pipeline
+│   │   │   ├── ai_provider.py            # Provider pool & fallback manager
+│   │   │   ├── analytics_service.py      # Analytics data aggregation
+│   │   │   ├── emotion_service.py        # Facial emotion classification
+│   │   │   ├── gaze_analyzer.py          # Eye gaze vector computation
+│   │   │   ├── integrity_service.py      # Anti-cheating & proctoring log
+│   │   │   ├── pdf_service.py            # ReportLab evaluation dossier engine
+│   │   │   ├── scoring_engine.py         # Multi-metric scoring calculator
+│   │   │   └── storage_service.py        # Isolated file & recording storage
+│   │   └── main.py                       # FastAPI application entrypoint
+│   ├── ml/                               # Behavioral CNN models & weights
+│   ├── tests/                            # Automated pytest test suites
+│   ├── requirements.txt                  # Python dependencies
+│   └── ensure_db_schema.py               # Schema integrity verification script
+└── frontend/
+    ├── src/
+    │   ├── components/                   # Modals, layout, and UI components
+    │   ├── context/                      # Auth and WebSocket state providers
+    │   ├── pages/                        # Candidate, Recruiter, and Admin pages
+    │   ├── services/                     # Axios API client and IntegrityEngine
+    │   ├── App.tsx                       # React router entrypoint
+    │   └── index.css                     # Design system styles
+    ├── package.json                      # Frontend dependencies
+    └── vite.config.ts                    # Vite build configuration
 ```
 
 ---
 
-## 🔒 Security & Privacy
+## Future Improvements
 
-- **Data Privacy**: Candidate webcam frames are processed in-memory for real-time telemetry extraction and are not retained unless recruiter recording is explicitly enabled.
-- **Evidence-Based Terminology**: The behavioral ML engine deliberately avoids pseudoscience or invasive claims; all metrics reflect factual observations (*e.g., eye gaze stability, response pacing, vocal hesitation*).
-- **Environment Isolation**: Production secrets and database credentials remain strictly managed via environment variables.
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'feat: Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+* **Multi-Language Audio Transcription**: Extend speech-to-text fine-tuning to support multi-lingual technical interviews.
+* **Granular Coding Sandboxes**: Integrate isolated Docker or WebAssembly containers for executing candidate submitted code in real time across 10+ programming languages.
+* **Automated Calendar Integrations**: Add bidirectional synchronization with Google Calendar and Microsoft Outlook for recruiter interview schedules.
+* **Custom Enterprise Rubric Builder**: Allow hiring organizations to define bespoke assessment weights, custom competencies, and tailored behavioral benchmarks.
 
 ---
 
-## 📄 License
+## Disclaimer
 
-Distributed under the **MIT License**. See `LICENSE` for more details.
-
----
-
-<div align="center">
-  <b>Built with ❤️ by <a href="https://github.com/Satyamsin004">Satyam Singh</a> and the SmartHire Team</b>
-  <br>
-  <sub>Empowering fair, unbiased, and intelligent hiring worldwide.</sub>
-</div>
+SmartHire AI is a portfolio demonstration and technical evaluation project. Performance, latency, and analysis quality are subject to external AI provider availability, client browser camera and microphone permissions, hosting environment specifications, and third-party API rate quotas.

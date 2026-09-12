@@ -9,8 +9,9 @@ def test_speech_analysis():
     assert result["filler_word_count"] >= 2
     assert result["speaking_pace_wpm"] > 0
 
-def test_scoring_formula():
-    scores = scoring_engine.calculate_session_scores(
+@pytest.mark.asyncio
+async def test_scoring_formula():
+    scores = await scoring_engine.calculate_session_scores(
         speech_results=[{"speaking_pace_wpm": 145.0, "filler_word_count": 1, "grammar_score": 90.0, "clarity_score": 95.0}],
         vision_results=[{"eye_contact_percentage": 90.0, "confidence_percentage": 90.0, "attention_score": 90.0}],
         technical_answers=[{"technical_score": 90.0}]

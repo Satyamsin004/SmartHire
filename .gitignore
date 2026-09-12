@@ -200,3 +200,34 @@ backend/*.sqlite3
 backend/ml/emotion/models/checkpoints/*
 !backend/ml/emotion/models/checkpoints/best_behavior_model.pt
 !backend/ml/emotion/models/checkpoints/.gitkeep
+
+# Database backups
+*.sql
+
+# Uploaded recordings, resumes, and media
+recordings/
+uploads/
+backend/uploads/
+static/uploads/recordings/
+backend/static/uploads/recordings/
+static/uploads/resumes/
+backend/static/uploads/resumes/
+backend/uploads/resumes/
+backend/uploads/recordings/
+*.webm
+*.mp4
+
+# Generated reports
+reports/
+backend/reports/
+static/uploads/reports/
+backend/static/uploads/reports/
+
+# PostgreSQL & Redis data directories
+postgres_data/
+pgdata/
+data/postgres/
+/var/lib/postgresql/
+redis_data/
+dump.rdb
+*.rdb

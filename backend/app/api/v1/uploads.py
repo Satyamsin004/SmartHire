@@ -65,7 +65,9 @@ async def upload_avatar(
     return {
         "status": "success",
         "message": "Profile picture uploaded successfully.",
-        "profile_image": web_url
+        "profile_image": web_url,
+        "avatar_url": web_url,
+        "url": web_url
     }
 
 @router.delete("/avatar", summary="Delete Profile Picture")
@@ -257,8 +259,8 @@ async def upload_interview_recording(
             detail=f"Interview session '{session_id}' not found."
         )
     if session.candidate_id != candidate.id and user.role != "admin":
-        # Bind candidate ownership for candidate/practice/mock sessions
-        if not session.candidate_id or session.scheduled_interview_id is None or session.interview_type in ("Mock", "Practice", "Technical", "Behavioral", "HR", "Managerial"):
+        # Bind candidate ownership for candidate/practice/mock/recruiter sessions
+        if not session.candidate_id or session.scheduled_interview_id is None or session.interview_type in ("Mock", "Practice", "Technical", "Behavioral", "HR", "Managerial", "Recruiter"):
             session.candidate_id = candidate.id
         else:
             raise HTTPException(
@@ -371,38 +373,65 @@ async def get_session_recordings(
 ):
     """
     Returns recorded video/audio metadata for a given interview session.
+    Enforces strict ownership: candidates can only list their own session recordings.
+    Recruiters and admins have broader access.
     """
     res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
     session = res_s.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found.")
 
+    # Ownership check: candidates can only access their own sessions
+    if user.role == "candidate":
+        res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+        candidate = res_c.scalar_one_or_none()
+        if not candidate or session.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You do not have access to this session's recordings."
+            )
+
     res_rec = await db.execute(select(InterviewRecording).where(InterviewRecording.session_id == session_id))
     recordings = [r for r in res_rec.scalars().all() if (r.file_size or 0) > 0]
 
-    if not recordings:
-        sample_path = storage_service.get_recording_path("sample/sample_interview_recording.webm")
-        if sample_path and os.path.exists(sample_path):
-            sample_size = os.path.getsize(sample_path)
-            return [
-                {
-                    "id": f"sample-{session_id}",
-                    "session_id": session_id,
-                    "candidate_id": session.candidate_id,
-                    "recording_type": "VIDEO_AUDIO",
-                    "file_path": "/uploads/recordings/sample/sample_interview_recording.webm",
-                    "mime_type": "video/webm",
-                    "file_size": sample_size,
-                    "duration": 45.0,
-                    "status": "available",
-                    "created_at": session.started_at.isoformat() if session.started_at else None
-                }
-            ]
+    # Check direct candidate/session folder on disk if metadata missing
+    if not recordings and session.candidate_id:
+        for base_rec_dir in storage_service.alt_base_dirs:
+            if not os.path.exists(base_rec_dir):
+                continue
+            cand_sess_dir = os.path.join(base_rec_dir, str(session.candidate_id), session_id)
+            if os.path.isdir(cand_sess_dir):
+                for f in os.listdir(cand_sess_dir):
+                    fp = os.path.join(cand_sess_dir, f)
+                    if os.path.isfile(fp) and f.endswith(('.webm', '.mp4', '.ogg', '.wav', '.mkv')) and os.path.getsize(fp) > 0:
+                        rec_id = str(uuid.uuid4())
+                        rec = InterviewRecording(
+                            id=rec_id,
+                            session_id=session.id,
+                            candidate_id=session.candidate_id,
+                            recording_type="VIDEO_AUDIO",
+                            file_path=fp,
+                            storage_key=f"recordings/{session.candidate_id}/{session.id}/{f}",
+                            mime_type="video/webm",
+                            file_size=os.path.getsize(fp),
+                            duration=0.0,
+                            status="available"
+                        )
+                        db.add(rec)
+                        try:
+                            await db.commit()
+                            recordings = [rec]
+                        except Exception:
+                            await db.rollback()
+                        break
+            if recordings:
+                break
+
 
     return [
         {
             "id": r.id,
-            "session_id": r.session_id,
+            "session_id": session_id,
             "candidate_id": r.candidate_id,
             "recording_type": r.recording_type,
             "file_path": r.file_path,
@@ -452,11 +481,33 @@ async def stream_session_recording(
         except Exception:
             pass
 
-    # 2. Look up session
+    # 2. Require authentication
+    if not auth_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to stream interview recordings."
+        )
+
+    # 3. Look up session
     res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
     session = res_s.scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview session '{session_id}' not found."
+        )
 
-    # 3. Locate recording on disk strictly for this session
+    # 4. Ownership check: candidates can only stream their own session recordings
+    if auth_user.role == "candidate":
+        res_c = await db.execute(select(Candidate).where(Candidate.user_id == auth_user.id))
+        candidate = res_c.scalar_one_or_none()
+        if not candidate or session.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You do not have access to this session's recording."
+            )
+
+    # 5. Locate recording on disk strictly for this session
     disk_path = None
     media_type = "video/webm"
 
@@ -467,30 +518,36 @@ async def stream_session_recording(
         if rec.mime_type:
             media_type = rec.mime_type
 
-    # 4. If disk path is not resolved from metadata, check all storage directories on disk
+    # 6. If disk path is not resolved from metadata, check direct candidate/session folders on disk
     if not disk_path or not os.path.exists(disk_path):
         for base_rec_dir in storage_service.alt_base_dirs:
-            found = None
-            if os.path.exists(base_rec_dir):
-                for root, dirs, files in os.walk(base_rec_dir):
-                    if session_id in root:
-                        for f in files:
-                            if f.endswith(('.webm', '.mp4', '.ogg', '.wav', '.mkv')) and os.path.getsize(os.path.join(root, f)) > 0:
-                                found = os.path.join(root, f)
-                                break
-                    if found:
-                        break
-            if found and os.path.exists(found):
-                disk_path = found
+            if not os.path.exists(base_rec_dir):
+                continue
+            # Direct check 1: base_rec_dir/candidate_id/session_id/
+            candidate_sess_dir = os.path.join(base_rec_dir, str(session.candidate_id), session_id)
+            if os.path.isdir(candidate_sess_dir):
+                try:
+                    for f in os.listdir(candidate_sess_dir):
+                        fp = os.path.join(candidate_sess_dir, f)
+                        if os.path.isfile(fp) and f.endswith(('.webm', '.mp4', '.ogg', '.wav', '.mkv')) and os.path.getsize(fp) > 0:
+                            disk_path = fp
+                            break
+                except Exception:
+                    pass
+            if disk_path and os.path.exists(disk_path):
                 break
-
-    # 5. Fallback to candidate recent recording or sample recording if session video was interrupted
-    if not disk_path or not os.path.exists(disk_path):
-        for base_rec_dir in storage_service.alt_base_dirs:
-            sample_candidate = os.path.join(base_rec_dir, "sample", "sample_interview_recording.webm")
-            if os.path.exists(sample_candidate) and os.path.getsize(sample_candidate) > 0:
-                disk_path = sample_candidate
-                media_type = "video/webm"
+            # Direct check 2: base_rec_dir/session_id/
+            sess_dir = os.path.join(base_rec_dir, session_id)
+            if os.path.isdir(sess_dir):
+                try:
+                    for f in os.listdir(sess_dir):
+                        fp = os.path.join(sess_dir, f)
+                        if os.path.isfile(fp) and f.endswith(('.webm', '.mp4', '.ogg', '.wav', '.mkv')) and os.path.getsize(fp) > 0:
+                            disk_path = fp
+                            break
+                except Exception:
+                    pass
+            if disk_path and os.path.exists(disk_path):
                 break
 
     if not disk_path or not os.path.exists(disk_path):
