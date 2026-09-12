@@ -108,18 +108,24 @@ export const MyApplicationsPage: React.FC = () => {
 
   const getStageStatus = (app: any, stageIdx: number) => {
     const status = (app.status || '').toLowerCase();
-    const atsScore = app.ats_score !== null && app.ats_score !== undefined ? app.ats_score : 85;
-    const isAtsPassed = atsScore >= 80;
+    const atsScore = app.ats_score !== null && app.ats_score !== undefined ? app.ats_score : (app.match_score ?? null);
+    const isAtsPassed = atsScore !== null ? atsScore >= 80 : (status.includes('shortlist') || status.includes('screen') || status.includes('interview') || status.includes('assessment') || status.includes('offer') || status.includes('hired'));
     const recAssess = app.recruiter_assessment;
     const offer = app.offer_details || offers.find((o) => o.job_application_id === app.id);
     const hasOffer = Boolean(offer) || status.includes('offer') || status.includes('hired') || status.includes('accepted');
     const isOfferAccepted = offer?.status === 'Accepted' || status.includes('hired') || status.includes('accepted');
 
+    const assessScore = app.assessment_score ?? recAssess?.score ?? null;
+    const isAssessmentConducted = (assessScore !== null && assessScore !== undefined) || (recAssess && recAssess.score !== null && recAssess.score !== undefined);
+
     // If candidate has an issued or accepted offer, all qualifying prior stages are definitively completed
     if (hasOffer) {
       if (stageIdx === 0) return { text: 'Completed', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 1) return { text: 'Completed (ATS Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
-      if (stageIdx === 2) return { text: 'Completed (Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
+      if (stageIdx === 2) {
+        if (isAssessmentConducted) return { text: 'Completed (Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
+        return { text: 'Waived (Direct Offer)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
+      }
       if (stageIdx === 3) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 4) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 5) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
@@ -132,8 +138,6 @@ export const MyApplicationsPage: React.FC = () => {
         return { text: 'Pending Decision', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
       }
     }
-
-    const assessScore = app.assessment_score ?? recAssess?.score ?? null;
 
     // Stage 1: Applied (Automatically completed immediately upon applying)
     if (stageIdx === 0) {
@@ -154,17 +158,23 @@ export const MyApplicationsPage: React.FC = () => {
     }
 
     const passThreshold = recAssess?.passing_score ?? 70;
-    const isExplicitlyPassed = status.includes('assessment pass') || status.includes('interview') || status.includes('selected') || status.includes('hired') || status.includes('offer');
-    const isExplicitlyFailed = status.includes('assessment fail') || status.includes('reject');
-
-    const isAssessmentPassed = isExplicitlyPassed || (!isExplicitlyFailed && (
+    const hasAssessmentSession = Boolean(recAssess || app.assessment_session_id);
+    const isExplicitlyPassed = isAssessmentConducted && (
       (assessScore !== null && assessScore >= passThreshold) ||
-      (recAssess && recAssess.score !== null && recAssess.score >= passThreshold)
-    ));
-    const isAssessmentFailed = !isAssessmentPassed && (isExplicitlyFailed || (
+      (recAssess && recAssess.score !== null && recAssess.score >= passThreshold) ||
+      status.includes('assessment pass')
+    );
+    const isExplicitlyFailed = isAssessmentConducted && (
       (assessScore !== null && assessScore < passThreshold) ||
-      (recAssess && recAssess.score !== null && recAssess.score < passThreshold)
-    ));
+      (recAssess && recAssess.score !== null && recAssess.score < passThreshold) ||
+      status.includes('assessment fail')
+    );
+
+    const isAssessmentPassed = isExplicitlyPassed;
+    const isAssessmentFailed = isExplicitlyFailed;
+    const isAssessmentWaived = !hasAssessmentSession && !isAssessmentConducted && (
+      status.includes('interview') || status.includes('tech') || status.includes('selected') || status.includes('hired') || status.includes('offer')
+    );
 
     // Stage 3: Online Assessment
     if (stageIdx === 2) {
@@ -174,13 +184,19 @@ export const MyApplicationsPage: React.FC = () => {
       if (isAssessmentPassed) {
         return { text: `Passed (≥${passThreshold}%)`, color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       }
-      if (status.includes('assessment scheduled') || recAssess?.status === 'Scheduled' || recAssess?.status === 'active') {
+      if (isAssessmentWaived) {
+        return { text: 'Waived (Direct Interview)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
+      }
+      if (recAssess?.status === 'active' || recAssess?.status === 'in_progress') {
+        return { text: 'Assessment In Progress', color: 'bg-indigo-600 text-white border-indigo-600 animate-pulse', isCurrent: true };
+      }
+      if (status.includes('assessment scheduled') || recAssess?.status === 'Scheduled') {
         return { text: 'Assessment Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
       }
       return { text: 'Assessment Pending', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
     }
 
-    if (!isAssessmentPassed) {
+    if (!isAssessmentPassed && !isAssessmentWaived) {
       if (isAssessmentFailed) {
         return { text: 'Pipeline Stopped', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isUpcoming: true };
       }

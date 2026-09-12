@@ -182,6 +182,7 @@ async def submit_assessment(
         try:
             passing_score = session.passing_score if session.passing_score is not None else 70.0
             passed = result.overall_score >= passing_score
+            logger.info("Scheduling assessment result email for session %s to %s", session.id, current_user.email)
             asyncio.create_task(email_service.send_assessment_result_email(
                 db=None,
                 candidate_email=current_user.email,
@@ -196,7 +197,7 @@ async def submit_assessment(
                 candidate_user_id=current_user.id
             ))
         except Exception as e_err:
-            pass
+            logger.warning("Failed to schedule assessment result email: %s", e_err)
 
     return {
         "status": "success",

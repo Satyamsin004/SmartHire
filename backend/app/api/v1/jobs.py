@@ -703,13 +703,9 @@ async def get_my_applications(
             calc_score = round(assess_res.overall_score, 1) if assess_res else None
             passing_cutoff = round(assess_sess.passing_score, 1) if assess_sess.passing_score is not None else 70.0
 
-            app_status_lower = (app.status or "").lower()
-            if ("assessment pass" in app_status_lower or "interview" in app_status_lower or "offer" in app_status_lower or "hired" in app_status_lower) and (calc_score is None or calc_score < passing_cutoff):
-                calc_score = max(calc_score or 0.0, passing_cutoff)
-
             recruiter_assessment = {
                 "session_id": assess_sess.id,
-                "status": "Completed" if (assess_res or "assessment pass" in app_status_lower) else assess_sess.status,
+                "status": "Completed" if assess_res else (assess_sess.status or "Scheduled"),
                 "score": calc_score,
                 "passing_score": passing_cutoff,
                 "attempt_date": assess_res.created_at.strftime('%B %d, %Y') if (assess_res and assess_res.created_at) else (assess_sess.created_at.strftime('%B %d, %Y') if assess_sess.created_at else "Recently"),

@@ -295,25 +295,26 @@ Each object MUST match this schema:
                         job_title = job_obj.title or job_title
                         company_name = job_obj.company_name or company_name
 
-                if cand_user and cand_user.email:
-                    try:
-                        await email_service.send_assessment_result_email(
-                            db=db,
-                            candidate_email=cand_user.email,
-                            candidate_name=cand_user.full_name or "Candidate",
-                            job_title=job_title,
-                            score=overall_score,
-                            passing_score=session.passing_score,
-                            passed=(recommendation == "Pass"),
-                            company_name=company_name,
-                            section_scores=section_scores,
-                            session_id=session.id,
-                            candidate_user_id=cand.user_id
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to dispatch assessment result email: {e}")
-
         await db.commit()
+
+        # Candidate In-App Notification & Email Dispatch (Post Commit)
+        if session.candidate_id and cand_user and cand_user.email:
+            try:
+                asyncio.create_task(email_service.send_assessment_result_email(
+                    db=None,
+                    candidate_email=cand_user.email,
+                    candidate_name=cand_user.full_name or "Candidate",
+                    job_title=job_title,
+                    score=overall_score,
+                    passing_score=session.passing_score,
+                    passed=(recommendation == "Pass"),
+                    company_name=company_name,
+                    section_scores=section_scores,
+                    session_id=session.id,
+                    candidate_user_id=cand.user_id
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to dispatch assessment result email: {e}")
 
         # Emit Real-Time Domain Events (Post DB Commit)
         try:

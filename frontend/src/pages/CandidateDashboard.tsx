@@ -273,10 +273,10 @@ export const CandidateDashboard: React.FC = () => {
     : 0;
 
   const candidateCompetencyPieData = hasInterviewData ? [
-    { name: 'Technical Depth', value: Math.max(10, Math.round(trendData?.summary?.latest_score ?? safeMetrics.avg_technical ?? effectiveAvgScore)), color: '#8B5CF6' },
-    { name: 'Communication', value: Math.max(10, Math.round(safeMetrics.avg_communication ?? Math.max(50, effectiveAvgScore - 5))), color: '#3B82F6' },
-    { name: 'Confidence', value: Math.max(10, Math.round(safeMetrics.avg_confidence ?? Math.max(50, effectiveAvgScore - 5))), color: '#10B981' },
-    { name: 'Professionalism', value: Math.max(10, Math.round(safeMetrics.avg_professionalism ?? effectiveAvgScore)), color: '#F59E0B' },
+    { name: 'Technical Depth', value: Math.round(Number(safeMetrics.avg_technical ?? trendData?.summary?.latest_technical_score ?? effectiveAvgScore ?? 0)), color: '#8B5CF6' },
+    { name: 'Communication', value: Math.round(Number(safeMetrics.avg_communication ?? trendData?.summary?.latest_communication_score ?? effectiveAvgScore ?? 0)), color: '#3B82F6' },
+    { name: 'Confidence', value: Math.round(Number(safeMetrics.avg_confidence ?? trendData?.summary?.latest_confidence_score ?? effectiveAvgScore ?? 0)), color: '#10B981' },
+    { name: 'Professionalism', value: Math.round(Number(safeMetrics.avg_professionalism ?? trendData?.summary?.latest_professionalism_score ?? effectiveAvgScore ?? 0)), color: '#F59E0B' },
   ] : [];
 
   const effectiveTimeline = (trendData && trendData.total_interviews > 0 && trendData.timeline && trendData.timeline.length > 0)
@@ -1479,7 +1479,7 @@ export const CandidateDashboard: React.FC = () => {
                 </div>
                 <div className="flex items-baseline gap-2">
                   <h3 className="text-3xl font-black text-slate-900 dark:text-white">
-                    {progressData?.improvement_velocity !== undefined ? `+${progressData.improvement_velocity}%` : '0%'}
+                    {progressData?.improvement_velocity !== undefined ? (progressData.improvement_velocity > 0 ? `+${progressData.improvement_velocity}%` : `${progressData.improvement_velocity}%`) : '0%'}
                   </h3>
                   <span className="text-xs font-bold text-slate-400">/ interview</span>
                 </div>

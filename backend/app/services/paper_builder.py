@@ -226,6 +226,16 @@ class PaperBuilder:
         else:
             q_text = base_text
 
+        raw_opts = list(item[1])
+        raw_corr = int(item[2])
+        if len(raw_opts) == 4 and 0 <= raw_corr < len(raw_opts):
+            shift = index % 4
+            fb_options = raw_opts[shift:] + raw_opts[:shift]
+            fb_correct = (raw_corr - shift) % 4
+        else:
+            fb_options = raw_opts
+            fb_correct = raw_corr
+
         q_fp = duplicate_detector.compute_fingerprint(q_text)
         c_hash = duplicate_detector.compute_concept_hash(topic, "Core Concepts", f"{topic} Fundamentals", difficulty)
 
@@ -237,8 +247,8 @@ class PaperBuilder:
             difficulty=difficulty,
             question_text=q_text,
             code_snippet=None,
-            options=item[1],
-            correct_option=item[2],
+            options=fb_options,
+            correct_option=fb_correct,
             explanation=item[3],
             passage_text=passage_text,
             dataset_json=dataset_json,
@@ -442,6 +452,18 @@ class PaperBuilder:
             if not dataset_val and ("data interpretation" in (master_q.topic or "").lower() or "di" in (master_q.topic or "").lower()):
                 dataset_val = {"years": [2021, 2022, 2023, 2024], "sales_in_lakhs": [120, 150, 180, 225]}
 
+            raw_options = list(master_q.options or [])
+            raw_corr = int(master_q.correct_option or 0)
+            if len(raw_options) == 4 and 0 <= raw_corr < len(raw_options):
+                # Rotate options cyclically by order_idx % 4 to ensure balanced A, B, C, D answer distribution
+                # preserving 100% correctness and distinct content across all options
+                shift = order_idx % 4
+                rotated_options = raw_options[shift:] + raw_options[:shift]
+                rotated_correct = (raw_corr - shift) % 4
+            else:
+                rotated_options = raw_options
+                rotated_correct = raw_corr
+
             record = AssessmentQuestion(
                 session_id=session.id,
                 order_index=order_idx,
@@ -449,8 +471,8 @@ class PaperBuilder:
                 topic=master_q.topic,
                 question_text=master_q.question_text,
                 code_snippet=master_q.code_snippet,
-                options=master_q.options,
-                correct_option=master_q.correct_option,
+                options=rotated_options,
+                correct_option=rotated_correct,
                 explanation=master_q.explanation or "Detailed technical explanation available.",
                 negative_marks=session.negative_marking,
                 is_repeated=is_rep,

@@ -427,12 +427,15 @@ class EvaluationService:
         # FEATURE 4: Immutable Stored Report Check - Return immediately from DB if already finalized
         res_existing = await db.execute(select(ScoringReport).where(ScoringReport.session_id == session_id))
         existing_report = res_existing.scalars().first()
-        if existing_report and (getattr(session, "status", "").lower() == "completed" or getattr(existing_report, "status", "").upper() == "COMPLETED"):
+        if existing_report:
+            if getattr(session, "status", "").lower() != "completed":
+                session.status = "completed"
+                try:
+                    await db.commit()
+                except Exception:
+                    pass
             t_db_read = (time.perf_counter() - t_total_start) * 1000
-            print("\nREPORT PERFORMANCE (IMMUTABLE DB READ)")
-            print(f"Database Read: {t_db_read:.1f} ms")
-            print(f"Total Time: {t_db_read:.1f} ms\n")
-            logger.info("Report for session %s already finalized in DB. Returning immutable report without AI/scoring calls.", session_id)
+            logger.info("Report for session %s already finalized in DB (read in %.1f ms). Returning immutable report.", session_id, t_db_read)
             return existing_report
 
         session.status = "completed"
@@ -862,17 +865,28 @@ class EvaluationService:
         # Fetch candidate user to notify
         cand_user = None
         cand_user_id = None
-        res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
-        cand = res_c.scalar_one_or_none()
-        if cand and cand.user_id:
-            cand_user_id = cand.user_id
-            res_cu = await db.execute(select(User).where(User.id == cand.user_id))
-            cand_user = res_cu.scalar_one_or_none()
-        elif session.candidate_id:
-            res_cu = await db.execute(select(User).where(User.id == session.candidate_id))
-            cand_user = res_cu.scalar_one_or_none()
-            if cand_user:
-                cand_user_id = cand_user.id
+        if session.candidate_id:
+            res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
+            cand = res_c.scalar_one_or_none()
+            if cand and cand.user_id:
+                cand_user_id = cand.user_id
+                res_cu = await db.execute(select(User).where(User.id == cand.user_id))
+                cand_user = res_cu.scalar_one_or_none()
+            else:
+                res_cu = await db.execute(select(User).where(User.id == session.candidate_id))
+                cand_user = res_cu.scalar_one_or_none()
+                if cand_user:
+                    cand_user_id = cand_user.id
+        if not cand_user and session.job_application_id:
+            res_app = await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))
+            app_rec = res_app.scalar_one_or_none()
+            if app_rec and app_rec.candidate_id:
+                res_c2 = await db.execute(select(Candidate).where(Candidate.id == app_rec.candidate_id))
+                cand2 = res_c2.scalar_one_or_none()
+                if cand2 and cand2.user_id:
+                    cand_user_id = cand2.user_id
+                    res_cu2 = await db.execute(select(User).where(User.id == cand2.user_id))
+                    cand_user = res_cu2.scalar_one_or_none()
 
         report_url = f"{settings.FRONTEND_URL}/reports?session={session.id}"
 
@@ -898,6 +912,7 @@ class EvaluationService:
 
             if cand_user and cand_user.email:
                 try:
+                    logger.info("Scheduling candidate report ready email for session %s to %s", session.id, cand_user.email)
                     asyncio.create_task(email_service.send_report_ready_email(
                         db=None,
                         recipient_email=cand_user.email,

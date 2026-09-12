@@ -1093,8 +1093,9 @@ class AnalyticsService:
             action_items.append("Engage in a multi-round technical mock interview to maintain your competitive standing.")
 
         return {
-            "candidate_id": candidate_id,
+            "candidate_id": cand_ids[0] if cand_ids else str(candidate_id),
             "total_interviews": total_interviews,
+            "has_data": True,
             "first_score": first_overall,
             "latest_score": latest_overall,
             "overall_change": overall_change,
