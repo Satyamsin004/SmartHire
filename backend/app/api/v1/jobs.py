@@ -127,6 +127,23 @@ async def create_job(
             )
             db.add(notif)
 
+            if cand_user.email:
+                try:
+                    asyncio.create_task(email_service.send_new_job_posted_email(
+                        db=None,
+                        candidate_email=cand_user.email,
+                        candidate_name=cand_user.full_name or "Candidate",
+                        job_title=new_job.title,
+                        company_name=new_job.company_name or "SmartHire Corporate",
+                        location=new_job.location or "Remote",
+                        work_mode=new_job.work_mode or "Remote",
+                        job_id=new_job.id,
+                        experience_level=new_job.experience_required,
+                        candidate_user_id=cand_user.id
+                    ))
+                except Exception as err:
+                    logger.warning("Failed to dispatch new job email to %s: %s", cand_user.email, err)
+
         await ws_manager.broadcast({
             "event": "NEW_JOB_POSTED",
             "data": {
@@ -429,11 +446,11 @@ async def apply_for_job(
     )
     db.add(notif_cand)
 
-    # Dispatch confirmation email to applicant
+    # Dispatch confirmation email to applicant in background
     if user.email:
         try:
-            await email_service.send_application_received_email(
-                db=db,
+            asyncio.create_task(email_service.send_application_received_email(
+                db=None,
                 candidate_email=user.email,
                 candidate_name=user.full_name or "Candidate",
                 job_title=job.title,
@@ -441,7 +458,7 @@ async def apply_for_job(
                 applied_date=datetime.utcnow().strftime("%B %d, %Y"),
                 application_id=new_app.id,
                 candidate_user_id=user.id
-            )
+            ))
         except Exception as e:
             logger.warning(f"Failed to dispatch application received email: {e}")
 
@@ -458,8 +475,8 @@ async def apply_for_job(
 
         if user.email:
             try:
-                await email_service.send_shortlist_email(
-                    db=db,
+                asyncio.create_task(email_service.send_shortlist_email(
+                    db=None,
                     candidate_email=user.email,
                     candidate_name=user.full_name or "Candidate",
                     job_title=job.title,
@@ -467,7 +484,7 @@ async def apply_for_job(
                     ats_score=ats_score,
                     candidate_user_id=user.id,
                     application_id=new_app.id
-                )
+                ))
             except Exception as e:
                 logger.warning(f"Failed to dispatch auto-shortlist email: {e}")
 
@@ -583,33 +600,109 @@ async def get_my_applications(
     db: AsyncSession = Depends(get_db)
 ):
     """Returns all job applications submitted by the authenticated candidate."""
-    res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    candidate = res_c.scalar_one_or_none()
-    if not candidate:
+    res_c = await db.execute(select(Candidate.id).where(Candidate.user_id == user.id))
+    candidate_ids = [row[0] for row in res_c.all()]
+    if not candidate_ids:
         return []
 
-    res = await db.execute(select(JobApplication).where(JobApplication.candidate_id == candidate.id).order_by(JobApplication.applied_at.desc()))
+    res = await db.execute(
+        select(JobApplication)
+        .where(JobApplication.candidate_id.in_(candidate_ids))
+        .order_by(JobApplication.applied_at.desc())
+    )
     apps = res.scalars().all()
+    if not apps:
+        return []
 
-    out = []
-    for app in apps:
-        res_j = await db.execute(select(JobPosting).where(JobPosting.id == app.job_id))
-        job = res_j.scalar_one_or_none()
+    app_ids = [app.id for app in apps]
+    job_ids = list({app.job_id for app in apps if app.job_id})
 
-        # 1. Fetch Recruiter Scheduled Assessment specifically for this Application
-        res_assess_sess = await db.execute(
-            select(AssessmentSession).where(
-                AssessmentSession.job_application_id == app.id
-            ).order_by(AssessmentSession.created_at.desc())
+    # 1. Batch fetch all referenced jobs
+    jobs_map = {}
+    if job_ids:
+        res_j = await db.execute(select(JobPosting).where(JobPosting.id.in_(job_ids)))
+        for j in res_j.scalars().all():
+            jobs_map[j.id] = j
+
+    # 2. Batch fetch assessment sessions & results
+    assess_sess_map = {}
+    res_assess = await db.execute(
+        select(AssessmentSession)
+        .where(AssessmentSession.job_application_id.in_(app_ids))
+        .order_by(AssessmentSession.created_at.desc())
+    )
+    for asess in res_assess.scalars().all():
+        if asess.job_application_id not in assess_sess_map:
+            assess_sess_map[asess.job_application_id] = asess
+
+    assess_sess_ids = [s.id for s in assess_sess_map.values() if s.id]
+    assess_results_map = {}
+    if assess_sess_ids:
+        res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id.in_(assess_sess_ids)))
+        for ar in res_ar.scalars().all():
+            assess_results_map[ar.session_id] = ar
+
+    # 3. Batch fetch scheduled interviews & interview sessions
+    sched_map = {}
+    res_sched = await db.execute(
+        select(ScheduledInterview)
+        .where(ScheduledInterview.job_application_id.in_(app_ids))
+        .order_by(ScheduledInterview.scheduled_date.desc())
+    )
+    for sc in res_sched.scalars().all():
+        sched_map.setdefault(sc.job_application_id, []).append(sc)
+
+    int_sess_map = {}
+    res_isess = await db.execute(
+        select(InterviewSession)
+        .where(
+            InterviewSession.job_application_id.in_(app_ids),
+            InterviewSession.interview_type == "Recruiter"
         )
-        assess_sess = res_assess_sess.scalars().first()
+        .order_by(InterviewSession.started_at.desc())
+    )
+    all_int_sessions = res_isess.scalars().all()
+    for isess in all_int_sessions:
+        int_sess_map.setdefault(isess.job_application_id, []).append(isess)
+
+    # 4. Batch fetch scoring reports
+    all_sess_ids_for_reports = [s.id for s in all_int_sessions if s.id]
+    for sched_list in sched_map.values():
+        for sc in sched_list:
+            if sc.session_id:
+                all_sess_ids_for_reports.append(sc.session_id)
+    all_sess_ids_for_reports = list(set(all_sess_ids_for_reports))
+
+    reports_map = {}
+    if all_sess_ids_for_reports:
+        res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id.in_(all_sess_ids_for_reports)))
+        for rep in res_rep.scalars().all():
+            reports_map[rep.session_id] = rep
+
+    # 5. Batch fetch offer letters
+    offers_map = {}
+    res_off = await db.execute(
+        select(OfferLetter)
+        .where(OfferLetter.job_application_id.in_(app_ids))
+        .order_by(OfferLetter.created_at.desc())
+    )
+    for off in res_off.scalars().all():
+        offers_map.setdefault(off.job_application_id, []).append(off)
+
+    status_changed = False
+    out = []
+    now_utc = datetime.utcnow()
+
+    for app in apps:
+        job = jobs_map.get(app.job_id)
+        assess_sess = assess_sess_map.get(app.id)
+
         recruiter_assessment = None
         if assess_sess:
-            res_r = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == assess_sess.id))
-            assess_res = res_r.scalar_one_or_none()
+            assess_res = assess_results_map.get(assess_sess.id)
             calc_score = round(assess_res.overall_score, 1) if assess_res else None
             passing_cutoff = round(assess_sess.passing_score, 1) if assess_sess.passing_score is not None else 70.0
-            
+
             app_status_lower = (app.status or "").lower()
             if ("assessment pass" in app_status_lower or "interview" in app_status_lower or "offer" in app_status_lower or "hired" in app_status_lower) and (calc_score is None or calc_score < passing_cutoff):
                 calc_score = max(calc_score or 0.0, passing_cutoff)
@@ -623,28 +716,8 @@ async def get_my_applications(
                 "duration_minutes": assess_sess.duration_minutes or 30
             }
 
-        # 2. Fetch Recruiter Scheduled Interviews & Sessions specifically for this Application
-        res_sched_int = await db.execute(
-            select(ScheduledInterview).where(
-                ScheduledInterview.job_application_id == app.id
-            ).order_by(ScheduledInterview.scheduled_date.desc())
-        )
-        all_scheds = res_sched_int.scalars().all()
-        
-        res_int_sess = await db.execute(
-            select(InterviewSession).where(
-                InterviewSession.job_application_id == app.id,
-                InterviewSession.interview_type == "Recruiter"
-            ).order_by(InterviewSession.started_at.desc())
-        )
-        all_sess = res_int_sess.scalars().all()
-
-        sess_ids = [s.id for s in all_sess if s.id]
-        reports_map = {}
-        if sess_ids:
-            res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id.in_(sess_ids)))
-            for rep in res_rep.scalars().all():
-                reports_map[rep.session_id] = rep
+        all_scheds = sched_map.get(app.id, [])
+        all_sess = int_sess_map.get(app.id, [])
 
         def extract_round(r_type: str):
             matched_sess = next((s for s in all_sess if (s.round_type or '').lower() == r_type.lower()), None)
@@ -668,7 +741,6 @@ async def get_my_applications(
             sched_dt = matched_sched.scheduled_date if (matched_sched and matched_sched.scheduled_date) else None
             if sched_dt and sched_dt.tzinfo is not None:
                 sched_dt = sched_dt.replace(tzinfo=None)
-            now_utc = datetime.utcnow()
             can_start = True
             seconds_until_start = 0
             if sched_dt and now_utc < sched_dt:
@@ -699,13 +771,8 @@ async def get_my_applications(
         hr_round = extract_round("hr")
         active_interview = hr_round or behavioral_round or technical_round
 
-        # 3. Check offer status
-        res_o = await db.execute(
-            select(OfferLetter)
-            .where(OfferLetter.job_application_id == app.id)
-            .order_by(OfferLetter.created_at.desc())
-        )
-        all_offs = res_o.scalars().all()
+        # Check offer status
+        all_offs = offers_map.get(app.id, [])
         off = next((o for o in all_offs if o.status == "Accepted"), all_offs[0] if all_offs else None)
         offer_stat = off.status if off else "N/A"
         offer_details = None
@@ -719,10 +786,10 @@ async def get_my_applications(
             }
             if off.status == "Accepted" and app.status != "Hired":
                 app.status = "Hired"
-                await db.commit()
+                status_changed = True
             elif off.status in ["Sent", "Pending"] and app.status not in ["Hired", "Offer Sent", "Offer Accepted"]:
                 app.status = "Offer Sent"
-                await db.commit()
+                status_changed = True
 
         out.append({
             "id": app.id,
@@ -746,6 +813,13 @@ async def get_my_applications(
             "hr_round": hr_round,
             "applied_at": app.applied_at.isoformat() if app.applied_at else None
         })
+
+    if status_changed:
+        try:
+            await db.commit()
+        except Exception:
+            pass
+
     return out
 
 from app.models.domain import SavedJob

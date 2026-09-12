@@ -986,6 +986,70 @@ class EmailService:
             user_id=candidate_user_id
         )
 
+    @classmethod
+    async def send_new_job_posted_email(
+        cls,
+        db: Optional[AsyncSession],
+        candidate_email: str,
+        candidate_name: str,
+        job_title: str,
+        company_name: str,
+        location: str,
+        work_mode: str,
+        job_id: str,
+        experience_level: Optional[str] = None,
+        job_link: Optional[str] = None,
+        candidate_user_id: Optional[str] = None
+    ) -> bool:
+        """Broadcast Email to Registered Candidates: New Job Opportunity Posted."""
+        apply_url = job_link or f"{settings.FRONTEND_URL}/jobs"
+        subject = f"💼 New Job Opening: {job_title} at {company_name}"
+        text_content = (
+            f"Hello {candidate_name},\n\n"
+            f"A new job opening has just been posted on SmartHire AI:\n\n"
+            f"Position: {job_title}\n"
+            f"Company: {company_name}\n"
+            f"Location: {location} ({work_mode})\n"
+            f"Experience: {experience_level or 'Not specified'}\n\n"
+            f"View requisition and apply directly:\n{apply_url}\n\n"
+            f"Best regards,\nSmartHire AI Talent Community"
+        )
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #E2E8F0; border-radius: 12px; background: #FFFFFF;">
+            <div style="background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%); padding: 20px; border-radius: 10px; margin-bottom: 20px; color: #FFFFFF;">
+                <h2 style="margin: 0; font-size: 20px;">💼 New Job Opening Posted!</h2>
+                <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 14px;">{job_title} · {company_name}</p>
+            </div>
+            <p style="color: #334155; font-size: 15px;">Hello <strong>{candidate_name}</strong>,</p>
+            <p style="color: #475569; font-size: 14px;">A new opportunity has just opened up on SmartHire AI that matches candidate profiles:</p>
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="margin: 4px 0; font-size: 14px; color: #1E293B;"><strong>Role:</strong> {job_title}</p>
+                <p style="margin: 4px 0; font-size: 14px; color: #1E293B;"><strong>Company:</strong> {company_name}</p>
+                <p style="margin: 4px 0; font-size: 14px; color: #1E293B;"><strong>Location:</strong> {location} ({work_mode})</p>
+                {f'<p style="margin: 4px 0; font-size: 14px; color: #1E293B;"><strong>Experience:</strong> {experience_level}</p>' if experience_level else ''}
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+                <a href="{apply_url}" style="background: #4F46E5; color: #FFFFFF; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block;">
+                    View & Apply for Job
+                </a>
+            </div>
+            <p style="color: #94A3B8; font-size: 12px; margin-top: 24px; border-top: 1px solid #F1F5F9; padding-top: 16px;">
+                You are receiving this update because you are a registered candidate on the SmartHire AI platform.
+            </p>
+        </div>
+        """
+        idempotency_key = f"JOB_POSTED_{job_id}_{candidate_email}"
+        return await cls.dispatch_email(
+            db=db,
+            to_email=candidate_email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content,
+            notification_type="new_job_posted",
+            idempotency_key=idempotency_key,
+            user_id=candidate_user_id
+        )
+
     # -------------------------------------------------------------------------
     # Legacy Authentication Emails
     # -------------------------------------------------------------------------

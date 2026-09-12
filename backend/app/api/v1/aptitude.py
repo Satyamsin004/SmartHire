@@ -10,6 +10,8 @@ from app.core.db import get_db
 from app.models.domain import User, Candidate, Recruiter, JobPosting, JobApplication, AssessmentSession, AssessmentQuestion, AssessmentAnswer, AssessmentResult
 from app.dependencies.auth import get_current_user, require_role
 from app.services.assessment_service import assessment_service, AssessmentGenerationError
+from app.services.email_service import email_service
+import asyncio
 
 router = APIRouter(prefix="/aptitude", tags=["Unified AI Assessment Engine"])
 
@@ -175,6 +177,26 @@ async def submit_assessment(
         answers_payload=answers_payload,
         proctoring_violations=body.proctoring_violations or 0
     )
+
+    if current_user.email:
+        try:
+            passing_score = session.passing_score if session.passing_score is not None else 70.0
+            passed = result.overall_score >= passing_score
+            asyncio.create_task(email_service.send_assessment_result_email(
+                db=None,
+                candidate_email=current_user.email,
+                candidate_name=current_user.full_name or "Candidate",
+                job_title=session.title or "Online Assessment",
+                score=result.overall_score,
+                passing_score=passing_score,
+                passed=passed,
+                company_name="SmartHire Enterprise",
+                section_scores=result.section_scores,
+                session_id=session.id,
+                candidate_user_id=current_user.id
+            ))
+        except Exception as e_err:
+            pass
 
     return {
         "status": "success",

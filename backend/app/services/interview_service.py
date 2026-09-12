@@ -860,27 +860,34 @@ class EvaluationService:
             InterviewStateMachine.transition(session, "UPDATE_HISTORY")
 
         # Fetch candidate user to notify
+        cand_user = None
+        cand_user_id = None
         res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
         cand = res_c.scalar_one_or_none()
-        cand_user = None
         if cand and cand.user_id:
+            cand_user_id = cand.user_id
             res_cu = await db.execute(select(User).where(User.id == cand.user_id))
             cand_user = res_cu.scalar_one_or_none()
+        elif session.candidate_id:
+            res_cu = await db.execute(select(User).where(User.id == session.candidate_id))
+            cand_user = res_cu.scalar_one_or_none()
+            if cand_user:
+                cand_user_id = cand_user.id
 
         report_url = f"{settings.FRONTEND_URL}/reports?session={session.id}"
 
         # 1. Candidate In-App Notification & Email
-        if cand and cand.user_id:
+        if cand_user_id:
             res_ex_notif = await db.execute(
                 select(Notification).where(
-                    Notification.user_id == cand.user_id,
+                    Notification.user_id == cand_user_id,
                     Notification.interview_id == session.id,
                     Notification.notification_type == "interview_completed"
                 )
             )
             if not res_ex_notif.scalar_one_or_none():
                 notif_cand = Notification(
-                    user_id=cand.user_id,
+                    user_id=cand_user_id,
                     title=f"Interview Evaluation Ready: {session.title}",
                     message=f"Your evaluation is ready. Overall Score: {computed['overall_score']}%. Hiring Recommendation: {final_recommendation}.",
                     notification_type="interview_completed",

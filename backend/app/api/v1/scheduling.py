@@ -139,11 +139,11 @@ async def create_scheduled_assessment(
             )
             db.add(notif)
 
-            # Dispatch transactional email to candidate (including OAuth users)
+            # Dispatch transactional email to candidate in background
             if cand_user and cand_user.email:
                 try:
-                    await email_service.send_assessment_scheduled_email(
-                        db=db,
+                    asyncio.create_task(email_service.send_assessment_scheduled_email(
+                        db=None,
                         candidate_email=cand_user.email,
                         candidate_name=cand_user.full_name or "Candidate",
                         job_title=job_title,
@@ -153,7 +153,7 @@ async def create_scheduled_assessment(
                         company_name=company_name,
                         candidate_user_id=cand.user_id,
                         session_id=session.id
-                    )
+                    ))
                 except Exception as e:
                     logger.warning(f"Failed to send assessment email: {e}")
 
@@ -315,22 +315,25 @@ async def create_scheduled_interview(
         )
         db.add(new_notif)
 
-        # Dispatch Transactional Confirmation Email to Candidate
+        # Dispatch Transactional Confirmation Email to Candidate in background
         if cand_user and cand_user.email:
-            await email_service.send_interview_scheduled_email(
-                db=db,
-                candidate_email=cand_user.email,
-                candidate_name=cand_user.full_name or "Candidate",
-                interview_title=config_data.get("job_title", "Software Engineer"),
-                scheduled_date_str=parsed_date.strftime("%b %d, %Y at %I:%M %p"),
-                duration_minutes=body.duration_minutes or 30,
-                round_type=body.round_type,
-                interview_link=f"{settings.FRONTEND_URL}/interview-lobby?schedule_id={new_schedule.id}",
-                company_name=config_data.get("company_name", "SmartHire AI Platform"),
-                instructions=new_schedule.instructions,
-                interview_id=new_schedule.id,
-                candidate_user_id=candidate_db.user_id
-            )
+            try:
+                asyncio.create_task(email_service.send_interview_scheduled_email(
+                    db=None,
+                    candidate_email=cand_user.email,
+                    candidate_name=cand_user.full_name or "Candidate",
+                    interview_title=config_data.get("job_title", "Software Engineer"),
+                    scheduled_date_str=parsed_date.strftime("%b %d, %Y at %I:%M %p"),
+                    duration_minutes=body.duration_minutes or 30,
+                    round_type=body.round_type,
+                    interview_link=f"{settings.FRONTEND_URL}/interview-lobby?schedule_id={new_schedule.id}",
+                    company_name=config_data.get("company_name", "SmartHire AI Platform"),
+                    instructions=new_schedule.instructions,
+                    interview_id=new_schedule.id,
+                    candidate_user_id=candidate_db.user_id
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to send interview scheduled email: {e}")
 
         # Send Real-Time WebSocket Event to Candidate User
         ws_payload = {

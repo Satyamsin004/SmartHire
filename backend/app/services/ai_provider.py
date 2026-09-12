@@ -65,25 +65,25 @@ class AIProviderManager:
 
     MAX_RETRIES = 1
     RETRY_BACKOFF_DELAYS = [0.5, 1.0, 2.0]
-    REQUEST_TIMEOUT_SECONDS = 12
+    REQUEST_TIMEOUT_SECONDS = 6
     RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
-    # Task Priority Provider Routing Strategy (Groq fast sub-second primary + Gemini fallback)
+    # Task Priority Provider Routing Strategy (Groq fast sub-second primary -> OpenRouter -> Gemini)
     ROUTES = {
-        "ats": ("groq", "gemini"),
-        "ats_resume_screening": ("groq", "gemini"),
-        "interview_question": ("groq", "gemini"),
-        "interview_question_generation": ("groq", "gemini"),
-        "behavioral_interview": ("groq", "gemini"),
-        "hr_interview": ("groq", "gemini"),
-        "technical_interview": ("groq", "gemini"),
-        "interview": ("groq", "gemini"),
-        "assessment": ("groq", "gemini"),
-        "assessment_mcq_generation": ("groq", "gemini"),
-        "evaluation_reports": ("groq", "gemini"),
-        "evaluation_report": ("groq", "gemini"),
-        "report": ("groq", "gemini"),
-        "default": ("groq", "gemini"),
+        "ats": ("groq", "openrouter", "gemini"),
+        "ats_resume_screening": ("groq", "openrouter", "gemini"),
+        "interview_question": ("groq", "openrouter", "gemini"),
+        "interview_question_generation": ("groq", "openrouter", "gemini"),
+        "behavioral_interview": ("groq", "openrouter", "gemini"),
+        "hr_interview": ("groq", "openrouter", "gemini"),
+        "technical_interview": ("groq", "openrouter", "gemini"),
+        "interview": ("groq", "openrouter", "gemini"),
+        "assessment": ("groq", "openrouter", "gemini"),
+        "assessment_mcq_generation": ("groq", "openrouter", "gemini"),
+        "evaluation_reports": ("groq", "openrouter", "gemini"),
+        "evaluation_report": ("groq", "openrouter", "gemini"),
+        "report": ("groq", "openrouter", "gemini"),
+        "default": ("groq", "openrouter", "gemini"),
     }
 
     def __init__(self) -> None:
@@ -124,19 +124,19 @@ class AIProviderManager:
         if provider == "gemini":
             raw_keys = [getattr(settings, f"GEMINI_API_KEY_{i}", None) for i in range(1, 6)]
             keys = self._configured_keys(*[k for k in raw_keys if k])
-            model = self._gemini_preferred_model or settings.GEMINI_MODEL
+            model = self._gemini_preferred_model or settings.GEMINI_MODEL or "gemini-3.6-flash"
         elif provider == "openrouter":
             keys = self._configured_keys(
                 settings.OPENROUTER_API_KEY_1,
                 settings.OPENROUTER_API_KEY_2,
             )
-            model = settings.OPENROUTER_MODEL
+            model = settings.OPENROUTER_MODEL or "meta-llama/llama-3.3-70b-instruct"
         elif provider == "groq":
             keys = self._configured_keys(
                 settings.GROQ_API_KEY_1,
                 settings.GROQ_API_KEY_2,
             )
-            model = self._groq_preferred_model or settings.GROQ_MODEL or "llama-3.3-70b-versatile"
+            model = self._groq_preferred_model or settings.GROQ_MODEL or "openai/gpt-oss-20b"
         else:
             raise ValueError(f"Unknown provider: {provider}")
         return keys, model

@@ -1452,8 +1452,8 @@ async def send_offer_letter(
             cand_user = res_u.scalars().first()
             if cand_user and cand_user.email:
                 try:
-                    await email_service.send_offer_letter_email(
-                        db=db,
+                    asyncio.create_task(email_service.send_offer_letter_email(
+                        db=None,
                         candidate_email=cand_user.email,
                         candidate_name=cand_user.full_name or "Candidate",
                         job_title=job.title if job else offer.job_title,
@@ -1463,7 +1463,7 @@ async def send_offer_letter(
                         company_name=job.company_name if job and job.company_name else "SmartHire Enterprise",
                         offer_id=offer.id,
                         candidate_user_id=cand.user_id
-                    )
+                    ))
                 except Exception as e:
                     logger.warning(f"Failed to dispatch offer letter email: {e}")
 
@@ -1829,8 +1829,8 @@ async def shortlist_candidate(candidate_id: str, db: AsyncSession = Depends(get_
     # Dispatch transactional email to candidate
     if cand_user and cand_user.email:
         try:
-            await email_service.send_shortlist_email(
-                db=db,
+            asyncio.create_task(email_service.send_shortlist_email(
+                db=None,
                 candidate_email=cand_user.email,
                 candidate_name=cand_user.full_name or "Candidate",
                 job_title=job_title,
@@ -1838,7 +1838,7 @@ async def shortlist_candidate(candidate_id: str, db: AsyncSession = Depends(get_
                 ats_score=app.ats_score if app else None,
                 candidate_user_id=cand.user_id,
                 application_id=app.id if app else None
-            )
+            ))
         except Exception as e:
             pass
 

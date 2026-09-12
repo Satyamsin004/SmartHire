@@ -134,9 +134,9 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY_2: str = os.getenv("OPENROUTER_API_KEY_2", "")
     GROQ_API_KEY_1: str = os.getenv("GROQ_API_KEY_1", "")
     GROQ_API_KEY_2: str = os.getenv("GROQ_API_KEY_2", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
     # OAuth & SMTP Credentials
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")

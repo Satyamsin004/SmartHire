@@ -266,6 +266,14 @@ async def get_candidate_metrics(
 
     # 4. Mock Interviews & AI Scoring Reports (completed sessions or sessions with finalized scoring reports)
     session_completed_cond = (InterviewSession.status.in_(["completed", "Completed"])) | (ScoringReport.id.isnot(None))
+    all_candidate_ids = list(set(cand_ids + [user.id]))
+    res_cand_apps = await db.execute(select(JobApplication.id).where(JobApplication.candidate_id.in_(all_candidate_ids)))
+    cand_app_ids = res_cand_apps.scalars().all()
+
+    interview_session_cond = InterviewSession.candidate_id.in_(all_candidate_ids)
+    if cand_app_ids:
+        interview_session_cond = or_(interview_session_cond, InterviewSession.job_application_id.in_(cand_app_ids))
+
     res_mock = await db.execute(
         select(
             func.count(case((session_completed_cond, 1))).label("mock_count"),
@@ -278,7 +286,7 @@ async def get_candidate_metrics(
             func.avg(case((session_completed_cond, ScoringReport.professionalism_score), else_=None)).label("avg_prof")
         )
         .outerjoin(ScoringReport, ScoringReport.session_id == InterviewSession.id)
-        .where(InterviewSession.candidate_id.in_(cand_ids))
+        .where(interview_session_cond)
     )
     mock_row = res_mock.one()
     mock_interviews_completed = mock_row.mock_count or 0

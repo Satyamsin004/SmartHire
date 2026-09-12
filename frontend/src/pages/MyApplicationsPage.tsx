@@ -27,19 +27,19 @@ export const MyApplicationsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(false);
 
-    // Auto-update both pipelines in real-time
+    // Auto-update both pipelines in real-time silently without flickering
     const interval = setInterval(() => {
-      fetchData();
-    }, 4000);
+      fetchData(true);
+    }, 5000);
 
     const handleWindowFocus = () => {
-      fetchData();
+      fetchData(true);
     };
 
     const handlePipelineEvent = () => {
-      fetchData();
+      fetchData(true);
     };
 
     window.addEventListener('focus', handleWindowFocus);
@@ -57,12 +57,14 @@ export const MyApplicationsPage: React.FC = () => {
   // Real-time synchronization whenever WebSocket event is received
   useEffect(() => {
     if (lastMessage) {
-      fetchData();
+      fetchData(true);
     }
   }, [lastMessage]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (isBackground: boolean = false) => {
+    if (!isBackground && myApplications.length === 0) {
+      setLoading(true);
+    }
     try {
       // NOTE: Strictly fetching ONLY real recruiter hiring data. Mock Practice Hub endpoints (/aptitude/history & /interview/history) are PURGED.
       const [appRes, offerRes, userRes] = await Promise.allSettled([

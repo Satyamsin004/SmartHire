@@ -1015,12 +1015,18 @@ async def get_interview_history(
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
         cands = res_c.scalars().all()
-        if not cands:
-            return []
         cand_ids = [c.id for c in cands]
+        all_cand_ids = list(set(cand_ids + [current_user.id]))
+        res_apps = await db.execute(select(JobApplication.id).where(JobApplication.candidate_id.in_(all_cand_ids)))
+        app_ids = [a for a in res_apps.scalars().all()]
+
+        condition = InterviewSession.candidate_id.in_(all_cand_ids)
+        if app_ids:
+            condition = or_(condition, InterviewSession.job_application_id.in_(app_ids))
+
         res = await db.execute(
             select(InterviewSession)
-            .where(InterviewSession.candidate_id.in_(cand_ids))
+            .where(condition)
             .order_by(InterviewSession.started_at.desc())
         )
         sessions = res.scalars().all()

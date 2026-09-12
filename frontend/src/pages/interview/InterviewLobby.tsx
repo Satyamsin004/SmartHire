@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mic, MicOff, Video, VideoOff, Clock, CheckCircle2, AlertCircle, ShieldCheck, Play, Wifi, WifiOff, Volume2, RotateCcw, Lock, Calendar } from 'lucide-react';
 import api from '../../services/api';
-import { integrityEngine } from '../../services/IntegrityEngine';
 
 export const InterviewLobby: React.FC = () => {
   const navigate = useNavigate();
@@ -83,13 +82,6 @@ export const InterviewLobby: React.FC = () => {
     if (cameraStatus === 'READY' && videoActive && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
       videoRef.current.play().catch(e => console.warn('Lobby video play notice:', e));
-      
-      // Pre-warm AI vision & proctoring model in background during lobby idle time
-      // so entering the live interview room is 100% instantaneous with zero pause or freeze
-      const prewarmTimer = setTimeout(() => {
-        integrityEngine.loadModel().catch(() => {});
-      }, 1000);
-      return () => clearTimeout(prewarmTimer);
     }
   }, [cameraStatus, videoActive]);
 
