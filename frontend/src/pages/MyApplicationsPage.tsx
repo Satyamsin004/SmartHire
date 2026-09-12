@@ -124,7 +124,7 @@ export const MyApplicationsPage: React.FC = () => {
       if (stageIdx === 1) return { text: 'Completed (ATS Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 2) {
         if (isAssessmentConducted) return { text: 'Completed (Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
-        return { text: 'Waived (Direct Offer)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
+        return { text: 'Waived (Direct Offer)', color: 'bg-slate-700 text-slate-300 border-slate-600', isWaived: true };
       }
       if (stageIdx === 3) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 4) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
@@ -158,7 +158,7 @@ export const MyApplicationsPage: React.FC = () => {
     }
 
     const passThreshold = recAssess?.passing_score ?? 70;
-    const hasAssessmentSession = Boolean(recAssess || app.assessment_session_id);
+    const hasAssessmentSession = Boolean(recAssess?.session_id || app.assessment_session_id);
     const isExplicitlyPassed = isAssessmentConducted && (
       (assessScore !== null && assessScore >= passThreshold) ||
       (recAssess && recAssess.score !== null && recAssess.score >= passThreshold) ||
@@ -185,7 +185,7 @@ export const MyApplicationsPage: React.FC = () => {
         return { text: `Passed (≥${passThreshold}%)`, color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       }
       if (isAssessmentWaived) {
-        return { text: 'Waived (Direct Interview)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
+        return { text: 'Waived (Direct Interview)', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isWaived: true };
       }
       if (recAssess?.status === 'active' || recAssess?.status === 'in_progress') {
         return { text: 'Assessment In Progress', color: 'bg-indigo-600 text-white border-indigo-600 animate-pulse', isCurrent: true };
@@ -193,7 +193,7 @@ export const MyApplicationsPage: React.FC = () => {
       if (status.includes('assessment scheduled') || recAssess?.status === 'Scheduled') {
         return { text: 'Assessment Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
       }
-      return { text: 'Assessment Pending', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
+      return { text: 'Not Scheduled', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isUpcoming: true };
     }
 
     if (!isAssessmentPassed && !isAssessmentWaived) {
@@ -470,7 +470,7 @@ export const MyApplicationsPage: React.FC = () => {
                   <div className="overflow-x-auto pb-3 pt-1">
                     <div className="flex items-center gap-1.5 min-w-[850px] xl:min-w-0 w-full justify-between">
                       {PIPELINE_STAGES.map((stage, idx) => {
-                        const { text, color, isDone, isCurrent, isFailed } = getStageStatus(app, idx);
+                        const { text, color, isDone, isCurrent, isFailed, isWaived } = getStageStatus(app, idx);
 
                         return (
                           <React.Fragment key={stage.key}>
@@ -481,7 +481,7 @@ export const MyApplicationsPage: React.FC = () => {
                                  isCurrent ? <Clock className="w-3.5 h-3.5 animate-spin" /> :
                                  <span className="text-[9px] font-bold opacity-60">{idx + 1}</span>}
                               </div>
-                              <span>{stage.label}</span>
+                              <span>{isWaived ? `${stage.label} (Waived)` : stage.label}</span>
                             </div>
                             {idx < PIPELINE_STAGES.length - 1 && (
                               <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />
@@ -498,27 +498,43 @@ export const MyApplicationsPage: React.FC = () => {
                   const techRound = app.technical_round;
                   const behavRound = app.behavioral_round;
                   const hrRound = app.hr_round;
-                  const assessScore = app.assessment_score ?? recAssess?.score ?? null;
+                  const assessScore = recAssess?.score ?? app.assessment_score ?? null;
 
                   const isOfferIssued = Boolean(offer) || statusLower.includes('offer') || statusLower.includes('selected') || statusLower.includes('hired') || statusLower.includes('accepted');
                   const isOfferAccepted = offer?.status === 'Accepted' || statusLower.includes('hired') || statusLower.includes('accepted');
 
+                  // True assessment conductance check - candidate MUST have actually attempted/scored
+                  const isAssessConducted = Boolean(
+                    (assessScore !== null && assessScore !== undefined) ||
+                    (recAssess && recAssess.score !== null && recAssess.score !== undefined)
+                  );
+                  const actualAssessScore = isAssessConducted ? (assessScore ?? recAssess?.score) : null;
                   const passThreshold = recAssess?.passing_score ?? 70;
-                  const isExplicitlyPassed = isOfferIssued || statusLower.includes('assessment pass') || statusLower.includes('interview') || statusLower.includes('selected') || statusLower.includes('hired') || statusLower.includes('offer');
-                  const isExplicitlyFailed = !isOfferIssued && (statusLower.includes('assessment fail') || statusLower.includes('reject'));
 
-                  const isAssessPassed = isOfferIssued || isExplicitlyPassed || (!isExplicitlyFailed && (
-                    (assessScore !== null && assessScore >= passThreshold) ||
-                    (recAssess && recAssess.score !== null && recAssess.score >= passThreshold)
-                  ));
-                  const isAssessFailed = !isAssessPassed && (isExplicitlyFailed || (
-                    (assessScore !== null && assessScore < passThreshold) ||
-                    (recAssess && recAssess.score !== null && recAssess.score < passThreshold)
-                  ));
-                  const isAssessScheduled = recAssess && recAssess.status === 'Scheduled';
+                  const hasAssessmentSession = Boolean(recAssess?.session_id || app.assessment_session_id);
+                  const isAssessmentWaived = !hasAssessmentSession && !isAssessConducted && (
+                    statusLower.includes('interview') || statusLower.includes('tech') || statusLower.includes('selected') || statusLower.includes('hired') || statusLower.includes('offer') || isOfferIssued
+                  );
 
-                  // Gating 1: Tech requires ATS and Online Assessment passed
-                  const isTechEligible = isAtsPassed && isAssessPassed && !isAssessFailed;
+                  const isAssessPassed = isAssessConducted && (
+                    (actualAssessScore !== null && actualAssessScore >= passThreshold) ||
+                    statusLower.includes('assessment pass') ||
+                    recAssess?.status === 'Passed'
+                  );
+                  const isAssessFailed = isAssessConducted && (
+                    (actualAssessScore !== null && actualAssessScore < passThreshold) ||
+                    statusLower.includes('assessment fail') ||
+                    recAssess?.status === 'Failed'
+                  );
+                  const isAssessScheduled = !isAssessConducted && Boolean(
+                    recAssess?.status === 'Scheduled' || statusLower.includes('assessment scheduled')
+                  );
+                  const isAssessInProgress = !isAssessConducted && Boolean(
+                    recAssess?.status === 'active' || recAssess?.status === 'in_progress'
+                  );
+
+                  // Gating 1: Tech requires ATS and (Assessment passed OR Assessment waived/direct interview OR Tech round scheduled)
+                  const isTechEligible = isAtsPassed && (isAssessPassed || isAssessmentWaived || Boolean(techRound) || Boolean(recInt) || statusLower.includes('interview') || statusLower.includes('tech') || isOfferIssued) && !isAssessFailed;
                   const techScore = techRound?.technical_score ?? techRound?.overall_score ?? (recInt?.technical_score ?? null);
                   const isTechFailed = !isOfferIssued && (statusLower.includes('tech failed') || statusLower.includes('technical failed') || (statusLower === 'rejected' && !behavRound && !hrRound) || techRound?.status === 'Failed');
                   const isTechPassed = isOfferIssued || (!isTechFailed && (
@@ -582,7 +598,7 @@ export const MyApplicationsPage: React.FC = () => {
                             <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">Stage 3</span>
                           </div>
 
-                          {assessScore !== null || isAssessPassed ? (
+                          {isAssessConducted ? (
                             <div className="space-y-1.5 text-xs">
                               <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
                                 <span>Status:</span>
@@ -592,7 +608,7 @@ export const MyApplicationsPage: React.FC = () => {
                               </div>
                               <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
                                 <span>Assessment Score:</span>
-                                <strong className={`font-black text-sm ${isAssessFailed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{assessScore ?? (isAssessPassed ? passThreshold : 0)}%</strong>
+                                <strong className={`font-black text-sm ${isAssessFailed ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{actualAssessScore}%</strong>
                               </div>
                               <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 text-[11px] font-semibold">
                                 <span>Duration:</span>
@@ -612,6 +628,31 @@ export const MyApplicationsPage: React.FC = () => {
                                 <span>{recAssess?.duration_minutes || 30} Mins</span>
                               </div>
                             </div>
+                          ) : isAssessInProgress ? (
+                            <div className="space-y-1.5 text-xs">
+                              <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
+                                <span>Status:</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 animate-pulse">
+                                  In Progress
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 text-[11px] font-semibold">
+                                <span>Duration:</span>
+                                <span>{recAssess?.duration_minutes || 30} Mins</span>
+                              </div>
+                            </div>
+                          ) : isAssessmentWaived ? (
+                            <div className="space-y-1 py-1">
+                              <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium text-xs">
+                                <span>Status:</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                  Waived (Direct Interview)
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium leading-relaxed mt-1">
+                                Advanced directly to interview round without online assessment.
+                              </p>
+                            </div>
                           ) : (
                             <div className="space-y-1 py-1">
                               <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400">Not Scheduled</p>
@@ -622,14 +663,21 @@ export const MyApplicationsPage: React.FC = () => {
                           )}
                         </div>
 
-                        {recAssess?.session_id && (
+                        {recAssess?.session_id && (isAssessScheduled || isAssessInProgress) ? (
                           <button
                             onClick={() => navigate(`/assessment/exam?session=${recAssess.session_id}`)}
                             className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                           >
-                            <span>{recAssess.status === 'Completed' ? 'View Assessment Report' : 'Start Assessment'}</span>
+                            <span>{isAssessInProgress ? 'Resume Assessment' : 'Start Assessment'}</span>
                           </button>
-                        )}
+                        ) : isAssessConducted && recAssess?.session_id ? (
+                          <button
+                            onClick={() => navigate(`/assessment/exam?session=${recAssess.session_id}`)}
+                            className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <span>View Assessment Report</span>
+                          </button>
+                        ) : null}
                       </div>
 
                       {/* STAGE 4: TECHNICAL INTERVIEW */}
@@ -682,15 +730,15 @@ export const MyApplicationsPage: React.FC = () => {
                               <div className="grid grid-cols-3 gap-1 text-[10px] font-bold text-center pt-0.5">
                                 <div className="p-1 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
                                   <span className="text-slate-400 block text-[8px]">TECH</span>
-                                  <span className="text-slate-800 dark:text-slate-200">{techRound?.technical_score ?? (isTechConducted ? techScore : 0)}%</span>
+                                  <span className="text-slate-800 dark:text-slate-200">{techRound?.technical_score ?? (isTechConducted && techScore !== null ? techScore : 0)}%</span>
                                 </div>
                                 <div className="p-1 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
                                   <span className="text-slate-400 block text-[8px]">COMM</span>
-                                  <span className="text-slate-800 dark:text-slate-200">{techRound?.communication_score ?? (isTechConducted ? 80.9 : 0)}%</span>
+                                  <span className="text-slate-800 dark:text-slate-200">{techRound?.communication_score ?? (isTechConducted && techScore !== null ? techScore : 0)}%</span>
                                 </div>
                                 <div className="p-1 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
                                   <span className="text-slate-400 block text-[8px]">CONF</span>
-                                  <span className="text-slate-800 dark:text-slate-200">{techRound?.confidence_score ?? (isTechConducted ? 83.7 : 0)}%</span>
+                                  <span className="text-slate-800 dark:text-slate-200">{techRound?.confidence_score ?? (isTechConducted && techScore !== null ? techScore : 0)}%</span>
                                 </div>
                               </div>
                             </div>
@@ -789,11 +837,11 @@ export const MyApplicationsPage: React.FC = () => {
                               </div>
                               <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
                                 <span>Behavioral Score:</span>
-                                <strong className="text-blue-600 dark:text-blue-400 font-black text-sm">{isBehavConducted ? (behavScore ?? 82) : 0}%</strong>
+                                <strong className="text-blue-600 dark:text-blue-400 font-black text-sm">{isBehavConducted ? (behavScore ?? 0) : 0}%</strong>
                               </div>
                               <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 text-[11px] font-semibold">
                                 <span>Communication / EQ:</span>
-                                <span className="font-bold text-slate-800 dark:text-slate-200">{behavRound?.communication_score ?? (isBehavConducted ? 85 : 0)}%</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200">{behavRound?.communication_score ?? (isBehavConducted && behavScore !== null ? behavScore : 0)}%</span>
                               </div>
                             </div>
                           ) : isBehavScheduled ? (
