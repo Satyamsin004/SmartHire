@@ -229,10 +229,20 @@ export const CandidateDashboard: React.FC = () => {
 
   const safeMetrics = metrics || {};
 
-  // Dynamic Candidate Pipeline Metrics for Donut Pie Chart
-  const totalInterviewsConducted = Number(safeMetrics.interviews_completed ?? (history || []).length ?? 0);
-  const totalOffersReceived = Number(safeMetrics.total_offers ?? (offers || []).length ?? 0);
-  const totalJobsApplied = Number(safeMetrics.jobs_applied ?? (myApplications || []).length ?? 0);
+  // Calculate completed interviews from history with status or valid scores
+  const completedHistory = (history || []).filter((h: any) => {
+    const st = (h.status || '').toLowerCase();
+    const sc = Number(h.score ?? h.overall_score ?? 0);
+    return st === 'completed' || sc > 0;
+  });
+
+  // Dynamic Candidate Pipeline Metrics for Donut Pie Chart & Top Cards
+  const totalInterviewsConducted = Math.max(
+    Number(safeMetrics.interviews_completed || 0),
+    completedHistory.length
+  );
+  const totalOffersReceived = Math.max(Number(safeMetrics.total_offers || 0), (offers || []).length);
+  const totalJobsApplied = Math.max(Number(safeMetrics.jobs_applied || 0), (myApplications || []).length);
   const totalPipelineActions = totalInterviewsConducted + totalOffersReceived + totalJobsApplied;
 
   const candidatePieData = [
@@ -241,20 +251,67 @@ export const CandidateDashboard: React.FC = () => {
     { name: 'Jobs Applied', value: totalJobsApplied, color: '#06B6D4' },
   ];
 
+  const historyAvgScore = completedHistory.length > 0
+    ? Math.round(completedHistory.reduce((acc: number, h: any) => acc + Number(h.score ?? h.overall_score ?? 0), 0) / completedHistory.length)
+    : 0;
+
+  const effectiveAvgScore = Number(safeMetrics.avg_interview_score) > 0
+    ? Math.round(Number(safeMetrics.avg_interview_score))
+    : historyAvgScore;
+
   const hasInterviewData = Boolean(
     totalInterviewsConducted > 0 &&
-    (Number(safeMetrics.avg_interview_score) > 0 || (trendData?.timeline && trendData.timeline.length > 0))
+    (effectiveAvgScore > 0 || (trendData?.timeline && trendData.timeline.length > 0))
   );
 
   const overallReadinessScore = hasInterviewData
-    ? Math.round(Number(safeMetrics.readiness_score) || Number(safeMetrics.avg_interview_score) || 0)
+    ? Math.round(
+        Number(safeMetrics.readiness_score) > 0
+          ? Number(safeMetrics.readiness_score)
+          : (effectiveAvgScore > 0 ? Math.min(100, Math.round(effectiveAvgScore * 0.7 + Math.min(30, (safeMetrics.profile_completion || 20) * 0.3))) : 0)
+      )
     : 0;
+
   const candidateCompetencyPieData = hasInterviewData ? [
-    { name: 'Technical Depth', value: Math.max(10, Math.round(trendData?.summary?.latest_score ?? safeMetrics.avg_technical ?? safeMetrics.avg_interview_score ?? 0)), color: '#8B5CF6' },
-    { name: 'Communication', value: Math.max(10, Math.round(safeMetrics.avg_communication ?? 0)), color: '#3B82F6' },
-    { name: 'Confidence', value: Math.max(10, Math.round(safeMetrics.avg_confidence ?? 0)), color: '#10B981' },
-    { name: 'Professionalism', value: Math.max(10, Math.round(safeMetrics.avg_professionalism ?? 0)), color: '#F59E0B' },
+    { name: 'Technical Depth', value: Math.max(10, Math.round(trendData?.summary?.latest_score ?? safeMetrics.avg_technical ?? effectiveAvgScore)), color: '#8B5CF6' },
+    { name: 'Communication', value: Math.max(10, Math.round(safeMetrics.avg_communication ?? Math.max(50, effectiveAvgScore - 5))), color: '#3B82F6' },
+    { name: 'Confidence', value: Math.max(10, Math.round(safeMetrics.avg_confidence ?? Math.max(50, effectiveAvgScore - 5))), color: '#10B981' },
+    { name: 'Professionalism', value: Math.max(10, Math.round(safeMetrics.avg_professionalism ?? effectiveAvgScore)), color: '#F59E0B' },
   ] : [];
+
+  const effectiveTimeline = (trendData && trendData.total_interviews > 0 && trendData.timeline && trendData.timeline.length > 0)
+    ? trendData.timeline
+    : (completedHistory.length > 0
+        ? [...completedHistory]
+            .sort((a: any, b: any) => new Date(a.started_at || a.created_at || 0).getTime() - new Date(b.started_at || b.created_at || 0).getTime())
+            .map((h: any, idx: number) => ({
+              session_id: h.id || h.session_id,
+              date: h.started_at ? h.started_at.split('T')[0] : 'Recent',
+              display_date: h.started_at ? new Date(h.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : `Session ${idx + 1}`,
+              title: h.title || h.role_target || 'Interview Session',
+              role_target: h.role_target || 'Software Engineer',
+              round_type: h.round_type || 'Technical',
+              overall_score: Math.round(Number(h.score ?? h.overall_score ?? 0)),
+              technical_score: Math.round(Number(h.technical_score ?? h.score ?? h.overall_score ?? 0)),
+              communication_score: Math.round(Number(h.communication_score ?? Math.max(50, Number(h.score ?? h.overall_score ?? 0) - 5))),
+              confidence_score: Math.round(Number(h.confidence_score ?? Math.max(50, Number(h.score ?? h.overall_score ?? 0) - 5))),
+              professionalism_score: Math.round(Number(h.professionalism_score ?? Number(h.score ?? h.overall_score ?? 0))),
+              recommendation: h.recommendation || 'Shortlist'
+            }))
+        : []);
+
+  const effectiveSummary = (trendData && trendData.summary && trendData.total_interviews > 0)
+    ? trendData.summary
+    : (completedHistory.length > 0 ? {
+        latest_score: Math.round(Number(completedHistory[0].score ?? completedHistory[0].overall_score ?? 0)),
+        previous_score: completedHistory.length > 1 ? Math.round(Number(completedHistory[1].score ?? completedHistory[1].overall_score ?? 0)) : null,
+        score_change: completedHistory.length > 1
+          ? Math.round(Number(completedHistory[0].score ?? completedHistory[0].overall_score ?? 0) - Number(completedHistory[1].score ?? completedHistory[1].overall_score ?? 0))
+          : 0,
+        average_score: historyAvgScore
+      } : null);
+
+  const hasTimeline = Boolean(effectiveTimeline && effectiveTimeline.length > 0);
 
   const getCurrentStageIndex = () => {
     const current = safeMetrics.pipeline_stage || 'Not Started';
@@ -385,12 +442,12 @@ export const CandidateDashboard: React.FC = () => {
                 {
                   label: 'Overall Readiness',
                   value: hasInterviewData ? `${overallReadinessScore}%` : 'Not evaluated yet',
-                  subtext: `${safeMetrics.interviews_completed || 0} Evaluated Session${safeMetrics.interviews_completed === 1 ? '' : 's'}`,
+                  subtext: `${totalInterviewsConducted} Evaluated Session${totalInterviewsConducted === 1 ? '' : 's'}`,
                 },
                 {
                   label: 'Active Pipeline',
                   value: `${safeMetrics.active_applications || 0} Active`,
-                  subtext: `${safeMetrics.total_offers || 0} Offer${safeMetrics.total_offers === 1 ? '' : 's'} Extended`,
+                  subtext: `${totalOffersReceived} Offer${totalOffersReceived === 1 ? '' : 's'} Extended`,
                 },
               ]}
               actionButton={{
@@ -633,13 +690,13 @@ export const CandidateDashboard: React.FC = () => {
         {/* Essential Core Recruitment Funnel Cards - Pinterest Glassmorphic Bento Tiles */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3.5">
           {[
-            { label: 'Jobs Applied', value: safeMetrics.jobs_applied, badge: 'Targeted', icon: Briefcase, color: 'text-indigo-600 dark:text-indigo-400', iconBg: 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(99,102,241,0.35)]', lineBg: 'bg-gradient-to-r from-indigo-500 to-blue-400' },
+            { label: 'Jobs Applied', value: totalJobsApplied, badge: 'Targeted', icon: Briefcase, color: 'text-indigo-600 dark:text-indigo-400', iconBg: 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(99,102,241,0.35)]', lineBg: 'bg-gradient-to-r from-indigo-500 to-blue-400' },
             { label: 'Under Review', value: safeMetrics.active_applications, badge: 'Active', icon: Clock, color: 'text-amber-600 dark:text-amber-400', iconBg: 'bg-amber-500/15 text-amber-400 border border-amber-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(245,158,11,0.35)]', lineBg: 'bg-gradient-to-r from-amber-500 to-orange-400' },
             { label: 'ATS Passed', value: safeMetrics.ats_passed, badge: 'Qualified', icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', iconBg: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(16,185,129,0.35)]', lineBg: 'bg-gradient-to-r from-emerald-500 to-teal-400' },
             { label: 'ATS Rejected', value: safeMetrics.ats_rejected, badge: 'Screened', icon: XCircle, color: 'text-rose-600 dark:text-rose-400', iconBg: 'bg-rose-500/15 text-rose-400 border border-rose-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(244,63,94,0.35)]', lineBg: 'bg-gradient-to-r from-rose-500 to-pink-400' },
             { label: 'Upcoming', value: safeMetrics.interviews_scheduled, badge: 'Scheduled', icon: Calendar, color: 'text-violet-600 dark:text-violet-400', iconBg: 'bg-violet-500/15 text-violet-400 border border-violet-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(139,92,246,0.35)]', lineBg: 'bg-gradient-to-r from-violet-500 to-purple-400' },
-            { label: 'Completed', value: safeMetrics.interviews_completed, badge: 'Evaluated', icon: Award, color: 'text-cyan-600 dark:text-cyan-400', iconBg: 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(6,182,212,0.35)]', lineBg: 'bg-gradient-to-r from-cyan-500 to-sky-400' },
-            { label: 'Total Offers', value: safeMetrics.total_offers, badge: 'Offers 🏆', icon: Trophy, color: 'text-amber-500 dark:text-amber-300', iconBg: 'bg-amber-400/20 text-amber-300 border border-amber-400/40 shadow-[0_0_12px_rgba(251,191,36,0.2)]', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(251,191,36,0.4)]', lineBg: 'bg-gradient-to-r from-amber-400 to-yellow-300' }
+            { label: 'Completed', value: totalInterviewsConducted, badge: 'Evaluated', icon: Award, color: 'text-cyan-600 dark:text-cyan-400', iconBg: 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/25', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(6,182,212,0.35)]', lineBg: 'bg-gradient-to-r from-cyan-500 to-sky-400' },
+            { label: 'Total Offers', value: totalOffersReceived, badge: 'Offers 🏆', icon: Trophy, color: 'text-amber-500 dark:text-amber-300', iconBg: 'bg-amber-400/20 text-amber-300 border border-amber-400/40 shadow-[0_0_12px_rgba(251,191,36,0.2)]', glow: 'hover:shadow-[0_8px_25px_-5px_rgba(251,191,36,0.4)]', lineBg: 'bg-gradient-to-r from-amber-400 to-yellow-300' }
           ].map((stat, i) => {
             const Icon = stat.icon;
             return (
@@ -681,18 +738,18 @@ export const CandidateDashboard: React.FC = () => {
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800">
                   HISTORICAL PERFORMANCE
                 </span>
-                {trendData && trendData.total_interviews >= 2 && (
+                {((trendData && trendData.total_interviews >= 2) || effectiveTimeline.length >= 2) && (
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                    trendData.overall_trend === 'Improving'
+                    (trendData?.overall_trend || (effectiveTimeline.length >= 2 && effectiveTimeline[effectiveTimeline.length - 1].overall_score >= effectiveTimeline[0].overall_score ? 'Improving' : 'Stable')) === 'Improving'
                       ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
-                      : trendData.overall_trend === 'Declining'
+                      : (trendData?.overall_trend || 'Stable') === 'Declining'
                       ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
                   }`}>
-                    {trendData.overall_trend === 'Improving' && <TrendingUp className="w-3 h-3" />}
-                    {trendData.overall_trend === 'Declining' && <TrendingDown className="w-3 h-3" />}
-                    {trendData.overall_trend === 'Stable' && <Minus className="w-3 h-3" />}
-                    Overall: {trendData.overall_trend}
+                    {(trendData?.overall_trend === 'Improving' || (!trendData?.overall_trend && effectiveTimeline.length >= 2 && effectiveTimeline[effectiveTimeline.length - 1].overall_score >= effectiveTimeline[0].overall_score)) && <TrendingUp className="w-3 h-3" />}
+                    {trendData?.overall_trend === 'Declining' && <TrendingDown className="w-3 h-3" />}
+                    {(trendData?.overall_trend === 'Stable' || (!trendData?.overall_trend && effectiveTimeline.length >= 2 && effectiveTimeline[effectiveTimeline.length - 1].overall_score === effectiveTimeline[0].overall_score)) && <Minus className="w-3 h-3" />}
+                    Overall: {trendData?.overall_trend || (effectiveTimeline.length >= 2 && effectiveTimeline[effectiveTimeline.length - 1].overall_score >= effectiveTimeline[0].overall_score ? 'Improving' : 'Stable')}
                   </span>
                 )}
               </div>
@@ -704,7 +761,7 @@ export const CandidateDashboard: React.FC = () => {
               </p>
             </div>
 
-            {trendData && trendData.summary && trendData.total_interviews > 0 && (
+            {effectiveSummary && effectiveTimeline.length > 0 && (
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                   <button
@@ -737,21 +794,21 @@ export const CandidateDashboard: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-2xl border border-slate-200/60 dark:border-slate-700 text-center">
                     <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Latest</p>
-                    <p className="text-lg font-black text-slate-900 dark:text-white">{trendData.summary.latest_score || 0}%</p>
+                    <p className="text-lg font-black text-slate-900 dark:text-white">{effectiveSummary.latest_score || 0}%</p>
                   </div>
-                  {trendData.summary.previous_score !== null && (
+                  {effectiveSummary.previous_score !== null && (
                     <div className="bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-2xl border border-slate-200/60 dark:border-slate-700 text-center">
                       <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Change</p>
                       <p className={`text-lg font-black flex items-center justify-center gap-0.5 ${
-                        trendData.summary.score_change > 0 ? 'text-emerald-600 dark:text-emerald-400' : trendData.summary.score_change < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'
+                        effectiveSummary.score_change > 0 ? 'text-emerald-600 dark:text-emerald-400' : effectiveSummary.score_change < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'
                       }`}>
-                        {trendData.summary.score_change > 0 ? `+${trendData.summary.score_change}%` : `${trendData.summary.score_change}%`}
+                        {effectiveSummary.score_change > 0 ? `+${effectiveSummary.score_change}%` : `${effectiveSummary.score_change}%`}
                       </p>
                     </div>
                   )}
                   <div className="bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 rounded-2xl border border-slate-200/60 dark:border-slate-700 text-center">
                     <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Average</p>
-                    <p className="text-lg font-black text-slate-900 dark:text-white">{trendData.summary.average_score || 0}%</p>
+                    <p className="text-lg font-black text-slate-900 dark:text-white">{effectiveSummary.average_score || 0}%</p>
                   </div>
                 </div>
               </div>
@@ -761,10 +818,8 @@ export const CandidateDashboard: React.FC = () => {
           {/* Dual-Wave Spline & Chart Rendering */}
           {(() => {
             const hasTimeline = Boolean(
-              trendData &&
-              trendData.total_interviews > 0 &&
-              trendData.timeline &&
-              trendData.timeline.length > 0
+              effectiveTimeline &&
+              effectiveTimeline.length > 0
             );
 
             if (!hasTimeline) {
@@ -789,7 +844,7 @@ export const CandidateDashboard: React.FC = () => {
               );
             }
 
-            const dualWaveTimeline = trendData.timeline.map((t: any) => ({
+            const dualWaveTimeline = effectiveTimeline.map((t: any) => ({
               label: t.display_date || t.date || 'Session',
               primaryValue: t.overall_score ?? t.technical_score ?? 0,
               secondaryValue: t.communication_score ?? Math.max(0, (t.overall_score || 0) - 10),
@@ -846,7 +901,7 @@ export const CandidateDashboard: React.FC = () => {
                 ) : (
                   <div className="w-full h-72 min-h-[280px]" style={{ minHeight: '280px', height: '280px' }}>
                     <ResponsiveContainer width="100%" height={280} minHeight={280}>
-                      <LineChart data={trendData.timeline} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                      <LineChart data={effectiveTimeline} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-slate-800" />
                         <XAxis
                           dataKey="display_date"

@@ -23,27 +23,28 @@ async def get_candidate_trends(
     """Retrieves chronological performance trends comparing overall and category-level
     scores across all completed interviews.
     """
-    target_candidate_id = None
+    target_candidate_ids = None
 
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
-        cand = res_c.scalars().first()
-        if not cand:
+        cands = res_c.scalars().all()
+        if not cands:
             cand = Candidate(user_id=current_user.id, target_role="Software Engineer")
             db.add(cand)
             await db.flush()
-        target_candidate_id = cand.id
+            cands = [cand]
+        target_candidate_ids = [c.id for c in cands]
     elif current_user.role in ["recruiter", "admin"]:
         if not candidate_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="candidate_id query parameter is required for recruiter/admin requests."
             )
-        target_candidate_id = candidate_id
+        target_candidate_ids = [candidate_id]
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-    return await analytics_service.get_candidate_performance_trends(db, target_candidate_id)
+    return await analytics_service.get_candidate_performance_trends(db, target_candidate_ids)
 
 
 @router.get("/candidate/weak-areas", summary="Get Candidate Recurring Weak Areas & Predictions")
@@ -56,27 +57,28 @@ async def get_candidate_weak_areas(
     """Retrieves historical weak-area analysis identifying recurring weaknesses
     across completed interviews with evidence-based recommendations and verified taxonomy resources.
     """
-    target_candidate_id = None
+    target_candidate_ids = None
 
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
-        cand = res_c.scalars().first()
-        if not cand:
+        cands = res_c.scalars().all()
+        if not cands:
             cand = Candidate(user_id=current_user.id, target_role="Software Engineer")
             db.add(cand)
             await db.flush()
-        target_candidate_id = cand.id
+            cands = [cand]
+        target_candidate_ids = [c.id for c in cands]
     elif current_user.role in ["recruiter", "admin"]:
         if not candidate_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="candidate_id query parameter is required for recruiter/admin requests."
             )
-        target_candidate_id = candidate_id
+        target_candidate_ids = [candidate_id]
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-    return await analytics_service.get_candidate_weak_areas(db, target_candidate_id, threshold=threshold)
+    return await analytics_service.get_candidate_weak_areas(db, target_candidate_ids, threshold=threshold)
 
 
 @router.get("/candidates/ranking", summary="Get Recruiter Candidate Ranking Metrics")
@@ -105,26 +107,27 @@ async def get_candidate_skills(
     """Retrieves comprehensive skill-wise mastery metrics and observation telemetry across
     all completed interview sessions and verified resume skills.
     """
-    target_candidate_id = None
+    target_candidate_ids = None
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
-        cand = res_c.scalars().first()
-        if not cand:
+        cands = res_c.scalars().all()
+        if not cands:
             cand = Candidate(user_id=current_user.id, target_role="Software Engineer")
             db.add(cand)
             await db.flush()
-        target_candidate_id = cand.id
+            cands = [cand]
+        target_candidate_ids = [c.id for c in cands]
     elif current_user.role in ["recruiter", "admin"]:
         if not candidate_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="candidate_id query parameter is required for recruiter/admin requests."
             )
-        target_candidate_id = candidate_id
+        target_candidate_ids = [candidate_id]
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-    return await analytics_service.get_candidate_skill_analytics(db, target_candidate_id)
+    return await analytics_service.get_candidate_skill_analytics(db, target_candidate_ids)
 
 
 @router.get("/candidate/improvement-progress", summary="Get Candidate AI Feedback & Improvement Velocity")
@@ -136,15 +139,16 @@ async def get_candidate_improvement_progress(
     """Retrieves milestone achievements, score delta progression, coaching feedback,
     and improvement velocity across completed interview simulations.
     """
-    target_candidate_id = None
+    target_candidate_ids = None
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
-        cand = res_c.scalars().first()
-        if not cand:
+        cands = res_c.scalars().all()
+        if not cands:
             cand = Candidate(user_id=current_user.id, target_role="Software Engineer")
             db.add(cand)
             await db.flush()
-        target_candidate_id = cand.id
+            cands = [cand]
+        target_candidate_ids = [c.id for c in cands]
     elif current_user.role in ["recruiter", "admin"]:
         if not candidate_id:
             raise HTTPException(

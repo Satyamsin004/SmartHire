@@ -218,17 +218,19 @@ class AnalyticsService:
     async def get_candidate_weak_areas(
         self,
         db: AsyncSession,
-        candidate_id: str,
+        candidate_id: Any,
         threshold: float = WEAK_THRESHOLD
     ) -> Dict[str, Any]:
         """Identifies recurring weak areas across all completed interview sessions for a candidate.
         Calculates weakness frequency, average score, latest score, trend, severity, and recommendations.
         """
+        cand_ids = [candidate_id] if isinstance(candidate_id, str) else list(candidate_id)
+        session_completed_cond = (InterviewSession.status.in_(["completed", "Completed"])) | (ScoringReport.id.isnot(None))
         stmt = (
             select(InterviewSession, ScoringReport)
             .join(ScoringReport, ScoringReport.session_id == InterviewSession.id)
-            .where(InterviewSession.candidate_id == candidate_id)
-            .where(InterviewSession.status.in_(["completed", "Completed"]))
+            .where(InterviewSession.candidate_id.in_(cand_ids))
+            .where(session_completed_cond)
             .order_by(InterviewSession.started_at.asc())
         )
         res = await db.execute(stmt)
@@ -237,7 +239,7 @@ class AnalyticsService:
         total_interviews = len(records)
         if total_interviews == 0:
             return {
-                "candidate_id": candidate_id,
+                "candidate_id": cand_ids[0] if cand_ids else str(candidate_id),
                 "total_interviews": 0,
                 "weak_areas": [],
                 "message": "No completed interviews yet."
@@ -455,16 +457,18 @@ class AnalyticsService:
     async def get_candidate_performance_trends(
         self,
         db: AsyncSession,
-        candidate_id: str
+        candidate_id: Any
     ) -> Dict[str, Any]:
         """Calculates chronological performance trend across completed interviews.
         Compares overall, communication, confidence, technical, and professionalism scores.
         """
+        cand_ids = [candidate_id] if isinstance(candidate_id, str) else list(candidate_id)
+        session_completed_cond = (InterviewSession.status.in_(["completed", "Completed"])) | (ScoringReport.id.isnot(None))
         stmt = (
             select(InterviewSession, ScoringReport)
             .join(ScoringReport, ScoringReport.session_id == InterviewSession.id)
-            .where(InterviewSession.candidate_id == candidate_id)
-            .where(InterviewSession.status.in_(["completed", "Completed"]))
+            .where(InterviewSession.candidate_id.in_(cand_ids))
+            .where(session_completed_cond)
             .order_by(InterviewSession.started_at.asc(), ScoringReport.created_at.asc())
         )
         res = await db.execute(stmt)
@@ -473,7 +477,7 @@ class AnalyticsService:
         total_interviews = len(records)
         if total_interviews == 0:
             return {
-                "candidate_id": candidate_id,
+                "candidate_id": cand_ids[0] if cand_ids else str(candidate_id),
                 "total_interviews": 0,
                 "overall_trend": "Insufficient Data",
                 "summary": {
@@ -792,30 +796,32 @@ class AnalyticsService:
     async def get_candidate_skill_analytics(
         self,
         db: AsyncSession,
-        candidate_id: str
+        candidate_id: Any
     ) -> Dict[str, Any]:
         """Calculates comprehensive skill-wise analytics across all completed interview sessions
         and mock assessments for a candidate. Strictly requires completed evaluations.
         """
+        cand_ids = [candidate_id] if isinstance(candidate_id, str) else list(candidate_id)
+        session_completed_cond = (InterviewSession.status.in_(["completed", "Completed"])) | (ScoringReport.id.isnot(None))
         stmt = (
             select(InterviewSession, ScoringReport)
             .join(ScoringReport, ScoringReport.session_id == InterviewSession.id)
-            .where(InterviewSession.candidate_id == candidate_id)
-            .where(InterviewSession.status.in_(["completed", "Completed"]))
+            .where(InterviewSession.candidate_id.in_(cand_ids))
+            .where(session_completed_cond)
             .order_by(InterviewSession.started_at.asc())
         )
         res = await db.execute(stmt)
         records = res.all()
         scoring_reports = [r[1] for r in records if r[1]]
 
-        stmt_a = select(AssessmentResult).where(AssessmentResult.candidate_id == candidate_id)
+        stmt_a = select(AssessmentResult).where(AssessmentResult.candidate_id.in_(cand_ids))
         res_a = await db.execute(stmt_a)
         assessment_results = res_a.scalars().all()
 
         # If no interview and no mock assessment completed, return clear empty state (zero fake scores)
         if not scoring_reports and not assessment_results:
             return {
-                "candidate_id": candidate_id,
+                "candidate_id": cand_ids[0] if cand_ids else str(candidate_id),
                 "total_interviews": 0,
                 "total_skills_tracked": 0,
                 "category_averages": {},
@@ -830,7 +836,7 @@ class AnalyticsService:
         res_skills = await db.execute(
             select(ResumeSkill.skill_name)
             .join(Resume, Resume.id == ResumeSkill.resume_id)
-            .where(Resume.candidate_id == candidate_id)
+            .where(Resume.candidate_id.in_(cand_ids))
         )
         resume_skills_set = {s[0].strip().lower() for s in res_skills.all() if s[0]}
 
@@ -958,16 +964,18 @@ class AnalyticsService:
     async def get_candidate_improvement_progress(
         self,
         db: AsyncSession,
-        candidate_id: str
+        candidate_id: Any
     ) -> Dict[str, Any]:
         """Calculates performance improvement trajectory, milestone badges,
         coaching summary, and velocity across completed interviews.
         """
+        cand_ids = [candidate_id] if isinstance(candidate_id, str) else list(candidate_id)
+        session_completed_cond = (InterviewSession.status.in_(["completed", "Completed"])) | (ScoringReport.id.isnot(None))
         stmt = (
             select(InterviewSession, ScoringReport)
             .join(ScoringReport, ScoringReport.session_id == InterviewSession.id)
-            .where(InterviewSession.candidate_id == candidate_id)
-            .where(InterviewSession.status.in_(["completed", "Completed"]))
+            .where(InterviewSession.candidate_id.in_(cand_ids))
+            .where(session_completed_cond)
             .order_by(InterviewSession.started_at.asc())
         )
         res = await db.execute(stmt)
@@ -976,7 +984,7 @@ class AnalyticsService:
         total_interviews = len(records)
         if total_interviews == 0:
             return {
-                "candidate_id": candidate_id,
+                "candidate_id": cand_ids[0] if cand_ids else str(candidate_id),
                 "total_interviews": 0,
                 "has_data": False,
                 "improvement_velocity": 0.0,

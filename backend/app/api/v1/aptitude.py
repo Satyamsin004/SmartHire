@@ -270,12 +270,13 @@ async def get_assessment_history(
     sessions = []
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
-        cand = res_c.scalar_one_or_none()
-        if not cand:
+        cands = res_c.scalars().all()
+        if not cands:
             return []
+        cand_ids = [c.id for c in cands]
         res_sess = await db.execute(
             select(AssessmentSession)
-            .where(AssessmentSession.candidate_id == cand.id)
+            .where(AssessmentSession.candidate_id.in_(cand_ids))
             .order_by(AssessmentSession.created_at.desc())
         )
         sessions = res_sess.scalars().all()

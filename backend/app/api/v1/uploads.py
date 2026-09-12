@@ -26,8 +26,9 @@ async def _verify_session_access(session: InterviewSession, user: User, db: Asyn
         return
     if user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-        candidate = res_c.scalar_one_or_none()
-        if not candidate or session.candidate_id != candidate.id:
+        cands = res_c.scalars().all()
+        cand_ids = [c.id for c in cands]
+        if not cand_ids or (session.candidate_id and session.candidate_id not in cand_ids):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: You do not have access to this session."

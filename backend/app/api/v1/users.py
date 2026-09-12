@@ -218,14 +218,17 @@ async def get_candidate_metrics(
         }
 
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    candidate = res_c.scalars().first()
+    cands = res_c.scalars().all()
 
-    if not candidate:
+    if not cands:
         candidate = Candidate(user_id=user.id, target_role="Software Engineer")
         db.add(candidate)
         await db.commit()
         await db.refresh(candidate)
+        cands = [candidate]
 
+    cand_ids = [c.id for c in cands]
+    candidate = cands[0]
     c_id = candidate.id
 
     # 1. Job Applications Metrics
@@ -235,7 +238,7 @@ async def get_candidate_metrics(
         func.count(case(((JobApplication.ats_score >= 80.0) | (JobApplication.status.in_(["Screening Passed", "Shortlisted", "SHORTLISTED"])), 1))).label("ats_passed"),
         func.count(case((((JobApplication.ats_score < 80.0) & (JobApplication.ats_score.isnot(None))) | (JobApplication.status == "Rejected"), 1))).label("ats_rejected"),
         func.avg(JobApplication.ats_score).label("avg_ats")
-    ).where(JobApplication.candidate_id == c_id)
+    ).where(JobApplication.candidate_id.in_(cand_ids))
     
     res_apps = (await db.execute(app_query)).one()
     jobs_applied = res_apps.total_applied or 0
@@ -246,7 +249,7 @@ async def get_candidate_metrics(
 
     # 2. Saved Jobs Count
     res_saved = await db.execute(
-        select(func.count(SavedJob.id)).where(SavedJob.candidate_id == c_id)
+        select(func.count(SavedJob.id)).where(SavedJob.candidate_id.in_(cand_ids))
     )
     saved_jobs = res_saved.scalar() or 0
 
@@ -255,26 +258,27 @@ async def get_candidate_metrics(
         select(
             func.count(case((ScheduledInterview.status.in_(["Scheduled", "Upcoming"]), 1))).label("scheduled"),
             func.count(case((ScheduledInterview.status == "Completed", 1))).label("completed")
-        ).where(ScheduledInterview.candidate_id == c_id)
+        ).where(ScheduledInterview.candidate_id.in_(cand_ids))
     )
     sched_row = res_sched.one()
     interviews_scheduled = sched_row.scheduled or 0
     recruiter_interviews_completed = sched_row.completed or 0
 
-    # 4. Mock Interviews & AI Scoring Reports (strictly completed sessions)
+    # 4. Mock Interviews & AI Scoring Reports (completed sessions or sessions with finalized scoring reports)
+    session_completed_cond = (InterviewSession.status.in_(["completed", "Completed"])) | (ScoringReport.id.isnot(None))
     res_mock = await db.execute(
         select(
-            func.count(case((InterviewSession.status.in_(["completed", "Completed"]), 1))).label("mock_count"),
-            func.avg(case((InterviewSession.status.in_(["completed", "Completed"]), ScoringReport.overall_score), else_=None)).label("avg_score"),
-            func.max(case((InterviewSession.status.in_(["completed", "Completed"]), ScoringReport.overall_score), else_=None)).label("best_score"),
-            func.count(case(((InterviewSession.status.in_(["completed", "Completed"])) & (ScoringReport.overall_score >= 80.0), 1))).label("passed_count"),
-            func.avg(case((InterviewSession.status.in_(["completed", "Completed"]), ScoringReport.communication_score), else_=None)).label("avg_comm"),
-            func.avg(case((InterviewSession.status.in_(["completed", "Completed"]), ScoringReport.confidence_score), else_=None)).label("avg_conf"),
-            func.avg(case((InterviewSession.status.in_(["completed", "Completed"]), ScoringReport.technical_score), else_=None)).label("avg_tech"),
-            func.avg(case((InterviewSession.status.in_(["completed", "Completed"]), ScoringReport.professionalism_score), else_=None)).label("avg_prof")
+            func.count(case((session_completed_cond, 1))).label("mock_count"),
+            func.avg(case((session_completed_cond, ScoringReport.overall_score), else_=None)).label("avg_score"),
+            func.max(case((session_completed_cond, ScoringReport.overall_score), else_=None)).label("best_score"),
+            func.count(case(((session_completed_cond) & (ScoringReport.overall_score >= 80.0), 1))).label("passed_count"),
+            func.avg(case((session_completed_cond, ScoringReport.communication_score), else_=None)).label("avg_comm"),
+            func.avg(case((session_completed_cond, ScoringReport.confidence_score), else_=None)).label("avg_conf"),
+            func.avg(case((session_completed_cond, ScoringReport.technical_score), else_=None)).label("avg_tech"),
+            func.avg(case((session_completed_cond, ScoringReport.professionalism_score), else_=None)).label("avg_prof")
         )
         .outerjoin(ScoringReport, ScoringReport.session_id == InterviewSession.id)
-        .where(InterviewSession.candidate_id == c_id)
+        .where(InterviewSession.candidate_id.in_(cand_ids))
     )
     mock_row = res_mock.one()
     mock_interviews_completed = mock_row.mock_count or 0
@@ -287,7 +291,7 @@ async def get_candidate_metrics(
     avg_technical = round(float(mock_row.avg_tech), 1) if mock_row.avg_tech is not None else 0.0
     avg_professionalism = round(float(mock_row.avg_prof), 1) if mock_row.avg_prof is not None else 0.0
 
-    interviews_completed = mock_interviews_completed + recruiter_interviews_completed
+    interviews_completed = max(mock_interviews_completed, recruiter_interviews_completed)
 
     # 5. Offer Letters Metrics
     res_offers = await db.execute(
@@ -296,7 +300,7 @@ async def get_candidate_metrics(
             func.count(case((OfferLetter.status == "Accepted", 1))).label("accepted"),
             func.count(case((OfferLetter.status.in_(["Sent", "Pending"]), 1))).label("pending"),
             func.count(case((OfferLetter.status.in_(["Declined", "Rejected"]), 1))).label("rejected")
-        ).where(OfferLetter.candidate_id == c_id)
+        ).where(OfferLetter.candidate_id.in_(cand_ids))
     )
     offer_row = res_offers.one()
     total_offers = offer_row.total_offers or 0
@@ -306,13 +310,13 @@ async def get_candidate_metrics(
 
     # 6. Resume Views by Recruiters
     res_views = await db.execute(
-        select(func.count(ResumeView.id)).where(ResumeView.candidate_id == c_id)
+        select(func.count(ResumeView.id)).where(ResumeView.candidate_id.in_(cand_ids))
     )
     resume_views = res_views.scalar() or 0
 
     # 7. Resumes & Versioning
     res_resumes = await db.execute(
-        select(Resume).where(Resume.candidate_id == c_id).order_by(Resume.created_at.desc())
+        select(Resume).where(Resume.candidate_id.in_(cand_ids)).order_by(Resume.created_at.desc())
     )
     resumes_list = res_resumes.scalars().all()
     latest_resume = resumes_list[0] if resumes_list else None
@@ -322,7 +326,7 @@ async def get_candidate_metrics(
     res_skills = await db.execute(
         select(func.count(func.distinct(ResumeSkill.skill_name)))
         .join(Resume, ResumeSkill.resume_id == Resume.id)
-        .where(Resume.candidate_id == c_id)
+        .where(Resume.candidate_id.in_(cand_ids))
     )
     skills_extracted = res_skills.scalar() or 0
 
@@ -380,7 +384,7 @@ async def get_candidate_metrics(
     res_app_list = await db.execute(
         select(JobApplication, JobPosting.title)
         .join(JobPosting, JobApplication.job_id == JobPosting.id)
-        .where(JobApplication.candidate_id == c_id)
+        .where(JobApplication.candidate_id.in_(cand_ids))
         .order_by(JobApplication.applied_at.asc())
     )
     all_apps = res_app_list.all()
@@ -403,10 +407,12 @@ async def get_candidate_metrics(
             ScoringReport.weaknesses
         )
         .join(InterviewSession, ScoringReport.session_id == InterviewSession.id)
-        .where(InterviewSession.candidate_id == c_id)
+        .where(InterviewSession.candidate_id.in_(cand_ids))
         .order_by(ScoringReport.created_at.asc())
     )
     all_reports = res_mock_list.all()
+    if all_reports and interviews_completed < len(all_reports):
+        interviews_completed = len(all_reports)
 
     collected_strengths = []
     collected_weaknesses = []

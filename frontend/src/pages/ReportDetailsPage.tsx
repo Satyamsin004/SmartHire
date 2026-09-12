@@ -38,9 +38,40 @@ export const ReportDetailsPage: React.FC = () => {
   const isRecruiter = currentUser?.role === 'recruiter';
 
   // Dashboard / All Reports State
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [assessments, setAssessments] = useState<any[]>([]);
-  const [metrics, setMetrics] = useState<any>(null);
+  const [sessions, setSessions] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('smarthire_cand_dash_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.history && Array.isArray(parsed.history) && parsed.history.length > 0) {
+          return parsed.history;
+        }
+      }
+    } catch {}
+    return [];
+  });
+  const [assessments, setAssessments] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('smarthire_cand_dash_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.assessments && Array.isArray(parsed.assessments) && parsed.assessments.length > 0) {
+          return parsed.assessments;
+        }
+      }
+    } catch {}
+    return [];
+  });
+  const [metrics, setMetrics] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('smarthire_cand_dash_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.metrics) return parsed.metrics;
+      }
+    } catch {}
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>('all');
   const [compareSessions, setCompareSessions] = useState<string[]>([]);
@@ -205,18 +236,12 @@ export const ReportDetailsPage: React.FC = () => {
         try {
           const res = await api.get(`/uploads/interview-sessions/${sessionId}/recordings`);
           if (isCancelled) return;
-          if (res.data && Array.isArray(res.data) && res.data.length > 0 && res.data[0].file_path) {
-            const streamRes = await api.get(`/uploads/interview-sessions/${sessionId}/recordings/stream`, {
-              responseType: 'blob',
-              timeout: 25000
-            });
-            if (isCancelled) return;
-            if (streamRes.data && streamRes.data.size > 1000) {
-              const freshUrl = URL.createObjectURL(streamRes.data);
-              setRecordingVideoUrl(freshUrl);
-              setVideoError(false);
-              return;
-            }
+          if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+            const token = localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+            const directStreamUrl = `/api/v1/uploads/interview-sessions/${sessionId}/recordings/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+            setRecordingVideoUrl(directStreamUrl);
+            setVideoError(false);
+            return;
           }
           if (!isCancelled) setVideoError(true);
         } catch {
@@ -292,6 +317,17 @@ export const ReportDetailsPage: React.FC = () => {
       }
       if (aptRes.status === 'fulfilled' && aptRes.value?.data) {
         setAssessments(aptRes.value.data);
+      }
+      if (!isRecruiter && histRes.status === 'fulfilled' && histRes.value?.data) {
+        try {
+          const prev = JSON.parse(localStorage.getItem('smarthire_cand_dash_cache') || '{}');
+          localStorage.setItem('smarthire_cand_dash_cache', JSON.stringify({
+            ...prev,
+            history: histRes.value.data,
+            metrics: (metRes.status === 'fulfilled' && metRes.value?.data) ? metRes.value.data : prev.metrics,
+            assessments: (aptRes.status === 'fulfilled' && aptRes.value?.data) ? aptRes.value.data : prev.assessments,
+          }));
+        } catch {}
       }
     } catch (err) {
       console.error('Fetch dashboard data error:', err);
@@ -378,15 +414,26 @@ export const ReportDetailsPage: React.FC = () => {
   // 1. DASHBOARD & HISTORY VIEW (/progress or /reports without ?session)
   // =========================================================================
   if (!sessionId) {
-    // Collect sessions that have valid numerical scores
+    // Collect completed sessions and sessions with numerical scores
+    const completedOrScoredSessions = sessions.filter(
+      (s) => (s.score != null && !isNaN(Number(s.score)) && Number(s.score) > 0) ||
+             (s.overall_score != null && !isNaN(Number(s.overall_score)) && Number(s.overall_score) > 0) ||
+             (s.status || '').toLowerCase() === 'completed'
+    );
     const sessionsWithScores = sessions.filter(
-      (s) => (s.score != null && !isNaN(Number(s.score))) || (s.overall_score != null && !isNaN(Number(s.overall_score)))
+      (s) => (s.score != null && !isNaN(Number(s.score)) && Number(s.score) > 0) ||
+             (s.overall_score != null && !isNaN(Number(s.overall_score)) && Number(s.overall_score) > 0)
+    );
+
+    const effectiveCompletedInterviews = Math.max(
+      Number(metrics?.interviews_completed || 0),
+      completedOrScoredSessions.length
     );
 
     // Derived average interview score
     const calculatedAvgInterview = sessionsWithScores.length > 0
       ? Math.round(sessionsWithScores.reduce((acc, s) => acc + Number(s.score ?? s.overall_score ?? 0), 0) / sessionsWithScores.length)
-      : 0;
+      : (sessions.length > 0 && (sessions[0].score || sessions[0].overall_score) ? Math.round(Number(sessions[0].score || sessions[0].overall_score)) : 0);
     const avgInterviewScore = (metrics?.avg_interview_score != null && Number(metrics.avg_interview_score) > 0)
       ? Math.round(Number(metrics.avg_interview_score))
       : calculatedAvgInterview;
@@ -405,7 +452,9 @@ export const ReportDetailsPage: React.FC = () => {
                 score: Math.round(Number(s.score ?? s.overall_score ?? 0)),
                 title: s.title || s.role_target || `Interview #${idx + 1}`
               }))
-          : []);
+          : (avgInterviewScore > 0 && effectiveCompletedInterviews > 0
+              ? [{ date: 'Recent', score: avgInterviewScore, title: 'Technical Interview' }]
+              : []));
 
     // Derived ATS trend: use metrics chart if available, or assessments, or synthesize
     const atsTrend: Array<{ date: string; score: number; title: string }> = (
@@ -420,17 +469,18 @@ export const ReportDetailsPage: React.FC = () => {
             }))
           : ((metrics?.avg_ats_score != null && Number(metrics.avg_ats_score) > 0)
               ? [{ date: 'Recent', score: Math.round(Number(metrics.avg_ats_score)), title: 'ATS Resume Screening' }]
-              : (sessions.length > 0 ? [{ date: 'Active', score: 80, title: 'Profile ATS Screening' }] : [])));
+              : (effectiveCompletedInterviews > 0 ? [{ date: 'Recent', score: Math.round(Number(metrics?.avg_ats_score || 80)), title: 'Profile ATS Screening' }] : [])));
 
     // Derived Average ATS Score
     const avgAtsScore = (metrics?.avg_ats_score != null && Number(metrics.avg_ats_score) > 0)
       ? Math.round(Number(metrics.avg_ats_score))
       : (atsTrend.length > 0
           ? Math.round(atsTrend.reduce((acc, t) => acc + t.score, 0) / atsTrend.length)
-          : (sessions.length > 0 ? 80 : 0));
+          : (effectiveCompletedInterviews > 0 ? 80 : 0));
 
     const hasInterviewHistory = Boolean(
       (metrics?.interviews_completed && Number(metrics.interviews_completed) > 0) ||
+      effectiveCompletedInterviews > 0 ||
       sessionsWithScores.length > 0 ||
       avgInterviewScore > 0
     );
@@ -441,8 +491,8 @@ export const ReportDetailsPage: React.FC = () => {
           metrics?.readiness_score != null && Number(metrics.readiness_score) > 0
             ? Number(metrics.readiness_score)
             : (avgInterviewScore > 0
-                ? Math.min(100, Math.round(avgInterviewScore * 0.45 + (avgAtsScore || 75) * 0.35 + Math.min(sessions.length * 2, 20)))
-                : (sessions.length > 0 ? 75 : 0))
+                ? Math.min(100, Math.round(avgInterviewScore * 0.45 + (avgAtsScore || 75) * 0.35 + Math.min(effectiveCompletedInterviews * 2, 20)))
+                : (effectiveCompletedInterviews > 0 ? 75 : 0))
         )
       : 0;
 
@@ -563,7 +613,7 @@ export const ReportDetailsPage: React.FC = () => {
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 {isRecruiter ? 'Completed Evaluations' : 'Completed Interviews'}
               </span>
-              <p className="text-2xl font-black text-brand-ink mt-2">{metrics?.interviews_completed || sessions.length}</p>
+              <p className="text-2xl font-black text-brand-ink mt-2">{effectiveCompletedInterviews}</p>
             </div>
             <div className="card-luxury p-5 flex flex-col justify-between">
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
