@@ -39,24 +39,25 @@ class Settings(BaseSettings):
     def DATABASE_URL(self) -> str:
         db_override = os.getenv("DATABASE_URL")
         if db_override:
+            if db_override.startswith("postgres://"):
+                db_override = db_override.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif db_override.startswith("postgresql://") and "+asyncpg" not in db_override:
+                db_override = db_override.replace("postgresql://", "postgresql+asyncpg://", 1)
             return db_override
         use_sqlite = os.getenv("USE_SQLITE", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() in ("true", "1")
         if use_sqlite:
             return f"sqlite+aiosqlite:///{self.CANONICAL_SQLITE_PATH}"
 
-        # Check if Postgres 5432 port is reachable
-        import socket
-        try:
-            s = socket.create_connection((self.POSTGRES_SERVER, int(self.POSTGRES_PORT)), timeout=1)
-            s.close()
-            return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        except Exception:
-            return f"sqlite+aiosqlite:///{self.CANONICAL_SQLITE_PATH}"
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
     
     @property
     def SYNC_DATABASE_URL(self) -> str:
-        db_override = os.getenv("SYNC_DATABASE_URL")
+        db_override = os.getenv("SYNC_DATABASE_URL") or os.getenv("DATABASE_URL")
         if db_override:
+            if db_override.startswith("postgresql+asyncpg://"):
+                db_override = db_override.replace("postgresql+asyncpg://", "postgresql://", 1)
+            elif db_override.startswith("postgres://"):
+                db_override = db_override.replace("postgres://", "postgresql://", 1)
             return db_override
         use_sqlite = os.getenv("USE_SQLITE", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() in ("true", "1")
         if use_sqlite:

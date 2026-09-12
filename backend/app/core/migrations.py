@@ -133,6 +133,8 @@ async def run_migrations():
             logger.info("Database Schema Verification: %d tables verified.", table_count)
 
     logger.info("Database migration finished cleanly. Ready for production.")
+    from app.core.db import dispose_engine
+    await dispose_engine()
     return True
 
 if __name__ == "__main__":

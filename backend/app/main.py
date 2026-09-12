@@ -305,6 +305,58 @@ async def reset_provider_health(provider: str = "gemini"):
     ai_provider.reset_provider_health(provider)
     return {"status": "health_reset", "provider": provider}
 
+@app.get("/api/v1/system/db-status", tags=["System Diagnostics"])
+async def get_db_status():
+    """Returns real-time verification of database engine, tables, indexes, and application row counts."""
+    from app.core.db import get_engine
+    engine = get_engine()
+    async with engine.connect() as conn:
+        dialect = conn.dialect.name
+        if dialect == "postgresql":
+            tables_res = await conn.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name;"))
+            tables = [row[0] for row in tables_res.fetchall()]
+            
+            idx_res = await conn.execute(text("SELECT count(*) FROM pg_indexes WHERE schemaname='public';"))
+            total_indexes = idx_res.scalar()
+            
+            fk_res = await conn.execute(text("SELECT count(*) FROM information_schema.table_constraints WHERE constraint_type='FOREIGN KEY' AND table_schema='public';"))
+            total_fks = fk_res.scalar()
+        else:
+            tables_res = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;"))
+            tables = [row[0] for row in tables_res.fetchall()]
+            total_indexes = 0
+            total_fks = 0
+            
+        total_rows = 0
+        table_row_counts = {}
+        for t in tables:
+            try:
+                cnt_res = await conn.execute(text(f'SELECT count(*) FROM "{t}";'))
+                cnt = cnt_res.scalar()
+                table_row_counts[t] = cnt
+                total_rows += cnt
+            except Exception:
+                table_row_counts[t] = -1
+
+    return {
+        "database_engine": dialect,
+        "total_tables": len(tables),
+        "tables": tables,
+        "total_indexes": total_indexes,
+        "total_foreign_keys": total_fks,
+        "total_application_rows": total_rows,
+        "table_row_counts": table_row_counts,
+        "schema_complete": len(tables) >= 51,
+        "is_empty_of_records": total_rows == 0
+    }
+
+@app.post("/api/v1/system/run-migrations", tags=["System Diagnostics"])
+async def trigger_run_migrations():
+    """Trigger the existing SmartHire migrations and schema creation on demand."""
+    from app.core.migrations import run_migrations
+    success = await run_migrations()
+    return {"status": "success" if success else "failed", "migrated": True}
+
 @app.get("/health", tags=["Health Check"])
 @app.get("/api/v1/health", tags=["Health Check"])
 async def health():
