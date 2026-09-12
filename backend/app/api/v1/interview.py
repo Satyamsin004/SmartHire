@@ -554,7 +554,7 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                                 context=context_payload,
                                 num_questions=1
                             ),
-                            timeout=3.8
+                            timeout=7.5
                         )
                         if main_q_list:
                             main_q_data = main_q_list[0]
@@ -570,13 +570,26 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                     except Exception as e:
                         logger.warning(f"Fast main question generation fallback: {e}")
 
+                    fallback_pool = [
+                        "How do you approach designing a resilient distributed caching architecture using Redis to avoid cache stampede and thundering herd problems?",
+                        "Can you describe how you implement and maintain database migrations, connection pooling, and optimistic locking in a high-concurrency production service?",
+                        "How do you structure comprehensive automated testing, CI/CD pipelines, and zero-downtime canary deployments for backend microservices?",
+                        "What observability and distributed tracing strategies do you implement using Prometheus, OpenTelemetry, or structured logging to troubleshoot latency bottlenecks?",
+                        "How do you secure modern REST and WebSocket APIs against CORS misconfigurations, rate limit bypasses, and unauthorized cross-origin requests?",
+                        "Can you walk me through your process for profiling and optimizing CPU and memory utilization in an asynchronous Python backend?"
+                    ]
+                    chosen_main = next(
+                        (fb for fb in fallback_pool if fb not in previously_asked and fb != question.question_text),
+                        fallback_pool[(question.order_index) % len(fallback_pool)]
+                    )
+
                     return InterviewQuestion(
                         session_id=session.id,
                         order_index=question.order_index + 1,
-                        question_text="Thank you for explaining that. Let's move on to our next key technical topic.",
+                        question_text=chosen_main,
                         category="Technical",
                         difficulty=question.difficulty,
-                        expected_keywords=[],
+                        expected_keywords=["architecture", "performance", "scalability"],
                         is_followup=False
                     ), True
                 else:
@@ -585,7 +598,7 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                             QuestionGeneratorService.generate_dynamic_followup_question(
                                 context=context_payload
                             ),
-                            timeout=3.8
+                            timeout=7.5
                         )
                         return InterviewQuestion(
                             session_id=session.id,
@@ -598,13 +611,23 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                         ), False
                     except Exception as e:
                         logger.warning(f"Fast followup question fallback: {e}")
+                        fallback_followups = [
+                            "Thank you for that explanation. Could you walk me through the key technical trade-offs you considered?",
+                            "Could you elaborate on how you handled edge cases and failure modes in that architecture?",
+                            "What metrics or logging did you rely on to verify that your implementation met latency and stability requirements?",
+                            "If you were to re-architect that solution to handle 100x the traffic today, what would you change?"
+                        ]
+                        chosen_followup = next(
+                            (ff for ff in fallback_followups if ff not in previously_asked and ff != question.question_text),
+                            fallback_followups[(question.order_index) % len(fallback_followups)]
+                        )
                         return InterviewQuestion(
                             session_id=session.id,
                             order_index=question.order_index + 1,
-                            question_text="Thank you for that explanation. Could you walk me through the key technical trade-offs you considered?",
+                            question_text=chosen_followup,
                             category="Follow-up",
                             difficulty=question.difficulty,
-                            expected_keywords=[],
+                            expected_keywords=["trade-offs", "scalability", "reliability"],
                             is_followup=True
                         ), False
 

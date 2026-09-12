@@ -167,6 +167,63 @@ async def sync_database_schema():
                 except Exception:
                     pass
 
+    # Seed baseline Logical Reasoning questions if pool is low
+    try:
+        from app.services.duplicate_detector import duplicate_detector
+        import json as _json
+        import uuid as _uuid
+        async with engine.begin() as conn:
+            cnt_res = await conn.execute(text("SELECT COUNT(*) FROM master_question_bank WHERE topic = 'Logical Reasoning'"))
+            lr_cnt = cnt_res.scalar() or 0
+            if lr_cnt < 12:
+                seed_lr_items = [
+                    ("Look at this number sequence: 2, 1, (1/2), (1/4), ... What number should come next?",
+                     ["(1/8)", "(1/16)", "(2/8)", "(1/10)"], 0,
+                     "Each number is half of the previous number: (1/4) * (1/2) = 1/8."),
+                    ("SCD, TEF, UGH, ____, WKL. Which group of letters should fill the blank?",
+                     ["VIJ", "VJI", "UJI", "IJT"], 0,
+                     "The first letters are in alphabetical order: S, T, U, V, W. The second and third letters are CD, EF, GH, IJ, KL."),
+                    ("A person walks 5 km North, turns right and walks 3 km, then turns right again and walks 5 km. In which direction is he from the starting point?",
+                     ["East", "West", "North", "South"], 0,
+                     "The North and South movements cancel each other out, leaving him 3 km East of the starting point."),
+                    ("A is B's sister. C is B's mother. D is C's father. E is D's mother. How is A related to D?",
+                     ["Granddaughter", "Grandmother", "Daughter", "Grandson"], 0,
+                     "A is the daughter of C, and C is the daughter of D. Therefore, A is the granddaughter of D."),
+                    ("Five colleagues (P, Q, R, S, T) sit in a row facing North. R sits to the immediate right of Q. P sits to the left of S but to the right of T. If Q sits in the middle, who sits on the extreme right?",
+                     ["S", "P", "R", "T"], 0,
+                     "Arrangement from left to right: T, P, Q, R, S. Therefore, S is at the extreme right."),
+                    ("Architect : Building :: Sculptor : ?",
+                     ["Statue", "Museum", "Stone", "Chisel"], 0,
+                     "An architect designs a building; a sculptor creates a statue."),
+                    ("Statements: Some actors are singers. All singers are dancers. Conclusions: I. Some actors are dancers. II. No singer is an actor.",
+                     ["Only Conclusion I follows", "Only Conclusion II follows", "Both follow", "Neither follows"], 0,
+                     "Since all singers are dancers and some actors are singers, the intersection guarantees some actors are dancers."),
+                    ("In a code language, if MONKEY is written as XDJMNL, how is TIGER written in that code?",
+                     ["QDFHS", "SDFHQ", "UJHFS", "SHFDQ"], 0,
+                     "Each letter is shifted back by 1 and written in reverse order: T->S, I->H, G->F, E->D, R->Q -> reversed: QDFHS.")
+                ]
+                for q_text, opts, c_opt, expl in seed_lr_items:
+                    fp = duplicate_detector.compute_fingerprint(q_text)
+                    ch = duplicate_detector.compute_concept_hash("Logical Reasoning", "Core Reasoning", "Analytical Deduction", "Medium")
+                    q_id = f"seed_{_uuid.uuid4().hex[:12]}"
+                    ins_sql = text("""
+                        INSERT INTO master_question_bank 
+                        (id, topic, subtopic, concept, difficulty, bloom_taxonomy, question_type, scenario_type, technology, tags, question_text, options, correct_option, explanation, created_by, question_fingerprint, concept_hash)
+                        VALUES (:id, 'Logical Reasoning', 'Core Reasoning', 'Analytical Deduction', 'Medium', 'Analyze', 'MCQ', 'General Enterprise', 'General', '[]', :q_text, :opts, :c_opt, :expl, 'system_seed', :fp, :ch)
+                        ON CONFLICT DO NOTHING;
+                    """)
+                    await conn.execute(ins_sql, {
+                        "id": q_id,
+                        "q_text": q_text,
+                        "opts": _json.dumps(opts),
+                        "c_opt": c_opt,
+                        "expl": expl,
+                        "fp": fp,
+                        "ch": ch
+                    })
+    except Exception as e:
+        logger.warning("MasterQuestionBank seed notice: %s", e)
+
     from app.core.db import dispose_engine
     await dispose_engine()
     print("[SUCCESS] DATABASE SCHEMA SYNCHRONIZED CLEANLY!")
