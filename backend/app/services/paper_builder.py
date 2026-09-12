@@ -367,15 +367,15 @@ class PaperBuilder:
                     still_missing.append(slot)
             missing_slots = still_missing
 
-        # Step 3: Trigger AI Question Factory ONLY if Master Bank has missing unseen slots
-        if missing_slots and len(selected_master_items) < session.question_count:
+        # Step 3: Trigger AI Question Factory ONLY if Master Bank has missing unseen slots and candidate is present
+        if missing_slots and len(selected_master_items) < session.question_count and session.candidate_id:
             current_session_texts = [
                 duplicate_detector.normalize_text(item["master"].question_text)
                 for item in selected_master_items
             ]
             logger.info(
                 "PaperBuilder: %d missing slots out of %d. Triggering AI Question Factory with candidate_id=%s...",
-                len(missing_slots), session.question_count, session.candidate_id or "N/A"
+                len(missing_slots), session.question_count, session.candidate_id
             )
             try:
                 import asyncio
@@ -387,7 +387,7 @@ class PaperBuilder:
                         scoped_normalized_texts=current_session_texts,
                         created_by="ai_factory"
                     ),
-                    timeout=25.0
+                    timeout=3.5
                 )
                 for gen_q in newly_generated:
                     if gen_q.id not in used_master_ids:

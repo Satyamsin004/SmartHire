@@ -23,7 +23,7 @@ export const ResultsScreen: React.FC = () => {
 
     let isMounted = true;
     let attempts = 0;
-    const maxAttempts = 4;
+    const maxAttempts = 15;
 
     const fetchReportData = () => {
       api.get(`/interview/report/${sessionId}`)

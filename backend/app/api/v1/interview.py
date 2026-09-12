@@ -45,6 +45,15 @@ resume_service = ResumeService()
 
 _tts_cache: Dict[str, bytes] = {}
 
+async def _synthesize_edge_tts(clean_text: str, voice: str) -> bytes:
+    import edge_tts
+    comm = edge_tts.Communicate(clean_text, voice)
+    chunks = []
+    async for chunk in comm.stream():
+        if chunk.get("type") == "audio" and "data" in chunk:
+            chunks.append(chunk["data"])
+    return b"".join(chunks)
+
 async def _prewarm_tts(text: str, voice: str = "en-US-AriaNeural"):
     """Pre-generates neural TTS audio in the background so questions play with 0ms latency."""
     try:
@@ -55,13 +64,7 @@ async def _prewarm_tts(text: str, voice: str = "en-US-AriaNeural"):
         cache_key = hashlib.md5(f"{voice}:{clean_text}".encode()).hexdigest()
         if cache_key in _tts_cache:
             return
-        import edge_tts
-        comm = edge_tts.Communicate(clean_text, voice)
-        chunks = []
-        async for chunk in comm.stream():
-            if chunk.get("type") == "audio" and "data" in chunk:
-                chunks.append(chunk["data"])
-        audio_bytes = b"".join(chunks)
+        audio_bytes = await asyncio.wait_for(_synthesize_edge_tts(clean_text, voice), timeout=4.5)
         if audio_bytes:
             if len(_tts_cache) > 120:
                 _tts_cache.clear()
@@ -342,7 +345,13 @@ async def start_interview_session(
 
     if response_questions:
         try:
-            asyncio.create_task(_prewarm_tts(response_questions[0]["question_text"]))
+            cand_name = (current_user.full_name or "Candidate").strip()
+            round_str = new_session.round_type or "Technical"
+            role_str = new_session.role_target or "Software Engineer"
+            first_q_text = response_questions[0]["question_text"]
+            greeting_speech = f"Hi {cand_name}! Welcome to your {round_str} interview for the {role_str} position. I am your AI Interviewer. Let's begin with your first question. {first_q_text}"
+            asyncio.create_task(_prewarm_tts(greeting_speech))
+            asyncio.create_task(_prewarm_tts(first_q_text))
         except Exception:
             pass
 
@@ -537,52 +546,67 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
             # Parallelize question generation and feedback remark generation for low latency (< 3s)
             async def get_next_question():
                 if question.is_followup:
-                    main_q_list = await asyncio.wait_for(
-                        QuestionGeneratorService.generate_unique_session_questions(
-                            db=db,
-                            session=session,
-                            context=context_payload,
-                            num_questions=1
-                        ),
-                        timeout=8.0
-                    )
-                    if main_q_list:
-                        main_q_data = main_q_list[0]
-                        return InterviewQuestion(
-                            session_id=session.id,
-                            order_index=question.order_index + 1,
-                            question_text=main_q_data.get("question_text", "Let's move on to our next technical topic."),
-                            category=main_q_data.get("category", "Technical"),
-                            difficulty=main_q_data.get("difficulty", question.difficulty),
-                            expected_keywords=main_q_data.get("expected_keywords", []),
-                            is_followup=False
-                        ), True
-                    else:
-                        return InterviewQuestion(
-                            session_id=session.id,
-                            order_index=question.order_index + 1,
-                            question_text="Thank you for explaining that. Let's move on to our next key technical topic.",
-                            category="Technical",
-                            difficulty=question.difficulty,
-                            expected_keywords=[],
-                            is_followup=False
-                        ), True
-                else:
-                    next_q_data = await asyncio.wait_for(
-                        QuestionGeneratorService.generate_dynamic_followup_question(
-                            context=context_payload
-                        ),
-                        timeout=8.0
-                    )
+                    try:
+                        main_q_list = await asyncio.wait_for(
+                            QuestionGeneratorService.generate_unique_session_questions(
+                                db=db,
+                                session=session,
+                                context=context_payload,
+                                num_questions=1
+                            ),
+                            timeout=3.8
+                        )
+                        if main_q_list:
+                            main_q_data = main_q_list[0]
+                            return InterviewQuestion(
+                                session_id=session.id,
+                                order_index=question.order_index + 1,
+                                question_text=main_q_data.get("question_text", "Let's move on to our next technical topic."),
+                                category=main_q_data.get("category", "Technical"),
+                                difficulty=main_q_data.get("difficulty", question.difficulty),
+                                expected_keywords=main_q_data.get("expected_keywords", []),
+                                is_followup=False
+                            ), True
+                    except Exception as e:
+                        logger.warning(f"Fast main question generation fallback: {e}")
+
                     return InterviewQuestion(
                         session_id=session.id,
                         order_index=question.order_index + 1,
-                        question_text=next_q_data.get("question_text", "Could you elaborate further on that?"),
-                        category=next_q_data.get("category", "Follow-up"),
-                        difficulty=next_q_data.get("difficulty", question.difficulty),
-                        expected_keywords=next_q_data.get("expected_keywords", []),
-                        is_followup=True
-                    ), False
+                        question_text="Thank you for explaining that. Let's move on to our next key technical topic.",
+                        category="Technical",
+                        difficulty=question.difficulty,
+                        expected_keywords=[],
+                        is_followup=False
+                    ), True
+                else:
+                    try:
+                        next_q_data = await asyncio.wait_for(
+                            QuestionGeneratorService.generate_dynamic_followup_question(
+                                context=context_payload
+                            ),
+                            timeout=3.8
+                        )
+                        return InterviewQuestion(
+                            session_id=session.id,
+                            order_index=question.order_index + 1,
+                            question_text=next_q_data.get("question_text", "Could you elaborate further on that?"),
+                            category=next_q_data.get("category", "Follow-up"),
+                            difficulty=next_q_data.get("difficulty", question.difficulty),
+                            expected_keywords=next_q_data.get("expected_keywords", []),
+                            is_followup=True
+                        ), False
+                    except Exception as e:
+                        logger.warning(f"Fast followup question fallback: {e}")
+                        return InterviewQuestion(
+                            session_id=session.id,
+                            order_index=question.order_index + 1,
+                            question_text="Thank you for that explanation. Could you walk me through the key technical trade-offs you considered?",
+                            category="Follow-up",
+                            difficulty=question.difficulty,
+                            expected_keywords=[],
+                            is_followup=True
+                        ), False
 
             async def get_feedback():
                 try:
@@ -594,11 +618,13 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                             is_transition=question.is_followup,
                             next_topic=None
                         ),
-                        timeout=6.0
+                        timeout=2.8
                     )
                 except Exception as e:
                     logger.warning(f"AI evaluation remark timeout/error: {e}")
-                    return "Thank you for sharing. Let's continue."
+                    if question.is_followup:
+                        return "Well done! Thanks for explaining that clearly. Let's move to the next topic."
+                    return "Good answer! That is a solid explanation. Let's probe a bit further into that."
 
             try:
                 q_res, evaluation_feedback = await asyncio.gather(
@@ -632,14 +658,9 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
             next_q_response = None
             evaluation_feedback = "Thank you. We have concluded this portion of the interview."
 
-    # If interview is ending, finalize session state and generate report
+    # If interview is ending, finalize session state promptly without blocking API response
     if not next_q_response:
         session.status = "completed"
-        await db.commit()
-        try:
-            await EvaluationService.generate_and_finalize_report(db, session.id)
-        except Exception as rep_err:
-            logger.error(f"Report generation error during submit_answer: {rep_err}")
         if 'evaluation_feedback' not in locals() or not evaluation_feedback:
             evaluation_feedback = "Thank you. Your interview is now complete."
 
@@ -1740,14 +1761,7 @@ async def generate_interview_tts(body: TTSPayload):
         return Response(content=_tts_cache[cache_key], media_type="audio/mpeg")
 
     try:
-        import edge_tts
-        comm = edge_tts.Communicate(clean_text, voice)
-        chunks = []
-        async for chunk in comm.stream():
-            if chunk.get("type") == "audio" and "data" in chunk:
-                chunks.append(chunk["data"])
-        audio_bytes = b"".join(chunks)
-
+        audio_bytes = await asyncio.wait_for(_synthesize_edge_tts(clean_text, voice), timeout=4.5)
         if audio_bytes:
             if len(_tts_cache) > 120:
                 _tts_cache.clear()

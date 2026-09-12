@@ -114,7 +114,7 @@ export const LiveInterviewRoom: React.FC = () => {
     }
     const res = await api.post('/interview/tts',
       { text: cleanText, voice: 'en-US-AriaNeural' },
-      { responseType: 'blob', timeout: 20000, signal }
+      { responseType: 'blob', timeout: 2200, signal }
     );
     if (!res.data || (res.data.type && res.data.type.includes('application/json'))) {
       throw new Error("Invalid audio response received from TTS service.");
@@ -934,8 +934,10 @@ export const LiveInterviewRoom: React.FC = () => {
 
         const durationSec = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
         
-        // Upload with multi-attempt retry
-        await uploadSessionRecordingWithRetry(sessionId, blob, durationSec, 3);
+        // Upload in background so interview finalization and candidate navigation are never blocked
+        uploadSessionRecordingWithRetry(sessionId, blob, durationSec, 3).catch((e) => {
+          console.warn("[Recording] Background upload notice:", e);
+        });
       }
     } catch(e) {
       console.warn("Recording finalize notice:", e);

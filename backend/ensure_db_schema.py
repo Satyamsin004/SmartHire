@@ -121,7 +121,13 @@ ALTER_QUERIES = [
     "ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS test_cases JSONB DEFAULT '[]'::jsonb;",
     "ALTER TABLE master_question_bank ADD COLUMN IF NOT EXISTS passage_text TEXT;",
     "ALTER TABLE master_question_bank ADD COLUMN IF NOT EXISTS dataset_json JSONB DEFAULT '{}'::jsonb;",
-    "ALTER TABLE master_question_bank ADD COLUMN IF NOT EXISTS test_cases JSONB DEFAULT '[]'::jsonb;"
+    "ALTER TABLE master_question_bank ADD COLUMN IF NOT EXISTS test_cases JSONB DEFAULT '[]'::jsonb;",
+    "CREATE INDEX IF NOT EXISTS ix_interview_sessions_candidate_id ON interview_sessions(candidate_id);",
+    "CREATE INDEX IF NOT EXISTS ix_interview_sessions_job_id ON interview_sessions(job_id);",
+    "CREATE INDEX IF NOT EXISTS ix_interview_sessions_job_application_id ON interview_sessions(job_application_id);",
+    "CREATE INDEX IF NOT EXISTS ix_interview_questions_session_id ON interview_questions(session_id);",
+    "CREATE INDEX IF NOT EXISTS ix_interview_answers_question_id ON interview_answers(question_id);",
+    "CREATE INDEX IF NOT EXISTS ix_scoring_reports_session_id ON scoring_reports(session_id);"
 ]
 
 TABLES_FOR_ENV_COLUMNS = [

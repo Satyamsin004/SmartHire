@@ -106,6 +106,9 @@ class AIProviderManager:
         # In-memory question diversity registry
         self._question_history: Set[str] = set()
 
+        self._groq_preferred_model: Optional[str] = None
+        self._gemini_preferred_model: Optional[str] = None
+
     def reset_health_states(self) -> None:
         self._health_states = {
             "gemini": ProviderHealthState(),
@@ -121,7 +124,7 @@ class AIProviderManager:
         if provider == "gemini":
             raw_keys = [getattr(settings, f"GEMINI_API_KEY_{i}", None) for i in range(1, 6)]
             keys = self._configured_keys(*[k for k in raw_keys if k])
-            model = settings.GEMINI_MODEL
+            model = self._gemini_preferred_model or settings.GEMINI_MODEL
         elif provider == "openrouter":
             keys = self._configured_keys(
                 settings.OPENROUTER_API_KEY_1,
@@ -133,7 +136,7 @@ class AIProviderManager:
                 settings.GROQ_API_KEY_1,
                 settings.GROQ_API_KEY_2,
             )
-            model = settings.GROQ_MODEL if settings.GROQ_MODEL and "llama-3" not in settings.GROQ_MODEL else "openai/gpt-oss-120b"
+            model = self._groq_preferred_model or settings.GROQ_MODEL or "llama-3.3-70b-versatile"
         else:
             raise ValueError(f"Unknown provider: {provider}")
         return keys, model
@@ -433,12 +436,29 @@ class AIProviderManager:
                 if json_mode
                 else None
             )
-            response = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=model, contents=prompt, config=config
-                ),
-                timeout=self.REQUEST_TIMEOUT_SECONDS,
-            )
+            try:
+                response = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=model, contents=prompt, config=config
+                    ),
+                    timeout=self.REQUEST_TIMEOUT_SECONDS,
+                )
+            except Exception as initial_err:
+                # If model is deprecated/not found (e.g. gemini-2.5-flash discontinued), fallback to gemini-3.6-flash
+                err_text = str(initial_err).lower()
+                if "404" in err_text or "not_found" in err_text or "longer available" in err_text:
+                    fallback_model = "gemini-3.6-flash" if model != "gemini-3.6-flash" else "gemini-flash-latest"
+                    logger.warning("Gemini model %s unavailable, falling back to %s", model, fallback_model)
+                    response = await asyncio.wait_for(
+                        client.aio.models.generate_content(
+                            model=fallback_model, contents=prompt, config=config
+                        ),
+                        timeout=self.REQUEST_TIMEOUT_SECONDS,
+                    )
+                    self._gemini_preferred_model = fallback_model
+                else:
+                    raise initial_err
+
             if not response.text:
                 raise ProviderRequestError("gemini", None, "empty_response")
             usage = getattr(response, "usage_metadata", None)
@@ -484,6 +504,15 @@ class AIProviderManager:
 
         async with httpx.AsyncClient(timeout=self.REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(url, headers=headers, json=payload)
+            # If Groq model is not found/deprecated (e.g. llama-3.3-70b-versatile), fallback to available Groq models
+            if provider == "groq" and response.status_code == 404 and "model_not_found" in response.text:
+                for alt_model in ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]:
+                    logger.warning("Groq model %s 404, falling back to %s", payload["model"], alt_model)
+                    payload["model"] = alt_model
+                    response = await client.post(url, headers=headers, json=payload)
+                    if response.status_code == 200:
+                        self._groq_preferred_model = alt_model
+                        break
 
         if response.status_code >= 400:
             logger.error(

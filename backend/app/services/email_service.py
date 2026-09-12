@@ -916,7 +916,7 @@ class EmailService:
     ) -> bool:
         """Candidate Email: Official Offer Letter Issued."""
         subject = f"🎉 Official Job Offer: {job_title} at {company_name}"
-        dash_url = dashboard_link or f"{settings.FRONTEND_URL}/applications"
+        dash_url = dashboard_link or f"{settings.FRONTEND_URL}/offers"
         start_str = start_date or "To be mutually agreed upon"
         letter_snippet = offer_text or "We are thrilled to extend an official offer of employment to you!"
 

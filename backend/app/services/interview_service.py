@@ -867,7 +867,7 @@ class EvaluationService:
             res_cu = await db.execute(select(User).where(User.id == cand.user_id))
             cand_user = res_cu.scalar_one_or_none()
 
-        report_url = f"{settings.FRONTEND_URL}/report/{session.id}"
+        report_url = f"{settings.FRONTEND_URL}/reports?session={session.id}"
 
         # 1. Candidate In-App Notification & Email
         if cand and cand.user_id:
@@ -885,14 +885,14 @@ class EvaluationService:
                     message=f"Your evaluation is ready. Overall Score: {computed['overall_score']}%. Hiring Recommendation: {final_recommendation}.",
                     notification_type="interview_completed",
                     interview_id=session.id,
-                    link=f"/report/{session.id}"
+                    link=f"/reports?session={session.id}"
                 )
                 db.add(notif_cand)
 
             if cand_user and cand_user.email:
                 try:
-                    await email_service.send_report_ready_email(
-                        db=db,
+                    asyncio.create_task(email_service.send_report_ready_email(
+                        db=None,
                         recipient_email=cand_user.email,
                         recipient_name=cand_user.full_name or "Candidate",
                         interview_title=session.title,
@@ -902,9 +902,9 @@ class EvaluationService:
                         is_recruiter=False,
                         interview_id=session.id,
                         recipient_user_id=cand_user.id
-                    )
+                    ))
                 except Exception as e_err:
-                    logger.warning("Failed to dispatch candidate report ready email: %s", e_err)
+                    logger.warning("Failed to schedule candidate report ready email: %s", e_err)
 
         # 2. Recruiter In-App Notification, WebSocket Event & Email
         rec_user = None
@@ -931,7 +931,7 @@ class EvaluationService:
                     message=f"{cand_name} completed {session.title}. Overall Score: {computed['overall_score']}%. Evaluation ready for review.",
                     notification_type="interview_evaluation_ready",
                     interview_id=session.id,
-                    link=f"/report/{session.id}"
+                    link=f"/reports?session={session.id}"
                 )
                 db.add(notif_rec)
 
@@ -948,8 +948,8 @@ class EvaluationService:
 
             if rec_user.email:
                 try:
-                    await email_service.send_report_ready_email(
-                        db=db,
+                    asyncio.create_task(email_service.send_report_ready_email(
+                        db=None,
                         recipient_email=rec_user.email,
                         recipient_name=rec_user.full_name or "Recruiter",
                         interview_title=session.title,
@@ -960,9 +960,9 @@ class EvaluationService:
                         candidate_name=cand_name,
                         interview_id=session.id,
                         recipient_user_id=rec_user.id
-                    )
+                    ))
                 except Exception as e_err:
-                    logger.warning("Failed to dispatch recruiter report ready email: %s", e_err)
+                    logger.warning("Failed to schedule recruiter report ready email: %s", e_err)
 
         InterviewStateMachine.transition(session, "NOTIFY_DASHBOARDS")
         await db.commit()

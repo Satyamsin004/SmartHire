@@ -335,12 +335,12 @@ class InterviewSession(Base):
     __tablename__ = "interview_sessions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False)
-    recruiter_id = Column(String(36), ForeignKey("recruiters.id"), nullable=True)
-    job_application_id = Column(String(36), ForeignKey("job_applications.id"), nullable=True)
-    job_id = Column(String(36), ForeignKey("job_postings.id"), nullable=True)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False, index=True)
+    recruiter_id = Column(String(36), ForeignKey("recruiters.id"), nullable=True, index=True)
+    job_application_id = Column(String(36), ForeignKey("job_applications.id"), nullable=True, index=True)
+    job_id = Column(String(36), ForeignKey("job_postings.id"), nullable=True, index=True)
     resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=True)
-    scheduled_interview_id = Column(String(36), ForeignKey("scheduled_interviews.id"), nullable=True)
+    scheduled_interview_id = Column(String(36), ForeignKey("scheduled_interviews.id"), nullable=True, index=True)
     template_id = Column(String(36), ForeignKey("interview_templates.id"), nullable=True)
     title = Column(String(255), default="Frontend System Design Practice")
     role_target = Column(String(100), default="Senior Frontend Developer")
@@ -473,7 +473,7 @@ class InterviewQuestion(Base):
     __tablename__ = "interview_questions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False)
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
     order_index = Column(Integer, default=1)
     question_text = Column(Text, nullable=False)
     category = Column(String(50), default="System Design")
@@ -490,7 +490,7 @@ class InterviewAnswer(Base):
     __tablename__ = "interview_answers"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    question_id = Column(String(36), ForeignKey("interview_questions.id"), nullable=False)
+    question_id = Column(String(36), ForeignKey("interview_questions.id"), nullable=False, index=True)
     transcript_text = Column(Text, nullable=True)
     audio_url = Column(String(500), nullable=True)
     code_submission = Column(Text, nullable=True)
@@ -551,7 +551,7 @@ class ScoringReport(Base):
     __tablename__ = "scoring_reports"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False)
+    session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
     candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=True, index=True)
     transcript_id = Column(String(36), ForeignKey("interview_transcripts.id"), nullable=True, index=True)
     vision_analysis_id = Column(String(36), ForeignKey("interview_vision_analysis.id"), nullable=True, index=True)
