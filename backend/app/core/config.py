@@ -141,8 +141,37 @@ class Settings(BaseSettings):
     # OAuth & SMTP Credentials
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback")
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3001")
+    @property
+    def GOOGLE_REDIRECT_URI(self) -> str:
+        override = os.getenv("GOOGLE_REDIRECT_URI")
+        if override:
+            override = override.strip()
+            if not override.startswith("${{") and "your-production-domain.com" not in override:
+                is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+                if is_prod and ("localhost" in override or "127.0.0.1" in override):
+                    return "https://smarthire-production-675e.up.railway.app/api/v1/auth/google/callback"
+                return override
+
+        is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+        if is_prod:
+            return "https://smarthire-production-675e.up.railway.app/api/v1/auth/google/callback"
+        return "http://localhost:8000/api/v1/auth/google/callback"
+
+    @property
+    def FRONTEND_URL(self) -> str:
+        override = os.getenv("FRONTEND_URL")
+        if override:
+            override = override.strip()
+            if not override.startswith("${{") and "your-production-domain.com" not in override:
+                is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+                if is_prod and ("localhost" in override or "127.0.0.1" in override):
+                    return "https://smarthireai.up.railway.app"
+                return override
+
+        is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+        if is_prod:
+            return "https://smarthireai.up.railway.app"
+        return "http://localhost:3001"
     
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))

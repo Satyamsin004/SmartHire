@@ -30,6 +30,14 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 is_production = settings.ENVIRONMENT.lower() == "production"
 
 cors_origins = [settings.FRONTEND_URL]
+production_origins = [
+    "https://smarthireai.up.railway.app",
+    "https://smarthire-production-675e.up.railway.app",
+]
+for p_o in production_origins:
+    if p_o not in cors_origins:
+        cors_origins.append(p_o)
+
 if settings.CORS_ORIGINS:
     for o in settings.CORS_ORIGINS.split(","):
         clean_o = o.strip()

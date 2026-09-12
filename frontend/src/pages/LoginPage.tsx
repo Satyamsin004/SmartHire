@@ -52,9 +52,8 @@ export const LoginPage: React.FC = () => {
     } else if (tokenParam && userParam) {
       try {
         const userObj = JSON.parse(decodeURIComponent(userParam));
-        if (userObj.role !== role) {
-          setError(`This account is registered as a ${userObj.role.charAt(0).toUpperCase() + userObj.role.slice(1)}. Please select the ${userObj.role.charAt(0).toUpperCase() + userObj.role.slice(1)} portal workspace.`);
-          return;
+        if (userObj.role && ['candidate', 'recruiter', 'admin'].includes(userObj.role)) {
+          setRole(userObj.role as any);
         }
 
         setAuthSession(userObj, tokenParam);
