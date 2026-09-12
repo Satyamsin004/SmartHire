@@ -366,11 +366,10 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
 
   const getStageStatus = (app: any, stageIdx: number) => {
     const status = (app.status || '').toLowerCase();
-    const atsScore = app.ats_score !== null && app.ats_score !== undefined ? app.ats_score : 85;
-    const isAtsPassed = atsScore >= 80;
+    const atsScore = app.ats_score !== null && app.ats_score !== undefined ? app.ats_score : (app.match_score ?? null);
+    const isAtsPassed = atsScore !== null ? atsScore >= 80 : (status.includes('shortlist') || status.includes('screen') || status.includes('interview') || status.includes('assessment') || status.includes('offer') || status.includes('hired'));
     const recAssess = app.recruiter_assessment;
     const offer = app.offer_details;
-    const assessScore = app.assessment_score ?? recAssess?.score ?? null;
 
     const hasOffer = Boolean(offer || status.includes('offer') || status.includes('hired') || status.includes('accepted'));
     const isOfferAccepted = offer?.status === 'Accepted' || status.includes('hired') || status.includes('accepted');
@@ -379,7 +378,10 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
     if (hasOffer) {
       if (stageIdx === 0) return { text: 'Completed', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 1) return { text: 'Completed (ATS Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
-      if (stageIdx === 2) return { text: 'Completed (Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
+      if (stageIdx === 2) {
+        if (recAssess && recAssess.score !== null) return { text: 'Completed (Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
+        return { text: 'Waived (Direct Offer)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
+      }
       if (stageIdx === 3) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 4) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 5) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
@@ -412,17 +414,22 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
     }
 
     const passThreshold = recAssess?.passing_score ?? 70;
-    const isExplicitlyPassed = status.includes('assessment pass') || status.includes('interview') || status.includes('selected') || status.includes('hired') || status.includes('offer') || status.includes('accepted');
-    const isExplicitlyFailed = status.includes('assessment fail') || status.includes('reject');
-
-    const isAssessmentPassed = isExplicitlyPassed || (!isExplicitlyFailed && (
+    const isAssessmentConducted = Boolean(recAssess && recAssess.score !== null && recAssess.score !== undefined);
+    const assessScore = isAssessmentConducted ? recAssess.score : null;
+    const isExplicitlyPassed = isAssessmentConducted && (
       (assessScore !== null && assessScore >= passThreshold) ||
-      (recAssess && recAssess.score !== null && recAssess.score >= passThreshold)
-    ));
-    const isAssessmentFailed = !isAssessmentPassed && (isExplicitlyFailed || (
+      status.includes('assessment pass')
+    );
+    const isExplicitlyFailed = isAssessmentConducted && (
       (assessScore !== null && assessScore < passThreshold) ||
-      (recAssess && recAssess.score !== null && recAssess.score < passThreshold)
-    ));
+      status.includes('assessment fail')
+    );
+
+    const isAssessmentPassed = isExplicitlyPassed;
+    const isAssessmentFailed = isExplicitlyFailed;
+    const isAssessmentWaived = !recAssess && !isAssessmentConducted && (
+      status.includes('interview') || status.includes('tech') || status.includes('selected') || status.includes('hired') || status.includes('offer')
+    );
 
     // Stage 3: Online Assessment (Enforces automatic cutoff threshold)
     if (stageIdx === 2) {
@@ -432,13 +439,16 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
       if (isAssessmentPassed) {
         return { text: `Passed (≥${passThreshold}%)`, color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       }
+      if (isAssessmentWaived) {
+        return { text: 'Waived (Direct Interview)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
+      }
       if (status.includes('assessment scheduled') || recAssess?.status === 'Scheduled' || recAssess?.status === 'active') {
         return { text: 'Assessment Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
       }
       return { text: 'Assessment Pending', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
     }
 
-    if (!isAssessmentPassed) {
+    if (!isAssessmentPassed && !isAssessmentWaived) {
       if (isAssessmentFailed) {
         return { text: 'Pipeline Stopped', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isUpcoming: true };
       }
@@ -1335,24 +1345,20 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
 
                     // Assessment state
                     const passThreshold = recAssess?.passing_score ?? 70;
-                    const isExplicitlyPassed = st.includes('assessment pass') || st.includes('interview') || st.includes('selected') || st.includes('hired') || st.includes('offer');
-                    const isExplicitlyFailed = st.includes('assessment fail') || st.includes('reject');
-                    const assessScore = app.assessment_score ?? recAssess?.score ?? null;
-                    const isAssessPassed = isExplicitlyPassed || (!isExplicitlyFailed && (
-                      (assessScore !== null && assessScore >= passThreshold) ||
-                      (recAssess && recAssess.score !== null && recAssess.score >= passThreshold)
-                    ));
-                    const isAssessFailed = !isAssessPassed && (isExplicitlyFailed || (
-                      (assessScore !== null && assessScore < passThreshold) ||
-                      (recAssess && recAssess.score !== null && recAssess.score < passThreshold)
-                    ));
-                    const isAssessScheduled = Boolean((recAssess?.status === 'Scheduled' || st.includes('assessment scheduled')) && !isAssessPassed && !isAssessFailed);
+                    const isAssessmentConducted = Boolean(recAssess && recAssess.score !== null && recAssess.score !== undefined);
+                    const assessScore = isAssessmentConducted ? recAssess.score : null;
+                    const isAssessPassed = isAssessmentConducted && assessScore >= passThreshold;
+                    const isAssessFailed = isAssessmentConducted && assessScore < passThreshold;
+                    const isAssessScheduled = Boolean((recAssess?.status === 'Scheduled' || recAssess?.status === 'active' || st.includes('assessment scheduled')) && !isAssessmentConducted);
+                    const isAssessmentWaived = !recAssess && !isAssessmentConducted && (
+                      st.includes('interview') || st.includes('tech') || st.includes('selected') || st.includes('hired') || st.includes('offer')
+                    );
 
                     // Technical round state (Manual Recruiter Pass/Reject Decision)
                     const techRound = app.technical_round;
                     const behavRound = app.behavioral_round;
                     const hrRound = app.hr_round;
-                    const isTechEligible = isAtsPassed && isAssessPassed;
+                    const isTechEligible = isAtsPassed && (isAssessPassed || isAssessmentWaived);
                     const techScore = techRound?.technical_score ?? techRound?.overall_score ?? (app.technical_score ?? app.overall_score ?? null);
                     const isTechFailed = st.includes('tech failed') || st.includes('technical failed') || (st === 'rejected' && !behavRound && !hrRound);
                     const isTechPassed = isTechEligible && !isTechFailed && (
@@ -1547,17 +1553,17 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
                                 <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">Stage 3</span>
                               </div>
 
-                              {assessScore !== null || isAssessPassed ? (
+                              {isAssessmentConducted ? (
                                 <div className="space-y-1.5 text-xs">
                                   <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
                                     <span>Status:</span>
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-black ${isAssessFailed ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300' : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300'}`}>
-                                      {isAssessFailed ? 'Failed (<70%)' : 'Completed (Passed)'}
+                                      {isAssessFailed ? `Failed (<${passThreshold}%)` : 'Completed (Passed)'}
                                     </span>
                                   </div>
                                   <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
                                     <span>Assessment Score:</span>
-                                    <strong className="text-emerald-600 dark:text-emerald-400 font-black text-sm">{assessScore ?? 80}%</strong>
+                                    <strong className="text-emerald-600 dark:text-emerald-400 font-black text-sm">{assessScore}%</strong>
                                   </div>
                                   <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 text-[11px] font-semibold">
                                     <span>Duration:</span>
@@ -1576,6 +1582,18 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
                                     <span>Duration:</span>
                                     <span>{recAssess?.duration_minutes || 30} Mins</span>
                                   </div>
+                                </div>
+                              ) : isAssessmentWaived ? (
+                                <div className="space-y-1 py-1">
+                                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
+                                    <span>Status:</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                      Waived (Direct Interview)
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium leading-relaxed mt-1">
+                                    Advanced directly to interview simulation without online assessment.
+                                  </p>
                                 </div>
                               ) : (
                                 <div className="space-y-1 py-1">
@@ -1598,9 +1616,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
                                 className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-extrabold transition-all shadow-xs cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1"
                               >
                                 <Plus className="w-3.5 h-3.5" />
-                                <span>{assessScore !== null || isAssessPassed || isAssessScheduled ? 'Re-Schedule' : 'Schedule Assessment'}</span>
+                                <span>{isAssessmentConducted || isAssessScheduled ? 'Re-Schedule' : 'Schedule Assessment'}</span>
                               </button>
-                              {(assessScore !== null || isAssessPassed) && (
+                              {isAssessmentConducted && (
                                 <button
                                   onClick={() => {
                                     setSelectedEvaluationId(app.id);

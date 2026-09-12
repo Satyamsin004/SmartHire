@@ -273,10 +273,10 @@ export const CandidateDashboard: React.FC = () => {
     : 0;
 
   const candidateCompetencyPieData = hasInterviewData ? [
-    { name: 'Technical Depth', value: Math.round(Number(safeMetrics.avg_technical ?? trendData?.summary?.latest_technical_score ?? effectiveAvgScore ?? 0)), color: '#8B5CF6' },
-    { name: 'Communication', value: Math.round(Number(safeMetrics.avg_communication ?? trendData?.summary?.latest_communication_score ?? effectiveAvgScore ?? 0)), color: '#3B82F6' },
-    { name: 'Confidence', value: Math.round(Number(safeMetrics.avg_confidence ?? trendData?.summary?.latest_confidence_score ?? effectiveAvgScore ?? 0)), color: '#10B981' },
-    { name: 'Professionalism', value: Math.round(Number(safeMetrics.avg_professionalism ?? trendData?.summary?.latest_professionalism_score ?? effectiveAvgScore ?? 0)), color: '#F59E0B' },
+    { name: 'Technical Depth', value: Math.round(Number(safeMetrics.avg_technical ?? safeMetrics.avg_technical_score ?? trendData?.summary?.latest_technical_score ?? effectiveAvgScore ?? 0)), color: '#8B5CF6' },
+    { name: 'Communication', value: Math.round(Number(safeMetrics.avg_communication ?? safeMetrics.avg_communication_score ?? trendData?.summary?.latest_communication_score ?? effectiveAvgScore ?? 0)), color: '#3B82F6' },
+    { name: 'Confidence', value: Math.round(Number(safeMetrics.avg_confidence ?? safeMetrics.avg_confidence_score ?? trendData?.summary?.latest_confidence_score ?? effectiveAvgScore ?? 0)), color: '#10B981' },
+    { name: 'Professionalism', value: Math.round(Number(safeMetrics.avg_professionalism ?? safeMetrics.avg_professionalism_score ?? trendData?.summary?.latest_professionalism_score ?? effectiveAvgScore ?? 0)), color: '#F59E0B' },
   ] : [];
 
   const effectiveTimeline = (trendData && trendData.total_interviews > 0 && trendData.timeline && trendData.timeline.length > 0)
@@ -293,9 +293,9 @@ export const CandidateDashboard: React.FC = () => {
               round_type: h.round_type || 'Technical',
               overall_score: Math.round(Number(h.score ?? h.overall_score ?? 0)),
               technical_score: Math.round(Number(h.technical_score ?? h.score ?? h.overall_score ?? 0)),
-              communication_score: Math.round(Number(h.communication_score ?? Math.max(50, Number(h.score ?? h.overall_score ?? 0) - 5))),
-              confidence_score: Math.round(Number(h.confidence_score ?? Math.max(50, Number(h.score ?? h.overall_score ?? 0) - 5))),
-              professionalism_score: Math.round(Number(h.professionalism_score ?? Number(h.score ?? h.overall_score ?? 0))),
+              communication_score: Math.round(Number(h.communication_score ?? h.score ?? h.overall_score ?? 0)),
+              confidence_score: Math.round(Number(h.confidence_score ?? h.score ?? h.overall_score ?? 0)),
+              professionalism_score: Math.round(Number(h.professionalism_score ?? h.score ?? h.overall_score ?? 0)),
               recommendation: h.recommendation || 'Shortlist'
             }))
         : []);

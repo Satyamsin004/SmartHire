@@ -139,89 +139,154 @@ class RecruitmentPipelineService:
 
         res_apps = await db.execute(query.order_by(JobApplication.applied_at.desc()))
         apps = res_apps.scalars().all()
+        if not apps:
+            return []
+
         from app.models.domain import InterviewSession, ScoringReport, AssessmentSession, AssessmentResult, OfferLetter, Resume
+
+        app_ids = [app.id for app in apps]
+        cand_ids = list({app.candidate_id for app in apps if app.candidate_id})
+        job_ids = list({app.job_id for app in apps if app.job_id})
+        resume_ids = list({app.resume_id for app in apps if app.resume_id})
+
+        # 1. Batch fetch Candidates & Users
+        cands_map = {}
+        if cand_ids:
+            res_cu = await db.execute(
+                select(Candidate, User)
+                .outerjoin(User, Candidate.user_id == User.id)
+                .where(Candidate.id.in_(cand_ids))
+            )
+            for c, u in res_cu.all():
+                cands_map[c.id] = (c, u)
+
+        # 2. Batch fetch Jobs
+        jobs_map = {}
+        if job_ids:
+            res_j = await db.execute(select(JobPosting).where(JobPosting.id.in_(job_ids)))
+            for j in res_j.scalars().all():
+                jobs_map[j.id] = j
+
+        # 3. Batch fetch Resumes
+        resumes_map = {}
+        if resume_ids:
+            res_r = await db.execute(select(Resume).where(Resume.id.in_(resume_ids)))
+            for r in res_r.scalars().all():
+                resumes_map[r.id] = r
+
+        # 4. Batch fetch strictly RECRUITER Assessment Sessions & Results
+        assess_sess_map = {}
+        res_assess = await db.execute(
+            select(AssessmentSession)
+            .where(
+                AssessmentSession.job_application_id.in_(app_ids),
+                AssessmentSession.is_recruiter_configured.is_(True)
+            )
+            .order_by(AssessmentSession.created_at.desc())
+        )
+        for asess in res_assess.scalars().all():
+            if asess.job_application_id not in assess_sess_map:
+                assess_sess_map[asess.job_application_id] = asess
+
+        assess_results_map = {}
+        assess_ids = [s.id for s in assess_sess_map.values() if s.id]
+        if assess_ids:
+            res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id.in_(assess_ids)))
+            for ar in res_ar.scalars().all():
+                assess_results_map[ar.session_id] = ar
+
+        # 5. Batch fetch Scheduled Interviews & Sessions
+        sched_map = {}
+        res_scheds = await db.execute(
+            select(ScheduledInterview)
+            .where(ScheduledInterview.job_application_id.in_(app_ids))
+            .order_by(ScheduledInterview.scheduled_date.desc())
+        )
+        for sc in res_scheds.scalars().all():
+            sched_map.setdefault(sc.job_application_id, []).append(sc)
+
+        int_sess_map = {}
+        res_sessions = await db.execute(
+            select(InterviewSession)
+            .where(
+                InterviewSession.job_application_id.in_(app_ids),
+                InterviewSession.interview_type == "Recruiter"
+            )
+            .order_by(InterviewSession.started_at.desc())
+        )
+        all_int_sessions = res_sessions.scalars().all()
+        for isess in all_int_sessions:
+            int_sess_map.setdefault(isess.job_application_id, []).append(isess)
+
+        # 6. Batch fetch Reports
+        all_rep_sess_ids = [s.id for s in all_int_sessions if s.id]
+        for s_list in sched_map.values():
+            for sc in s_list:
+                if sc.session_id:
+                    all_rep_sess_ids.append(sc.session_id)
+        all_rep_sess_ids = list(set(all_rep_sess_ids))
+
+        reports_map = {}
+        if all_rep_sess_ids:
+            res_reps = await db.execute(select(ScoringReport).where(ScoringReport.session_id.in_(all_rep_sess_ids)))
+            for rep in res_reps.scalars().all():
+                reports_map[rep.session_id] = rep
+
+        # 7. Batch fetch Offer Letters
+        offers_map = {}
+        res_offs = await db.execute(select(OfferLetter).where(OfferLetter.job_application_id.in_(app_ids)))
+        for off in res_offs.scalars().all():
+            offers_map.setdefault(off.job_application_id, []).append(off)
 
         out = []
         for app in apps:
-            res_c = await db.execute(select(Candidate).where(Candidate.id == app.candidate_id))
-            cand = res_c.scalars().first()
-            res_u = await db.execute(select(User).where(User.id == cand.user_id)) if cand else None
-            cand_user = res_u.scalars().first() if res_u else None
-            res_job = await db.execute(select(JobPosting).where(JobPosting.id == app.job_id))
-            job = res_job.scalars().first()
+            cand_tuple = cands_map.get(app.candidate_id)
+            cand = cand_tuple[0] if cand_tuple else None
+            cand_user = cand_tuple[1] if cand_tuple else None
+            job = jobs_map.get(app.job_id)
 
-            # Fetch Resume
-            resume_url = getattr(cand, "resume_url", None)
-            if app.resume_id:
-                res_r = await db.execute(select(Resume).where(Resume.id == app.resume_id))
-                r_obj = res_r.scalars().first()
-                if r_obj and r_obj.file_path:
-                    resume_url = r_obj.file_path
+            r_obj = resumes_map.get(app.resume_id)
+            resume_url = r_obj.file_path if (r_obj and r_obj.file_path) else getattr(cand, "resume_url", None)
 
             # Strictly fetch Assessment Session & Result LINKED to THIS specific application
-            res_assess = await db.execute(
-                select(AssessmentSession)
-                .where((AssessmentSession.job_application_id == app.id) | ((AssessmentSession.candidate_id == app.candidate_id) & (AssessmentSession.job_id == app.job_id)))
-                .order_by(AssessmentSession.created_at.desc())
-            )
-            assess_sess = res_assess.scalars().first()
-            assess_res = None
-            if assess_sess:
-                res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == assess_sess.id))
-                assess_res = res_ar.scalars().first()
-
-            assess_score = round(assess_res.overall_score, 1) if (assess_res and assess_res.overall_score is not None) else (round(app.assessment_score, 1) if getattr(app, 'assessment_score', None) is not None else None)
+            assess_sess = assess_sess_map.get(app.id)
+            assess_res = assess_results_map.get(assess_sess.id) if assess_sess else None
+            assess_score = round(assess_res.overall_score, 1) if (assess_res and assess_res.overall_score is not None) else None
 
             recruiter_assessment = None
-            if assess_sess or assess_score is not None:
+            if assess_sess:
                 recruiter_assessment = {
-                    "session_id": assess_sess.id if assess_sess else None,
-                    "status": "Completed" if (assess_res or assess_score is not None) else (assess_sess.status if assess_sess else "Completed"),
+                    "session_id": assess_sess.id,
+                    "status": "Completed" if assess_res else (assess_sess.status or "Scheduled"),
                     "score": assess_score,
-                    "attempt_date": assess_res.created_at.strftime('%B %d, %Y') if (assess_res and assess_res.created_at) else (assess_sess.created_at.strftime('%B %d, %Y') if (assess_sess and assess_sess.created_at) else "Recently"),
-                    "duration_minutes": assess_sess.duration_minutes if assess_sess else 30
+                    "attempt_date": assess_res.created_at.strftime('%B %d, %Y') if (assess_res and assess_res.created_at) else (assess_sess.created_at.strftime('%B %d, %Y') if assess_sess.created_at else "Recently"),
+                    "duration_minutes": assess_sess.duration_minutes or 30
                 }
 
-            # Fetch scheduled interviews & sessions strictly for this application
-            res_scheds = await db.execute(
-                select(ScheduledInterview)
-                .where(ScheduledInterview.job_application_id == app.id)
-                .order_by(ScheduledInterview.created_at.desc())
-            )
-            sched_list = res_scheds.scalars().all()
+            sched_list = sched_map.get(app.id, [])
+            session_list = int_sess_map.get(app.id, [])
 
-            res_sessions = await db.execute(
-                select(InterviewSession)
-                .where(
-                    InterviewSession.job_application_id == app.id,
-                    InterviewSession.interview_type == "Recruiter"
-                )
-                .order_by(InterviewSession.started_at.desc())
-            )
-            session_list = res_sessions.scalars().all()
-
-            async def get_round_data(r_type: str):
+            def get_round_data(r_type: str):
                 matched_session = next((s for s in session_list if (s.round_type or '').lower() == r_type.lower()), None)
                 matched_sched = next((s for s in sched_list if (s.round_type or '').lower() == r_type.lower()), None)
 
                 if not matched_session and matched_sched and matched_sched.session_id:
-                    res_ms = await db.execute(select(InterviewSession).where(InterviewSession.id == matched_sched.session_id))
-                    matched_session = res_ms.scalars().first()
+                    for s in session_list:
+                        if s.id == matched_sched.session_id:
+                            matched_session = s
+                            break
 
-                rep = None
-                if matched_session:
-                    res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id == matched_session.id))
-                    rep = res_rep.scalars().first()
-
+                sess_id = matched_session.id if matched_session else (matched_sched.session_id if matched_sched else None)
                 if not matched_session and not matched_sched:
                     return None
 
+                rep = reports_map.get(sess_id) if sess_id else None
                 is_completed = (rep is not None) or (matched_session and matched_session.status in ["completed", "Completed"])
                 status_val = "Completed" if is_completed else (matched_session.status if matched_session else (matched_sched.status if matched_sched else "Scheduled"))
 
                 return {
                     "schedule_id": matched_sched.id if matched_sched else None,
-                    "session_id": matched_session.id if matched_session else (matched_sched.session_id if matched_sched else None),
+                    "session_id": sess_id,
                     "round_type": r_type.capitalize(),
                     "status": status_val,
                     "scheduled_date": matched_sched.scheduled_date.strftime('%B %d, %Y %I:%M %p') if (matched_sched and matched_sched.scheduled_date) else None,
@@ -234,13 +299,13 @@ class RecruitmentPipelineService:
                     "is_conducted": is_completed
                 }
 
-            tech_round = await get_round_data("technical")
-            behav_round = await get_round_data("behavioral")
-            hr_round = await get_round_data("hr")
+            tech_round = get_round_data("technical")
+            behav_round = get_round_data("behavioral")
+            hr_round = get_round_data("hr")
 
             # Offer Letter Details
-            res_off = await db.execute(select(OfferLetter).where(OfferLetter.job_application_id == app.id))
-            off = res_off.scalars().first()
+            all_offs = offers_map.get(app.id, [])
+            off = next((o for o in all_offs if o.status == "Accepted"), all_offs[0] if all_offs else None)
             offer_details = {
                 "id": off.id,
                 "salary_offered": off.salary_offered,
@@ -252,7 +317,6 @@ class RecruitmentPipelineService:
             app_st_lower = (app.status or "").lower()
 
             # Robust pass determination:
-            # Technical is passed if explicitly marked Passed or if subsequent rounds exist
             is_tech_passed = (
                 (tech_round and tech_round.get("status") in ["Passed", "Passed by Recruiter"]) or
                 app_st_lower in [
@@ -270,7 +334,6 @@ class RecruitmentPipelineService:
                 tech_round["status"] = "Passed by Recruiter"
                 tech_round["is_conducted"] = True
 
-            # Behavioral is passed if explicitly marked Passed or if subsequent rounds exist
             is_behav_passed = (
                 (behav_round and behav_round.get("status") in ["Passed", "Passed by Recruiter"]) or
                 app_st_lower in [
@@ -286,7 +349,6 @@ class RecruitmentPipelineService:
                 behav_round["status"] = "Passed by Recruiter"
                 behav_round["is_conducted"] = True
 
-            # HR is passed if explicitly marked Passed or if Offer exists
             is_hr_passed = (
                 (hr_round and hr_round.get("status") in ["Passed", "Passed by Recruiter"]) or
                 app_st_lower in ["hr passed", "selected", "offer sent", "hired", "accepted"] or
@@ -305,7 +367,6 @@ class RecruitmentPipelineService:
                 hr_round or behav_round or tech_round
             )
 
-            # Only expose conducted session_id (prioritize latest conducted round)
             conducted_session_id = (
                 (hr_round["session_id"] if (hr_round and hr_round.get("is_conducted") and hr_round.get("session_id")) else None) or
                 (behav_round["session_id"] if (behav_round and behav_round.get("is_conducted") and behav_round.get("session_id")) else None) or
