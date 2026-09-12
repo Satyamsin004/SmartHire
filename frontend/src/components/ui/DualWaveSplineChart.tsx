@@ -40,16 +40,16 @@ export const DualWaveSplineChart: React.FC<DualWaveSplineChartProps> = ({
   className = '',
   valueFormatter = (v) => `${v}%`,
 }) => {
-  // If data is empty or too short, generate a smooth fallback wave
-  const chartData = data && data.length >= 2 ? data : [
-    { label: 'W1', primaryValue: 35, secondaryValue: 25 },
-    { label: 'W2', primaryValue: 68, secondaryValue: 40 },
-    { label: 'W3', primaryValue: 55, secondaryValue: 58 },
-    { label: 'W4', primaryValue: 64, secondaryValue: 48 },
-    { label: 'W5', primaryValue: 52, secondaryValue: 69 },
-    { label: 'W6', primaryValue: 74, secondaryValue: 55 },
-    { label: 'W7', primaryValue: 86, secondaryValue: 72 },
-  ];
+  if (!data || data.length === 0) {
+    return (
+      <div className={`relative overflow-hidden rounded-3xl bg-[#0B0F19] border border-slate-800/80 p-5 text-white shadow-2xl flex flex-col items-center justify-center text-center ${className}`} style={{ minHeight: height }}>
+        <p className="text-xs font-bold text-slate-400">No performance data recorded yet</p>
+        <p className="text-[11px] text-slate-500 mt-1">Complete your first interview to see your performance trend.</p>
+      </div>
+    );
+  }
+
+  const chartData = data.length === 1 ? [data[0], data[0]] : data;
 
   return (
     <div className={`relative overflow-hidden rounded-3xl bg-[#0B0F19] border border-slate-800/80 p-5 text-white shadow-2xl ${className}`}>

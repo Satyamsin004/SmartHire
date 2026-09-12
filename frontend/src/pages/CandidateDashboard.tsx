@@ -241,13 +241,20 @@ export const CandidateDashboard: React.FC = () => {
     { name: 'Jobs Applied', value: totalJobsApplied, color: '#06B6D4' },
   ];
 
-  const overallReadinessScore = Math.round(safeMetrics.avg_interview_score || 85);
-  const candidateCompetencyPieData = [
-    { name: 'Technical Depth', value: Math.max(10, Math.round(trendData?.summary?.latest_score ?? safeMetrics.avg_interview_score ?? 78)), color: '#8B5CF6' },
-    { name: 'Communication', value: Math.max(10, Math.round(safeMetrics.avg_communication ?? 85)), color: '#3B82F6' },
-    { name: 'Confidence', value: Math.max(10, Math.round(safeMetrics.avg_confidence ?? 80)), color: '#10B981' },
-    { name: 'Professionalism', value: Math.max(10, Math.round(safeMetrics.avg_professionalism ?? 82)), color: '#F59E0B' },
-  ];
+  const hasInterviewData = Boolean(
+    totalInterviewsConducted > 0 &&
+    (Number(safeMetrics.avg_interview_score) > 0 || (trendData?.timeline && trendData.timeline.length > 0))
+  );
+
+  const overallReadinessScore = hasInterviewData
+    ? Math.round(Number(safeMetrics.readiness_score) || Number(safeMetrics.avg_interview_score) || 0)
+    : 0;
+  const candidateCompetencyPieData = hasInterviewData ? [
+    { name: 'Technical Depth', value: Math.max(10, Math.round(trendData?.summary?.latest_score ?? safeMetrics.avg_technical ?? safeMetrics.avg_interview_score ?? 0)), color: '#8B5CF6' },
+    { name: 'Communication', value: Math.max(10, Math.round(safeMetrics.avg_communication ?? 0)), color: '#3B82F6' },
+    { name: 'Confidence', value: Math.max(10, Math.round(safeMetrics.avg_confidence ?? 0)), color: '#10B981' },
+    { name: 'Professionalism', value: Math.max(10, Math.round(safeMetrics.avg_professionalism ?? 0)), color: '#F59E0B' },
+  ] : [];
 
   const getCurrentStageIndex = () => {
     const current = safeMetrics.pipeline_stage || 'Not Started';
@@ -377,7 +384,7 @@ export const CandidateDashboard: React.FC = () => {
               metrics={[
                 {
                   label: 'Overall Readiness',
-                  value: `${Math.round(safeMetrics.avg_interview_score || 85)}%`,
+                  value: hasInterviewData ? `${overallReadinessScore}%` : 'Not evaluated yet',
                   subtext: `${safeMetrics.interviews_completed || 0} Evaluated Session${safeMetrics.interviews_completed === 1 ? '' : 's'}`,
                 },
                 {
@@ -469,20 +476,24 @@ export const CandidateDashboard: React.FC = () => {
                     data={
                       candidatePieMode === 'pipeline'
                         ? (totalPipelineActions > 0 ? candidatePieData : [{ name: 'No Activity', value: 1, color: '#334155' }])
-                        : candidateCompetencyPieData
+                        : (hasInterviewData && candidateCompetencyPieData.length > 0
+                            ? candidateCompetencyPieData
+                            : [{ name: 'Not Evaluated', value: 1, color: '#334155' }])
                     }
                     cx="50%"
                     cy="50%"
                     innerRadius={50}
                     outerRadius={75}
-                    paddingAngle={candidatePieMode === 'pipeline' ? (totalPipelineActions > 0 ? 4 : 0) : 4}
+                    paddingAngle={candidatePieMode === 'pipeline' ? (totalPipelineActions > 0 ? 4 : 0) : (hasInterviewData ? 4 : 0)}
                     dataKey="value"
                     stroke="#0B0F19"
                     strokeWidth={3}
                   >
                     {(candidatePieMode === 'pipeline'
                       ? (totalPipelineActions > 0 ? candidatePieData : [{ name: 'No Activity', value: 1, color: '#334155' }])
-                      : candidateCompetencyPieData
+                      : (hasInterviewData && candidateCompetencyPieData.length > 0
+                          ? candidateCompetencyPieData
+                          : [{ name: 'Not Evaluated', value: 1, color: '#334155' }])
                     ).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
@@ -498,8 +509,12 @@ export const CandidateDashboard: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <span className="text-2xl font-black text-white leading-none">{overallReadinessScore}%</span>
-                    <span className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold mt-0.5">Readiness</span>
+                    <span className="text-2xl font-black text-white leading-none">
+                      {hasInterviewData ? `${overallReadinessScore}%` : '0%'}
+                    </span>
+                    <span className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold mt-0.5">
+                      {hasInterviewData ? 'Readiness' : 'Not Evaluated'}
+                    </span>
                   </>
                 )}
               </div>
@@ -540,24 +555,36 @@ export const CandidateDashboard: React.FC = () => {
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
                     Technical
                   </div>
-                  <span className="text-base font-black text-white mt-0.5">{candidateCompetencyPieData[0].value}%</span>
-                  <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Depth</span>
+                  <span className="text-base font-black text-white mt-0.5">
+                    {hasInterviewData && candidateCompetencyPieData[0] ? `${candidateCompetencyPieData[0].value}%` : '--'}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">
+                    {hasInterviewData ? 'Depth' : 'Pending'}
+                  </span>
                 </div>
                 <div className="bg-slate-900/60 rounded-xl p-2 border border-slate-800/80 flex flex-col items-center hover:border-blue-500/40 transition-colors">
                   <div className="flex items-center gap-1 text-[10px] text-blue-400 font-bold uppercase truncate">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
                     Communication
                   </div>
-                  <span className="text-base font-black text-white mt-0.5">{candidateCompetencyPieData[1].value}%</span>
-                  <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Clarity</span>
+                  <span className="text-base font-black text-white mt-0.5">
+                    {hasInterviewData && candidateCompetencyPieData[1] ? `${candidateCompetencyPieData[1].value}%` : '--'}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">
+                    {hasInterviewData ? 'Clarity' : 'Pending'}
+                  </span>
                 </div>
                 <div className="bg-slate-900/60 rounded-xl p-2 border border-slate-800/80 flex flex-col items-center hover:border-amber-500/40 transition-colors">
                   <div className="flex items-center gap-1 text-[10px] text-amber-400 font-bold uppercase truncate">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                     Soft Skills
                   </div>
-                  <span className="text-base font-black text-white mt-0.5">{candidateCompetencyPieData[3].value}%</span>
-                  <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Professional</span>
+                  <span className="text-base font-black text-white mt-0.5">
+                    {hasInterviewData && candidateCompetencyPieData[3] ? `${candidateCompetencyPieData[3].value}%` : '--'}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">
+                    {hasInterviewData ? 'Professional' : 'Pending'}
+                  </span>
                 </div>
               </div>
             )}
@@ -733,45 +760,40 @@ export const CandidateDashboard: React.FC = () => {
 
           {/* Dual-Wave Spline & Chart Rendering */}
           {(() => {
-            const dualWaveTimeline = (trendData?.timeline && trendData.timeline.length > 0)
-              ? trendData.timeline.map((t: any) => ({
-                  label: t.display_date || t.date || 'Session',
-                  primaryValue: t.overall_score ?? t.technical_score ?? 80,
-                  secondaryValue: t.communication_score ?? Math.max(30, (t.overall_score || 80) - 10),
-                }))
-              : [
-                  { label: 'W1', primaryValue: 42, secondaryValue: 30 },
-                  { label: 'W2', primaryValue: 65, secondaryValue: 45 },
-                  { label: 'W3', primaryValue: 58, secondaryValue: 62 },
-                  { label: 'W4', primaryValue: 70, secondaryValue: 52 },
-                  { label: 'W5', primaryValue: 64, secondaryValue: 75 },
-                  { label: 'W6', primaryValue: 82, secondaryValue: 68 },
-                  { label: 'W7', primaryValue: 88, secondaryValue: 78 },
-                ];
+            const hasTimeline = Boolean(
+              trendData &&
+              trendData.total_interviews > 0 &&
+              trendData.timeline &&
+              trendData.timeline.length > 0
+            );
 
-            if (!trendData || trendData.total_interviews === 0) {
+            if (!hasTimeline) {
               return (
-                <div className="space-y-4">
-                  <DualWaveSplineChart
-                    data={dualWaveTimeline}
-                    title="Interview Readiness Baseline Wave (Demonstrative Cohort)"
-                    subtitle="Primary Wave: Technical Depth • Secondary Wave: Adaptive Reasoning"
-                    primaryLabel="Technical Acumen"
-                    secondaryLabel="Behavioral & Problem Solving"
-                    height={260}
-                  />
-                  <div className="py-4 flex flex-col items-center justify-center text-center text-slate-400 dark:text-slate-600 space-y-2">
-                    <p className="text-xs text-slate-400">Complete AI mock or recruiter interviews to plot your live personal trajectory against this curve.</p>
-                    <button
-                      onClick={() => navigate('/interview/config')}
-                      className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
-                    >
-                      Start First Mock Interview
-                    </button>
+                <div className="p-10 rounded-2xl bg-slate-50/60 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-500 flex items-center justify-center">
+                    <TrendingUp className="w-6 h-6" />
                   </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">No interview data yet</h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 max-w-md mt-1">
+                      Complete your first interview to see your performance trend.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/interview/config')}
+                    className="mt-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                  >
+                    Start First Mock Interview
+                  </button>
                 </div>
               );
             }
+
+            const dualWaveTimeline = trendData.timeline.map((t: any) => ({
+              label: t.display_date || t.date || 'Session',
+              primaryValue: t.overall_score ?? t.technical_score ?? 0,
+              secondaryValue: t.communication_score ?? Math.max(0, (t.overall_score || 0) - 10),
+            }));
 
             return (
               <div className="space-y-6">
@@ -935,7 +957,7 @@ export const CandidateDashboard: React.FC = () => {
           })()}
 
               {/* Category Mini-Trends */}
-              {trendData?.categories && (
+              {trendData?.total_interviews > 0 && trendData?.categories && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
                     { label: 'Technical', key: 'technical', icon: Brain, color: 'text-amber-500 dark:text-amber-400', bg: 'bg-amber-500/10 text-amber-500' },

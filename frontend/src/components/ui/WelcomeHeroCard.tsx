@@ -31,8 +31,8 @@ export const WelcomeHeroCard: React.FC<WelcomeHeroCardProps> = ({
   badgeText,
   actionButton,
 }) => {
-  const m1 = metrics?.[0] || { label: 'Readiness', value: '85%' };
-  const m2 = metrics?.[1] || { label: 'Pipeline', value: 'Active' };
+  const m1 = metrics?.[0] || { label: 'Readiness', value: '0%' };
+  const m2 = metrics?.[1] || { label: 'Pipeline', value: '0 Active' };
 
   return (
     <div

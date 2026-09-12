@@ -429,14 +429,22 @@ export const ReportDetailsPage: React.FC = () => {
           ? Math.round(atsTrend.reduce((acc, t) => acc + t.score, 0) / atsTrend.length)
           : (sessions.length > 0 ? 80 : 0));
 
-    // Dynamic Readiness Score
-    const readinessScore = Math.round(
-      metrics?.readiness_score != null && Number(metrics.readiness_score) > 0
-        ? Number(metrics.readiness_score)
-        : (avgInterviewScore > 0
-            ? Math.min(100, Math.round(avgInterviewScore * 0.45 + (avgAtsScore || 75) * 0.35 + Math.min(sessions.length * 2, 20)))
-            : (sessions.length > 0 ? 75 : 0))
+    const hasInterviewHistory = Boolean(
+      (metrics?.interviews_completed && Number(metrics.interviews_completed) > 0) ||
+      sessionsWithScores.length > 0 ||
+      avgInterviewScore > 0
     );
+
+    // Dynamic Readiness Score
+    const readinessScore = hasInterviewHistory
+      ? Math.round(
+          metrics?.readiness_score != null && Number(metrics.readiness_score) > 0
+            ? Number(metrics.readiness_score)
+            : (avgInterviewScore > 0
+                ? Math.min(100, Math.round(avgInterviewScore * 0.45 + (avgAtsScore || 75) * 0.35 + Math.min(sessions.length * 2, 20)))
+                : (sessions.length > 0 ? 75 : 0))
+        )
+      : 0;
 
     // Extract weak/strong areas across all reports & sessions
     const rawStrengths = [
@@ -444,36 +452,28 @@ export const ReportDetailsPage: React.FC = () => {
       ...sessions.flatMap((s) => s.strengths || [])
     ].filter(Boolean);
     const uniqueStrengths = Array.from(new Set(rawStrengths));
-    const allStrengths = uniqueStrengths.length > 0 ? uniqueStrengths : [
-      'Demonstrated solid technical problem decomposition and algorithmic thinking',
-      'Clear, structured technical communication when answering scenario questions',
-      'Consistent interview composure and professional delivery',
-      'Sound architectural grounding across full-stack core components'
-    ];
+    const allStrengths = uniqueStrengths;
 
     const rawWeaknesses = [
       ...(metrics?.weaknesses || []),
       ...sessions.flatMap((s) => s.weaknesses || [])
     ].filter(Boolean);
     const uniqueWeaknesses = Array.from(new Set(rawWeaknesses));
-    const allWeaknesses = uniqueWeaknesses.length > 0 ? uniqueWeaknesses : [
-      'Deepen coverage of high-scale edge-case handling and latency trade-offs',
-      'Quantify business impacts and metrics more proactively in STAR responses'
-    ];
+    const allWeaknesses = uniqueWeaknesses;
 
-    // Dynamic Topic improvements
-    const techAvg = metrics?.avg_technical_score || (avgInterviewScore > 0 ? Math.min(95, avgInterviewScore + 5) : 82);
-    const commAvg = metrics?.avg_communication_score || (avgInterviewScore > 0 ? Math.min(92, avgInterviewScore + 8) : 85);
-    const confAvg = metrics?.avg_confidence_score || (avgInterviewScore > 0 ? Math.min(90, avgInterviewScore + 3) : 80);
-    const profAvg = metrics?.avg_professionalism_score || (avgInterviewScore > 0 ? Math.min(94, avgInterviewScore + 10) : 88);
+    // Dynamic Topic improvements (only populated from real interview evaluations)
+    const techAvg = metrics?.avg_technical_score || (avgInterviewScore > 0 ? Math.min(95, avgInterviewScore + 5) : 0);
+    const commAvg = metrics?.avg_communication_score || (avgInterviewScore > 0 ? Math.min(92, avgInterviewScore + 8) : 0);
+    const confAvg = metrics?.avg_confidence_score || (avgInterviewScore > 0 ? Math.min(90, avgInterviewScore + 3) : 0);
+    const profAvg = metrics?.avg_professionalism_score || (avgInterviewScore > 0 ? Math.min(94, avgInterviewScore + 10) : 0);
 
-    const topicImprovements = [
+    const topicImprovements = hasInterviewHistory ? [
       { topic: 'System Design & Architecture', score: Math.round(techAvg), trend: '+12%' },
       { topic: 'Technical Problem Solving', score: Math.round(Math.max(60, techAvg - 4)), trend: '+8%' },
       { topic: 'Verbal & Spoken Communication', score: Math.round(commAvg), trend: '+15%' },
       { topic: 'Composure & Confidence', score: Math.round(confAvg), trend: '+10%' },
       { topic: 'Behavioral & STAR Methodology', score: Math.round(profAvg), trend: '+14%' }
-    ];
+    ] : [];
 
     return (
       <>
@@ -581,7 +581,9 @@ export const ReportDetailsPage: React.FC = () => {
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 {isRecruiter ? 'Qualification Rate' : 'Readiness Score'}
               </span>
-              <p className="text-2xl font-black text-amber-600 mt-2">{readinessScore}%</p>
+              <p className="text-2xl font-black text-amber-600 mt-2">
+                {hasInterviewHistory || readinessScore > 0 ? `${readinessScore}%` : 'Not evaluated yet'}
+              </p>
             </div>
           </div>
 
@@ -653,19 +655,25 @@ export const ReportDetailsPage: React.FC = () => {
             {/* Topic-Wise Improvement */}
             <div className="card-luxury p-6 space-y-4">
               <h3 className="text-xs font-extrabold text-brand-ink uppercase tracking-wider">Topic-wise Improvement</h3>
-              <div className="space-y-3">
-                {topicImprovements.map((item, i) => (
-                  <div key={i} className="space-y-1">
-                    <div className="flex justify-between text-xs font-bold">
-                      <span className="text-slate-700 dark:text-slate-200">{item.topic}</span>
-                      <span className="text-emerald-600 dark:text-emerald-400">{item.score}% ({item.trend})</span>
+              {topicImprovements.length > 0 ? (
+                <div className="space-y-3">
+                  {topicImprovements.map((item, i) => (
+                    <div key={i} className="space-y-1">
+                      <div className="flex justify-between text-xs font-bold">
+                        <span className="text-slate-700 dark:text-slate-200">{item.topic}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{item.score}% ({item.trend})</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${item.score}%` }} />
+                      </div>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${item.score}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-6 flex flex-col items-center justify-center text-center space-y-1">
+                  <p className="text-xs text-slate-400 font-medium">No interview data yet.</p>
+                </div>
+              )}
             </div>
 
             {/* Key Strong Areas */}
@@ -682,7 +690,9 @@ export const ReportDetailsPage: React.FC = () => {
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-slate-400 font-medium">Complete interviews to extract your top strengths.</p>
+                <div className="py-6 flex flex-col items-center justify-center text-center space-y-1">
+                  <p className="text-xs text-slate-400 font-medium">Complete your first interview to discover your strengths.</p>
+                </div>
               )}
             </div>
 
@@ -700,7 +710,9 @@ export const ReportDetailsPage: React.FC = () => {
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-slate-400 font-medium">No key weaknesses identified yet.</p>
+                <div className="py-6 flex flex-col items-center justify-center text-center space-y-1">
+                  <p className="text-xs text-slate-400 font-medium">Complete your first interview to identify areas for improvement.</p>
+                </div>
               )}
             </div>
           </div>
