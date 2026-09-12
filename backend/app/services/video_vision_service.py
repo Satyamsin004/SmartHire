@@ -1,4 +1,5 @@
 import os
+import uuid
 import asyncio
 import logging
 from typing import Optional, Dict, Any
@@ -99,6 +100,7 @@ class VideoVisionService:
             cand_id = sess.candidate_id if sess else str(uuid.uuid4())
 
             vision_analysis = InterviewVisionAnalysis(
+                id=str(uuid.uuid4()),
                 recording_id=recording_id,
                 session_id=session_id,
                 candidate_id=cand_id,
@@ -106,9 +108,6 @@ class VideoVisionService:
                 provider="gemini_vision",
                 error_message=str(val_err)
             )
-            db.add(vision_analysis)
-            await db.commit()
-            await db.refresh(vision_analysis)
             return vision_analysis
 
         # Idempotency guard: Skip if already COMPLETED or PROCESSING

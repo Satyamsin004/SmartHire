@@ -111,9 +111,14 @@ async def start_interview_session(
         if not scheduled_inst:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scheduled interview not found.")
 
-    if scheduled_inst:
         # Check authorization: Candidate must own this scheduled interview
-        if scheduled_inst.candidate_id != candidate.id and current_user.role != "admin":
+        is_owner = (scheduled_inst.candidate_id == candidate.id)
+        if not is_owner and scheduled_inst.job_application_id:
+            res_app = await db.execute(select(JobApplication).where(JobApplication.id == scheduled_inst.job_application_id))
+            job_app = res_app.scalar_one_or_none()
+            if job_app and job_app.candidate_id == candidate.id:
+                is_owner = True
+        if not is_owner and current_user.role != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not authorized to start this scheduled interview."
@@ -352,6 +357,68 @@ async def start_interview_session(
         "total_questions": len(response_questions),
         "first_question": response_questions[0],
         "questions": response_questions
+    }
+
+@router.get("/interview-sessions/{session_id}/status", summary="Get Interview Session Status")
+async def get_interview_session_status(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieves real-time status and metadata for an interview session with ownership verification."""
+    res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
+    session = res_s.scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview session '{session_id}' not found."
+        )
+
+    if current_user.role == "candidate":
+        res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
+        candidate = res_c.scalar_one_or_none()
+        if not candidate or session.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You are not authorized to view this session status."
+            )
+    elif current_user.role == "recruiter":
+        res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == current_user.id))
+        recruiter = res_r.scalar_one_or_none()
+        if not recruiter:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: Recruiter profile not found.")
+        is_authorized = False
+        if session.recruiter_id and session.recruiter_id == recruiter.id:
+            is_authorized = True
+        elif session.scheduled_interview_id:
+            sched_res = await db.execute(select(ScheduledInterview).where(ScheduledInterview.id == session.scheduled_interview_id))
+            sched = sched_res.scalar_one_or_none()
+            if sched and sched.recruiter_id == recruiter.id:
+                is_authorized = True
+        if not is_authorized and session.candidate_id:
+            res_app = await db.execute(
+                select(JobApplication)
+                .join(JobPosting, JobPosting.id == JobApplication.job_id)
+                .where(JobApplication.candidate_id == session.candidate_id, JobPosting.recruiter_id == recruiter.id)
+            )
+            if res_app.scalars().first():
+                is_authorized = True
+        if not is_authorized:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You are not authorized to view this session status."
+            )
+
+    return {
+        "session_id": session.id,
+        "status": session.status,
+        "candidate_id": session.candidate_id,
+        "recruiter_id": session.recruiter_id,
+        "recording_status": getattr(session, "recording_status", "PENDING"),
+        "title": session.title,
+        "round_type": session.round_type,
+        "question_count": session.question_count,
+        "created_at": session.started_at.isoformat() if session.started_at else None
     }
 
 @router.post("/submit-answer", response_model=AnswerEvaluationResponse)

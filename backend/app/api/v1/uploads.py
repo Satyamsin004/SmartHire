@@ -8,13 +8,61 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.db import get_db
-from app.models.domain import User, Candidate, Recruiter, Resume, ResumeSkill, Notification, ActivityLog, InterviewSession, InterviewRecording, InterviewTranscript, InterviewVisionAnalysis
+from app.models.domain import (
+    User, Candidate, Recruiter, Resume, ResumeSkill, Notification, ActivityLog,
+    InterviewSession, InterviewRecording, InterviewTranscript, InterviewVisionAnalysis,
+    JobApplication, JobPosting, ScheduledInterview
+)
 from app.dependencies.auth import get_current_user
 from app.services.resume_service import resume_service
 from app.services.storage_service import storage_service
 from app.services.transcription_service import transcription_service
 from app.services.video_vision_service import video_vision_service
 from app.core.events import session_event_publisher, SessionEventPayload, SessionEventType
+
+async def _verify_session_access(session: InterviewSession, user: User, db: AsyncSession):
+    """Enforces strict IDOR ownership chain for candidates and recruiters."""
+    if user.role == "admin":
+        return
+    if user.role == "candidate":
+        res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+        candidate = res_c.scalar_one_or_none()
+        if not candidate or session.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You do not have access to this session."
+            )
+    elif user.role == "recruiter":
+        res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
+        recruiter = res_r.scalar_one_or_none()
+        if not recruiter:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: Recruiter profile not found.")
+        is_authorized = False
+        if session.recruiter_id and session.recruiter_id == recruiter.id:
+            is_authorized = True
+        elif session.scheduled_interview_id:
+            sched_res = await db.execute(select(ScheduledInterview).where(ScheduledInterview.id == session.scheduled_interview_id))
+            sched = sched_res.scalar_one_or_none()
+            if sched and sched.recruiter_id == recruiter.id:
+                is_authorized = True
+        if not is_authorized and session.candidate_id:
+            res_app = await db.execute(
+                select(JobApplication)
+                .join(JobPosting, JobPosting.id == JobApplication.job_id)
+                .where(JobApplication.candidate_id == session.candidate_id, JobPosting.recruiter_id == recruiter.id)
+            )
+            if res_app.scalars().first():
+                is_authorized = True
+        if not is_authorized:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You do not have access to this candidate's session data."
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Invalid user role."
+        )
 
 router = APIRouter(prefix="/uploads", tags=["File Uploads & Storage"])
 
@@ -258,15 +306,13 @@ async def upload_interview_recording(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Interview session '{session_id}' not found."
         )
-    if session.candidate_id != candidate.id and user.role != "admin":
-        # Bind candidate ownership for candidate/practice/mock/recruiter sessions
-        if not session.candidate_id or session.scheduled_interview_id is None or session.interview_type in ("Mock", "Practice", "Technical", "Behavioral", "HR", "Managerial", "Recruiter"):
-            session.candidate_id = candidate.id
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: Candidate does not own this interview session."
-            )
+    if session.candidate_id and session.candidate_id != candidate.id and user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Candidate does not own this interview session."
+        )
+    if not session.candidate_id:
+        session.candidate_id = candidate.id
 
     # 3. Read uploaded file content
     content = await file.read()
@@ -353,6 +399,7 @@ async def upload_interview_recording(
 
     return {
         "id": rec.id,
+        "recording_id": rec.id,
         "session_id": rec.session_id,
         "candidate_id": rec.candidate_id,
         "recording_type": rec.recording_type,
@@ -360,7 +407,8 @@ async def upload_interview_recording(
         "mime_type": rec.mime_type,
         "file_size": rec.file_size,
         "duration": rec.duration,
-        "status": rec.status,
+        "status": "success",
+        "recording_status": rec.status,
         "created_at": rec.created_at.isoformat() if rec.created_at else None
     }
 
@@ -381,15 +429,8 @@ async def get_session_recordings(
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found.")
 
-    # Ownership check: candidates can only access their own sessions
-    if user.role == "candidate":
-        res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-        candidate = res_c.scalar_one_or_none()
-        if not candidate or session.candidate_id != candidate.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: You do not have access to this session's recordings."
-            )
+    # Ownership check: verify complete ownership chain for candidate or recruiter
+    await _verify_session_access(session, user, db)
 
     res_rec = await db.execute(select(InterviewRecording).where(InterviewRecording.session_id == session_id))
     recordings = [r for r in res_rec.scalars().all() if (r.file_size or 0) > 0]
@@ -497,15 +538,8 @@ async def stream_session_recording(
             detail=f"Interview session '{session_id}' not found."
         )
 
-    # 4. Ownership check: candidates can only stream their own session recordings
-    if auth_user.role == "candidate":
-        res_c = await db.execute(select(Candidate).where(Candidate.user_id == auth_user.id))
-        candidate = res_c.scalar_one_or_none()
-        if not candidate or session.candidate_id != candidate.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: You do not have access to this session's recording."
-            )
+    # 4. Ownership check: verify complete ownership chain for candidate or recruiter
+    await _verify_session_access(session, auth_user, db)
 
     # 5. Locate recording on disk strictly for this session
     disk_path = None
@@ -566,3 +600,141 @@ async def stream_session_recording(
             "Content-Disposition": f'inline; filename="interview_recording_{session_id}.webm"'
         }
     )
+
+
+@router.get("/interview-sessions/{session_id}/transcript", summary="Get Interview Session Transcript")
+async def get_session_transcript(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetches full transcript for an interview session with ownership verification."""
+    res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
+    session = res_s.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found.")
+
+    await _verify_session_access(session, user, db)
+
+    res_tr = await db.execute(
+        select(InterviewTranscript)
+        .where(InterviewTranscript.session_id == session_id)
+        .order_by(InterviewTranscript.created_at.desc())
+    )
+    tr = res_tr.scalars().first()
+    if not tr:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Transcript for session '{session_id}' not found.")
+
+    return {
+        "id": tr.id,
+        "session_id": tr.session_id,
+        "candidate_id": tr.candidate_id,
+        "recording_id": tr.recording_id,
+        "transcript_text": tr.transcript_text,
+        "status": tr.status,
+        "language": tr.language,
+        "duration": tr.duration,
+        "created_at": tr.created_at.isoformat() if tr.created_at else None
+    }
+
+
+@router.post("/interview-sessions/{session_id}/transcription", summary="Trigger or Retry Session Transcription")
+async def retry_session_transcription(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Triggers or retries audio transcription for an interview session idempotently."""
+    res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
+    session = res_s.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found.")
+
+    await _verify_session_access(session, user, db)
+
+    res_rec = await db.execute(
+        select(InterviewRecording)
+        .where(InterviewRecording.session_id == session_id)
+        .order_by(InterviewRecording.created_at.desc())
+    )
+    rec = res_rec.scalars().first()
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No recording found for transcription.")
+
+    tr = await transcription_service.process_transcription(db, session_id, rec.id)
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "transcript_id": tr.id if tr else None,
+        "transcript_status": tr.status if tr else "FAILED"
+    }
+
+
+@router.get("/interview-sessions/{session_id}/vision-analysis", summary="Get Interview Session Vision Analysis")
+async def get_session_vision_analysis(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetches visual observation & face analysis results for an interview session."""
+    res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
+    session = res_s.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found.")
+
+    await _verify_session_access(session, user, db)
+
+    res_va = await db.execute(
+        select(InterviewVisionAnalysis)
+        .where(InterviewVisionAnalysis.session_id == session_id)
+        .order_by(InterviewVisionAnalysis.created_at.desc())
+    )
+    va = res_va.scalars().first()
+    if not va:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vision analysis for session '{session_id}' not found.")
+
+    return {
+        "id": va.id,
+        "session_id": va.session_id,
+        "candidate_id": va.candidate_id,
+        "recording_id": va.recording_id,
+        "status": va.status,
+        "eye_contact_percentage": va.eye_contact_percentage,
+        "attention_score": va.attention_score,
+        "confidence_percentage": va.confidence_percentage,
+        "face_presence_percentage": va.face_presence_percentage,
+        "multiple_faces_detected": va.multiple_faces_detected,
+        "created_at": va.created_at.isoformat() if va.created_at else None
+    }
+
+
+@router.post("/interview-sessions/{session_id}/vision-analysis", summary="Trigger or Retry Session Vision Analysis")
+async def retry_session_vision_analysis(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Triggers or retries computer vision analysis for an interview session idempotently."""
+    res_s = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
+    session = res_s.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found.")
+
+    await _verify_session_access(session, user, db)
+
+    res_rec = await db.execute(
+        select(InterviewRecording)
+        .where(InterviewRecording.session_id == session_id)
+        .order_by(InterviewRecording.created_at.desc())
+    )
+    rec = res_rec.scalars().first()
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No recording found for vision analysis.")
+
+    va = await video_vision_service.process_vision_analysis(db, session_id, rec.id)
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "vision_analysis_id": va.id if va else None,
+        "vision_status": va.status if va else "FAILED"
+    }

@@ -33,6 +33,8 @@ class ScoringEngine:
             return {"rating_category": "Average", "recommendation": "Hold"}
         elif score >= 40.0:
             return {"rating_category": "Needs Improvement", "recommendation": "Hold"}
+        elif score <= 20.0:
+            return {"rating_category": "Not Recommended", "recommendation": "Reject"}
         else:
             return {"rating_category": "Poor", "recommendation": "Reject"}
 
@@ -178,15 +180,54 @@ class ScoringEngine:
         )
         prof_score = round(max(0.0, min(100.0, prof_score_raw)), 1)
 
-        # 9. Exact Weighted Overall Score: 30% Comm + 25% Conf + 30% Tech + 15% Prof
-        overall_score_raw = (
-            (comm_score * self.WEIGHTS["communication"]) +
-            (conf_score * self.WEIGHTS["confidence"]) +
-            (tech_score * self.WEIGHTS["technical"]) +
-            (prof_score * self.WEIGHTS["professionalism"])
-        )
-        overall_score = round(max(0.0, min(100.0, overall_score_raw)), 1)
-        rating_meta = self.calculate_rating_category(overall_score)
+        # Check for silent / empty transcript condition
+        all_transcripts_empty = not transcripts or all(not str(t).strip() for t in transcripts)
+        avg_wpm = speech_analysis.get("average_wpm", 0.0)
+        if speech_results and "speaking_pace_wpm" in speech_results[0]:
+            avg_wpm = float(speech_results[0]["speaking_pace_wpm"])
+
+        if all_transcripts_empty and avg_wpm == 0.0:
+            comm_score = 0.0
+            clarity = 0.0
+            grammar = 0.0
+            filler_ctrl = 0.0
+            pace = 0.0
+            vocab = 0.0
+            pronun = 0.0
+            tech_completeness = 0.0
+            time_mgmt = 0.0
+            org = 0.0
+            prof_comm = 0.0
+            consistency = 0.0
+            speech_analysis["clarity_score"] = 0.0
+            speech_analysis["grammar_score"] = 0.0
+            speech_analysis["filler_control_score"] = 0.0
+            speech_analysis["pace_score"] = 0.0
+            speech_analysis["vocabulary_richness"] = 0.0
+            speech_analysis["pronunciation_score"] = 0.0
+            if tech_score == 0.0:
+                conf_score = 0.0
+                prof_score = 0.0
+                overall_score = 0.0
+                rating_meta = {"rating_category": "Not Recommended", "recommendation": "Reject"}
+            else:
+                overall_score_raw = (
+                    (conf_score * self.WEIGHTS["confidence"]) +
+                    (tech_score * self.WEIGHTS["technical"]) +
+                    (prof_score * self.WEIGHTS["professionalism"])
+                )
+                overall_score = round(max(0.0, min(100.0, overall_score_raw)), 1)
+                rating_meta = self.calculate_rating_category(overall_score)
+        else:
+            # 9. Exact Weighted Overall Score: 30% Comm + 25% Conf + 30% Tech + 15% Prof
+            overall_score_raw = (
+                (comm_score * self.WEIGHTS["communication"]) +
+                (conf_score * self.WEIGHTS["confidence"]) +
+                (tech_score * self.WEIGHTS["technical"]) +
+                (prof_score * self.WEIGHTS["professionalism"])
+            )
+            overall_score = round(max(0.0, min(100.0, overall_score_raw)), 1)
+            rating_meta = self.calculate_rating_category(overall_score)
 
         # 10. Generate Evidence-Backed Feedback & Curated Resources
         feedback = feedback_generator.generate_feedback(

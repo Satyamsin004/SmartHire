@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, case, or_
 from app.services.pdf_service import pdf_generator
 
 from app.core.db import get_db
@@ -162,11 +162,21 @@ async def get_registered_candidates(
     db: AsyncSession = Depends(get_db)
 ):
     """Returns ALL registered candidate accounts directly from PostgreSQL with batch-loaded metadata, search, and filtering."""
+    subq_app = (
+        select(JobApplication.candidate_id, func.max(JobApplication.applied_at).label('latest_applied_at'))
+        .group_by(JobApplication.candidate_id)
+        .subquery()
+    )
     res = await db.execute(
         select(User, Candidate)
         .outerjoin(Candidate, Candidate.user_id == User.id)
+        .outerjoin(subq_app, subq_app.c.candidate_id == Candidate.id)
         .where(User.role == "candidate", User.deleted_at == None)
-        .order_by(User.created_at.desc())
+        .order_by(
+            case((or_(User.email.ilike("%@example.com"), User.email.ilike("%@test.com"), User.email.ilike("pytest_%")), 1), else_=0),
+            subq_app.c.latest_applied_at.desc().nullslast(),
+            User.created_at.desc()
+        )
     )
     user_cand_pairs = res.all()
     if not user_cand_pairs:
@@ -181,8 +191,13 @@ async def get_registered_candidates(
         res = await db.execute(
             select(User, Candidate)
             .join(Candidate, Candidate.user_id == User.id)
+            .outerjoin(subq_app, subq_app.c.candidate_id == Candidate.id)
             .where(User.role == "candidate", User.deleted_at == None)
-            .order_by(User.created_at.desc())
+            .order_by(
+                case((or_(User.email.ilike("%@example.com"), User.email.ilike("%@test.com"), User.email.ilike("pytest_%")), 1), else_=0),
+                subq_app.c.latest_applied_at.desc().nullslast(),
+                User.created_at.desc()
+            )
         )
         user_cand_pairs = res.all()
 
