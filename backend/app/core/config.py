@@ -27,6 +27,59 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgrespassword2026")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "smarthire_db")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
+
+    @property
+    def EFFECTIVE_POSTGRES_SERVER(self) -> str:
+        for k in ["POSTGRES_SERVER", "POSTGRES_HOST", "PGHOST"]:
+            val = os.getenv(k)
+            if val:
+                val = val.strip()
+                if not val.startswith("${{"):
+                    return val
+        val = (os.getenv("POSTGRES_SERVER") or os.getenv("PGHOST") or "").strip()
+        if val.startswith("${{"):
+            return "postgres.railway.internal"
+        return val or "localhost"
+
+    @property
+    def EFFECTIVE_POSTGRES_PORT(self) -> str:
+        for k in ["POSTGRES_PORT", "PGPORT"]:
+            val = os.getenv(k)
+            if val:
+                val = val.strip()
+                if not val.startswith("${{"):
+                    return val
+        return "5432"
+
+    @property
+    def EFFECTIVE_POSTGRES_USER(self) -> str:
+        for k in ["POSTGRES_USER", "PGUSER"]:
+            val = os.getenv(k)
+            if val:
+                val = val.strip()
+                if not val.startswith("${{"):
+                    return val
+        return "postgres"
+
+    @property
+    def EFFECTIVE_POSTGRES_PASSWORD(self) -> str:
+        for k in ["POSTGRES_PASSWORD", "PGPASSWORD"]:
+            val = os.getenv(k)
+            if val:
+                val = val.strip()
+                if not val.startswith("${{"):
+                    return val
+        return os.getenv("POSTGRES_PASSWORD", "postgrespassword2026")
+
+    @property
+    def EFFECTIVE_POSTGRES_DB(self) -> str:
+        for k in ["POSTGRES_DB", "POSTGRES_DATABASE", "PGDATABASE"]:
+            val = os.getenv(k)
+            if val:
+                val = val.strip()
+                if not val.startswith("${{"):
+                    return val
+        return "railway" if os.getenv("ENVIRONMENT") == "production" else "smarthire_db"
     
     @property
     def CANONICAL_SQLITE_PATH(self) -> str:
@@ -37,32 +90,38 @@ class Settings(BaseSettings):
 
     @property
     def DATABASE_URL(self) -> str:
-        db_override = os.getenv("DATABASE_URL")
-        if db_override:
-            if db_override.startswith("postgres://"):
-                db_override = db_override.replace("postgres://", "postgresql+asyncpg://", 1)
-            elif db_override.startswith("postgresql://") and "+asyncpg" not in db_override:
-                db_override = db_override.replace("postgresql://", "postgresql+asyncpg://", 1)
-            return db_override
+        for url_key in ["DATABASE_URL", "DATABASE_PRIVATE_URL", "DATABASE_PUBLIC_URL"]:
+            db_override = os.getenv(url_key)
+            if db_override and not db_override.startswith("${{"):
+                db_override = db_override.strip()
+                if db_override.startswith("postgres://"):
+                    db_override = db_override.replace("postgres://", "postgresql+asyncpg://", 1)
+                elif db_override.startswith("postgresql://") and "+asyncpg" not in db_override:
+                    db_override = db_override.replace("postgresql://", "postgresql+asyncpg://", 1)
+                return db_override
+
         use_sqlite = os.getenv("USE_SQLITE", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() in ("true", "1")
         if use_sqlite:
             return f"sqlite+aiosqlite:///{self.CANONICAL_SQLITE_PATH}"
 
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return f"postgresql+asyncpg://{self.EFFECTIVE_POSTGRES_USER}:{self.EFFECTIVE_POSTGRES_PASSWORD}@{self.EFFECTIVE_POSTGRES_SERVER}:{self.EFFECTIVE_POSTGRES_PORT}/{self.EFFECTIVE_POSTGRES_DB}"
     
     @property
     def SYNC_DATABASE_URL(self) -> str:
-        db_override = os.getenv("SYNC_DATABASE_URL") or os.getenv("DATABASE_URL")
-        if db_override:
-            if db_override.startswith("postgresql+asyncpg://"):
-                db_override = db_override.replace("postgresql+asyncpg://", "postgresql://", 1)
-            elif db_override.startswith("postgres://"):
-                db_override = db_override.replace("postgres://", "postgresql://", 1)
-            return db_override
+        for url_key in ["SYNC_DATABASE_URL", "DATABASE_URL", "DATABASE_PRIVATE_URL", "DATABASE_PUBLIC_URL"]:
+            db_override = os.getenv(url_key)
+            if db_override and not db_override.startswith("${{"):
+                db_override = db_override.strip()
+                if db_override.startswith("postgresql+asyncpg://"):
+                    db_override = db_override.replace("postgresql+asyncpg://", "postgresql://", 1)
+                elif db_override.startswith("postgres://"):
+                    db_override = db_override.replace("postgres://", "postgresql://", 1)
+                return db_override
+
         use_sqlite = os.getenv("USE_SQLITE", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() in ("true", "1")
         if use_sqlite:
             return f"sqlite:///{self.CANONICAL_SQLITE_PATH}"
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return f"postgresql://{self.EFFECTIVE_POSTGRES_USER}:{self.EFFECTIVE_POSTGRES_PASSWORD}@{self.EFFECTIVE_POSTGRES_SERVER}:{self.EFFECTIVE_POSTGRES_PORT}/{self.EFFECTIVE_POSTGRES_DB}"
 
     REDIS_HOST: str = os.getenv("REDIS_HOST", "127.0.0.1")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))

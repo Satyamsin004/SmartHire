@@ -102,11 +102,24 @@ async def run_migrations():
     logger.info("Initializing SmartHire AI Production Database Migrations...")
     engine = get_engine()
 
-    async with engine.begin() as conn:
-        # Step 1: Create all defined ORM tables if missing
-        logger.info("Creating ORM Base metadata tables...")
-        await conn.run_sync(Base.metadata.create_all)
-        logger.info("Base tables initialized successfully.")
+    db_url = engine.url
+    safe_host = db_url.host or 'localhost'
+    safe_url = f"{db_url.drivername}://{db_url.username or 'user'}@{safe_host}:{db_url.port or 5432}/{db_url.database or ''}"
+    logger.info("Database migration target: %s", safe_url)
+
+    if "${{" in safe_host:
+        logger.warning("Database hostname '%s' contains an unexpanded Railway template reference. Ensure Railway variable references match the exact service name.", safe_host)
+
+    try:
+        async with engine.begin() as conn:
+            # Step 1: Create all defined ORM tables if missing
+            logger.info("Creating ORM Base metadata tables...")
+            await conn.run_sync(Base.metadata.create_all)
+            logger.info("Base tables initialized successfully.")
+    except Exception as exc:
+        logger.error("Database connection failed during base table creation: %s", exc)
+        logger.error("Target host was: %s (port: %s, database: %s)", safe_host, db_url.port, db_url.database)
+        raise exc
 
     # Step 2: Run all evolutionary schema updates and indexes
     success_count = 0
