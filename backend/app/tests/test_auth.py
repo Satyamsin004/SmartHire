@@ -86,3 +86,46 @@ async def test_full_auth_flow_via_api():
             "Authorization": f"Bearer {access_token}"
         })
         assert me_revoked.status_code == 401
+
+def test_google_oauth_callback_redirect_url_format():
+    """Regression test ensuring OAuth callback redirect is ALWAYS an absolute URL starting with https://smarthireai.up.railway.app/login."""
+    import os
+    from app.core.config import Settings
+    
+    # 1. Test production default
+    os.environ["ENVIRONMENT"] = "production"
+    if "FRONTEND_URL" in os.environ:
+        del os.environ["FRONTEND_URL"]
+    
+    s_prod = Settings()
+    frontend_base = s_prod.FRONTEND_URL.strip().rstrip('/')
+    if not frontend_base.startswith("http://") and not frontend_base.startswith("https://"):
+        frontend_base = f"https://{frontend_base}"
+    
+    target_url = f"{frontend_base}/login?token=test_token&user=test_user"
+    assert target_url.startswith("https://smarthireai.up.railway.app/login?token=")
+    assert "smarthire-production" not in target_url.replace("https://smarthireai", "")
+    assert not target_url.startswith("/api/v1/auth/google/")
+
+    # 2. Test when FRONTEND_URL is set without https:// (Railway domain reference edge-case)
+    os.environ["FRONTEND_URL"] = "smarthireai.up.railway.app"
+    s_no_scheme = Settings()
+    fb_no_scheme = s_no_scheme.FRONTEND_URL.strip().rstrip('/')
+    if not fb_no_scheme.startswith("http://") and not fb_no_scheme.startswith("https://"):
+        fb_no_scheme = f"https://{fb_no_scheme}"
+    target_url_2 = f"{fb_no_scheme}/login?token=test_token"
+    assert target_url_2.startswith("https://smarthireai.up.railway.app/login?token=")
+
+    # 3. Test when FRONTEND_URL has trailing slash
+    os.environ["FRONTEND_URL"] = "https://smarthireai.up.railway.app/"
+    s_trailing = Settings()
+    fb_trailing = s_trailing.FRONTEND_URL.strip().rstrip('/')
+    target_url_3 = f"{fb_trailing}/login?token=test_token"
+    assert target_url_3.startswith("https://smarthireai.up.railway.app/login?token=")
+    assert "//login" not in target_url_3
+
+    # Clean up environment variables
+    os.environ["ENVIRONMENT"] = "development"
+    if "FRONTEND_URL" in os.environ:
+        del os.environ["FRONTEND_URL"]
+

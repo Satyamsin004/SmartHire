@@ -145,11 +145,13 @@ class Settings(BaseSettings):
     def GOOGLE_REDIRECT_URI(self) -> str:
         override = os.getenv("GOOGLE_REDIRECT_URI")
         if override:
-            override = override.strip()
+            override = override.strip().rstrip('/')
             if not override.startswith("${{") and "your-production-domain.com" not in override:
                 is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))
                 if is_prod and ("localhost" in override or "127.0.0.1" in override):
                     return "https://smarthire-production-675e.up.railway.app/api/v1/auth/google/callback"
+                if not override.startswith("http://") and not override.startswith("https://"):
+                    override = f"https://{override}"
                 return override
 
         is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))
@@ -161,11 +163,13 @@ class Settings(BaseSettings):
     def FRONTEND_URL(self) -> str:
         override = os.getenv("FRONTEND_URL")
         if override:
-            override = override.strip()
+            override = override.strip().rstrip('/')
             if not override.startswith("${{") and "your-production-domain.com" not in override:
                 is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))
                 if is_prod and ("localhost" in override or "127.0.0.1" in override):
                     return "https://smarthireai.up.railway.app"
+                if not override.startswith("http://") and not override.startswith("https://"):
+                    override = f"https://{override}"
                 return override
 
         is_prod = (os.getenv("ENVIRONMENT") or "").lower() == "production" or bool(os.getenv("RAILWAY_ENVIRONMENT"))

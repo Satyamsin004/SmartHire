@@ -49,25 +49,61 @@ export const LoginPage: React.FC = () => {
 
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
-    } else if (tokenParam && userParam) {
-      try {
-        const userObj = JSON.parse(decodeURIComponent(userParam));
-        if (userObj.role && ['candidate', 'recruiter', 'admin'].includes(userObj.role)) {
-          setRole(userObj.role as any);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (tokenParam) {
+      const processOAuthSession = async () => {
+        try {
+          let userObj: any = null;
+          if (userParam) {
+            try {
+              userObj = JSON.parse(decodeURIComponent(userParam));
+            } catch (parseErr) {
+              console.warn('Could not parse user param directly, will fetch /users/me:', parseErr);
+            }
+          }
+
+          // If userObj was not provided or failed parsing, fetch from /users/me
+          if (!userObj || !userObj.id) {
+            const meRes = await api.get('/users/me', {
+              headers: { Authorization: `Bearer ${tokenParam}` }
+            });
+            userObj = meRes.data;
+          }
+
+          // Determine user's actual role and sync role state
+          if (userObj && userObj.role && ['candidate', 'recruiter', 'admin'].includes(userObj.role)) {
+            setRole(userObj.role as any);
+          }
+
+          // Store auth session exactly as standard authentication expects
+          setAuthSession(userObj, tokenParam);
+
+          // Remove token and user credentials from the visible browser URL bar
+          window.history.replaceState({}, document.title, window.location.pathname);
+
+          setSuccessToast(`Welcome back, ${userObj.full_name || 'User'}!`);
+
+          // Redirect to appropriate role workspace
+          const targetPath = userObj.role === 'recruiter'
+            ? '/recruiter'
+            : userObj.role === 'admin'
+              ? '/admin'
+              : '/dashboard';
+
+          setTimeout(() => {
+            navigate(targetPath, { replace: true });
+          }, 800);
+        } catch (e: any) {
+          console.error('Failed to process Google OAuth session:', e);
+          setError(e.response?.data?.detail || 'Failed to complete Google Sign-In. Please try again.');
+          window.history.replaceState({}, document.title, window.location.pathname);
         }
+      };
 
-        setAuthSession(userObj, tokenParam);
-
-        setSuccessToast(`Welcome back, ${userObj.full_name || 'User'}!`);
-        // 2.5 seconds visible toast before redirect
-        setTimeout(() => {
-          if (userObj.role === 'recruiter') navigate('/recruiter', { replace: true });
-          else if (userObj.role === 'admin') navigate('/admin', { replace: true });
-          else navigate('/dashboard', { replace: true });
-        }, 1500);
-      } catch (e) {
-        console.error('Failed to parse Google OAuth user payload:', e);
-      }
+      processOAuthSession();
     }
   }, [location.search]);
 

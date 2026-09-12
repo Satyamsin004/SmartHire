@@ -97,9 +97,13 @@ async def google_callback(
     db: AsyncSession = Depends(get_db)
 ):
     """Exchanges Google auth code for access token, fetches user profile, provisions account, and redirects to frontend with JWT."""
+    frontend_base = settings.FRONTEND_URL.strip().rstrip('/')
+    if not frontend_base.startswith("http://") and not frontend_base.startswith("https://"):
+        frontend_base = f"https://{frontend_base}"
+
     if error or not code:
         err_msg = urllib.parse.quote(error or "Authorization code was not provided.")
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={err_msg}")
+        return RedirectResponse(url=f"{frontend_base}/login?error={err_msg}")
 
     # 1. Exchange authorization code for tokens
     token_url = "https://oauth2.googleapis.com/token"
@@ -115,7 +119,7 @@ async def google_callback(
         token_res = await client.post(token_url, data=token_payload)
         if token_res.status_code != 200:
             err_details = token_res.json().get("error_description", "Failed to exchange Google OAuth code.")
-            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={urllib.parse.quote(err_details)}")
+            return RedirectResponse(url=f"{frontend_base}/login?error={urllib.parse.quote(err_details)}")
 
         tokens_data = token_res.json()
         google_access_token = tokens_data.get("access_token")
@@ -124,7 +128,7 @@ async def google_callback(
         userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
         userinfo_res = await client.get(userinfo_url, headers={"Authorization": f"Bearer {google_access_token}"})
         if userinfo_res.status_code != 200:
-            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=Failed%20to%20fetch%20Google%20user%20profile")
+            return RedirectResponse(url=f"{frontend_base}/login?error=Failed%20to%20fetch%20Google%20user%20profile")
 
         profile = userinfo_res.json()
 
@@ -134,7 +138,7 @@ async def google_callback(
     user_role = state if state in ["candidate", "recruiter", "admin"] else "candidate"
 
     if not email:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=Google%20account%20did%20not%20provide%20an%20email%20address.")
+        return RedirectResponse(url=f"{frontend_base}/login?error=Google%20account%20did%20not%20provide%20an%20email%20address.")
 
     # 3. Provision or authenticate user in SmartHire AI PostgreSQL database
     auth_service = AuthService(db)
@@ -149,7 +153,7 @@ async def google_callback(
     user_data_encoded = urllib.parse.quote(json.dumps(result["user"]))
 
     # 4. Redirect to frontend with token and user data
-    target_url = f"{settings.FRONTEND_URL}/login?token={access_token}&user={user_data_encoded}"
+    target_url = f"{frontend_base}/login?token={access_token}&user={user_data_encoded}"
     return RedirectResponse(url=target_url)
 
 @router.post("/google", response_model=TokenResponse, summary="Google OAuth2 Authentication (Direct API)")
