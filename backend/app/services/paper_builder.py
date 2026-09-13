@@ -356,11 +356,19 @@ class PaperBuilder:
                  f"Robust {topic} services log exceptions clearly with trace context and provide helpful user diagnostics.")
             ]
 
-        item = pool[(index - 1) % len(pool)]
-        q_text = item[0]
+        if index <= len(pool):
+            item = pool[index - 1]
+            q_text = item[0]
+            raw_opts = list(item[1])
+            raw_corr = int(item[2])
+            fb_explanation = item[3]
+        else:
+            p_q, p_opts, p_corr, p_exp = cls._procedural_question_generator(topic, index - len(pool), difficulty)
+            q_text = p_q
+            raw_opts = p_opts
+            raw_corr = p_corr
+            fb_explanation = p_exp
 
-        raw_opts = list(item[1])
-        raw_corr = int(item[2])
         if len(raw_opts) == 4 and 0 <= raw_corr < len(raw_opts):
             shift = index % 4
             fb_options = raw_opts[shift:] + raw_opts[:shift]
@@ -382,7 +390,7 @@ class PaperBuilder:
             code_snippet=None,
             options=fb_options,
             correct_option=fb_correct,
-            explanation=item[3],
+            explanation=fb_explanation,
             passage_text=passage_text,
             dataset_json=dataset_json,
             test_cases=test_cases,
@@ -390,6 +398,267 @@ class PaperBuilder:
             question_fingerprint=q_fp,
             concept_hash=c_hash,
         )
+
+    @classmethod
+    def _procedural_question_generator(cls, topic: str, index: int, difficulty: str):
+        import math
+        t_low = topic.lower()
+        k = index
+
+        def _dedup_opts(corr_str: str, raw_dist: list) -> list:
+            opts = [corr_str]
+            for d in raw_dist:
+                if d not in opts:
+                    opts.append(d)
+            cnt = 1
+            while len(opts) < 4:
+                cand = f"Alternative Value ({cnt})"
+                if cand not in opts:
+                    opts.append(cand)
+                cnt += 1
+            return opts
+
+        if "quant" in t_low or "arithmetic" in t_low or "math" in t_low:
+            archetype = (index - 1) % 10
+            if archetype == 0:
+                d1 = 10 + k
+                d2 = 15 + k
+                worked = 2 + (k % 3)
+                together_work = worked * (d1 + d2) / (d1 * d2)
+                rem_work = max(0.05, 1.0 - together_work)
+                time_b = round(rem_work * d2, 2)
+                q = f"In sprint pipeline #{k}, Worker A can complete the task in {d1} days and Worker B in {d2} days. Both work together for {worked} days before Worker A departs. How many additional days will Worker B need alone to finish?"
+                corr = f"{time_b} days"
+                raw_dist = [f"{round(time_b + 2.5, 2)} days", f"{round(max(0.5, time_b - 1.8), 2)} days", f"{round(time_b + 4.2, 2)} days"]
+                exp = f"Combined daily output = 1/{d1} + 1/{d2}. In {worked} days, work done = {together_work:.3f}. Remaining = {rem_work:.3f}. Time for B = {rem_work:.3f} * {d2} = {time_b} days."
+            elif archetype == 1:
+                train_l = 100 + (k * 15)
+                plat_l = 150 + (k * 20)
+                speed_kmh = 54 + ((k * 9) % 54)
+                speed_ms = speed_kmh * 5 / 18
+                tot_dist = train_l + plat_l
+                time_s = round(tot_dist / speed_ms, 1)
+                q = f"In transit velocity test #{k}, a train of length {train_l}m travels at {speed_kmh} km/h. How many seconds does it take to cross a platform of length {plat_l}m?"
+                corr = f"{time_s} seconds"
+                raw_dist = [f"{round(time_s + 3.5, 1)} seconds", f"{round(max(1.0, time_s - 2.8), 1)} seconds", f"{round(time_s + 6.0, 1)} seconds"]
+                exp = f"Speed in m/s = {speed_kmh} * (5/18) = {speed_ms:.2f} m/s. Distance = {tot_dist}m. Time = {tot_dist}/{speed_ms:.2f} = {time_s}s."
+            elif archetype == 2:
+                p = 1000 + (k * 250)
+                r = 4 + (k % 7)
+                t = 2 + (k % 3)
+                si = round((p * r * t) / 100, 2)
+                total = round(p + si, 2)
+                q = f"Under enterprise hardware lease #{k}, compute servers valued at ${p:,} incur an annual simple interest of {r}%. What is the total repayment after {t} years?"
+                corr = f"${total:,.2f}"
+                raw_dist = [f"${total + 350:,.2f}", f"${max(100.0, total - 250):,.2f}", f"${total + 700:,.2f}"]
+                exp = f"Simple Interest = ({p} * {r} * {t}) / 100 = ${si:.2f}. Total = P + SI = ${total:,.2f}."
+            elif archetype == 3:
+                cost = 300 + (k * 75)
+                margin = 10 + (k % 25)
+                profit = round(cost * (margin / 100), 2)
+                sp = round(cost + profit, 2)
+                q = f"In pricing assessment tier #{k}, the operational compute cost is ${cost:,} per instance. To achieve a profit margin of {margin}%, what is the target selling price?"
+                corr = f"${sp:,.2f}"
+                raw_dist = [f"${sp + 120:,.2f}", f"${max(50.0, sp - 95):,.2f}", f"${sp + 260:,.2f}"]
+                exp = f"Profit = {cost} * ({margin}/100) = ${profit:.2f}. Selling Price = Cost + Profit = ${sp:,.2f}."
+            elif archetype == 4:
+                p1 = 10 + (k % 15)
+                p2 = 15 + ((k * 2) % 20)
+                fill_t = round((p1 * p2) / (p1 + p2), 2)
+                q = f"In ingestion pipeline #{k}, Buffer A fills the reservoir in {p1} minutes and Buffer B in {p2} minutes. Operating concurrently, how many minutes will both require to fill it?"
+                corr = f"{fill_t} minutes"
+                raw_dist = [f"{round(fill_t + 2.4, 2)} minutes", f"{round(max(0.5, fill_t - 1.7), 2)} minutes", f"{round(fill_t + 4.1, 2)} minutes"]
+                exp = f"Combined throughput = 1/{p1} + 1/{p2}. Time = {fill_t} minutes."
+            elif archetype == 5:
+                r1 = 3 + (k % 4)
+                r2 = 5 + (k % 5)
+                unit = 25 + (k * 5)
+                total_units = (r1 + r2) * unit
+                q1_share = r1 * unit
+                q = f"In resource partitioning #{k}, {total_units:,} CPU shares are distributed between Pod Alpha and Pod Beta in ratio {r1}:{r2}. How many shares are assigned to Pod Alpha?"
+                corr = f"{q1_share:,} shares"
+                raw_dist = [f"{q1_share + unit:,} shares", f"{max(unit, q1_share - unit):,} shares", f"{q1_share + 2 * unit:,} shares"]
+                exp = f"Unit value = {total_units} / {r1 + r2} = {unit}. Alpha = {r1} * {unit} = {q1_share}."
+            elif archetype == 6:
+                n = 4 + (k % 5)
+                base_avg = 50 + (k % 40)
+                added_val = base_avg + 15 + (k % 25)
+                new_avg = round(((n * base_avg) + added_val) / (n + 1), 2)
+                q = f"Across {n} nodes in cluster #{k}, the average latency is {base_avg}ms. When a node with {added_val}ms latency joins, what is the new average latency across {n + 1} nodes?"
+                corr = f"{new_avg} ms"
+                raw_dist = [f"{round(new_avg + 3.2, 2)} ms", f"{round(max(5.0, new_avg - 2.8), 2)} ms", f"{round(new_avg + 6.1, 2)} ms"]
+                exp = f"New total = ({n} * {base_avg}) + {added_val}. New average = {new_avg} ms."
+            elif archetype == 7:
+                n_letters = 4 + (k % 4)
+                total_perms = math.factorial(n_letters)
+                q = f"In microservice dispatch queue #{k}, how many distinct ordering permutations exist to sequence {n_letters} unique jobs?"
+                corr = f"{total_perms:,} permutations"
+                raw_dist = [f"{total_perms // 2:,} permutations", f"{total_perms * 2:,} permutations", f"{total_perms + 12:,} permutations"]
+                exp = f"Permutations = {n_letters}! = {total_perms}."
+            elif archetype == 8:
+                red = 2 + (k % 5)
+                blue = 3 + ((k + 1) % 5)
+                green = 4 + ((k + 2) % 6)
+                tot_balls = red + blue + green
+                p_red = round(red / tot_balls, 3)
+                q = f"In storage pool #{k}, there are {red} hot, {blue} warm, and {green} cold segments. What is the probability of selecting a hot segment at random?"
+                corr = f"{p_red:.3f}"
+                raw_dist = [f"{round(blue / tot_balls, 3):.3f}", f"{round(green / tot_balls, 3):.3f}", f"{round(min(0.95, p_red + 0.12), 3):.3f}"]
+                exp = f"Probability = {red} / {tot_balls} = {p_red:.3f}."
+            else:
+                div1 = 4 + (k % 7)
+                div2 = 9 + ((k + 2) % 7)
+                lcm = math.lcm(div1, div2)
+                q = f"In service sync routine #{k}, two health checks poll every {div1}s and {div2}s respectively. What is the minimum elapsed time until both poll simultaneously?"
+                corr = f"{lcm} seconds"
+                raw_dist = [f"{lcm + div1} seconds", f"{max(1, lcm - div2)} seconds", f"{lcm * 2 + 1} seconds"]
+                exp = f"Interval = LCM({div1}, {div2}) = {lcm} seconds."
+
+            return q, _dedup_opts(corr, raw_dist), 0, exp
+
+        elif "logical" in t_low or "reason" in t_low:
+            archetype = (index - 1) % 8
+            if archetype == 0:
+                words = ["SECURITY", "PROTOCOL", "DATABASE", "FIREWALL", "COMPILER", "STORAGE", "GATEWAY", "MONITOR", "CLUSTER", "NETWORK"]
+                src = words[(k - 1) % len(words)]
+                shift = 1 + (k % 4)
+                encoded = "".join(chr((ord(c) - ord('A') + shift) % 26 + ord('A')) for c in src)
+                q = f"In cryptographic cipher audit #{k}, if '{src}' is encoded as '{encoded}' with a shift of +{shift}, how is 'SYSTEM' coded?"
+                tgt = "".join(chr((ord(c) - ord('A') + shift) % 26 + ord('A')) for c in "SYSTEM")
+                corr = tgt
+                raw_dist = [
+                    "".join(chr((ord(c) - ord('A') + shift + 1) % 26 + ord('A')) for c in "SYSTEM"),
+                    "".join(chr((ord(c) - ord('A') + shift - 1) % 26 + ord('A')) for c in "SYSTEM"),
+                    "".join(chr((ord(c) - ord('A') + shift + 2) % 26 + ord('A')) for c in "SYSTEM")
+                ]
+                exp = f"Shifting 'SYSTEM' by +{shift} yields '{tgt}'."
+            elif archetype == 1:
+                start = 2 + (k % 7)
+                step = 3 + (k % 5)
+                terms = [start + (i * step) for i in range(5)]
+                nxt = start + (5 * step)
+                seq_str = ", ".join(map(str, terms))
+                q = f"In numerical series pattern analysis #{k}, determine the next term in the sequence: {seq_str}, ___?"
+                corr = f"{nxt}"
+                raw_dist = [f"{nxt + step}", f"{nxt - 1}", f"{nxt + 2 * step}"]
+                exp = f"Common difference is +{step}. Next term = {terms[-1]} + {step} = {nxt}."
+            elif archetype == 2:
+                start = 1 + (k % 4)
+                ratio = 2
+                terms = [start * (ratio ** i) for i in range(4)]
+                nxt = start * (ratio ** 4)
+                seq_str = ", ".join(map(str, terms))
+                q = f"In exponential series benchmark #{k}, find the next value: {seq_str}, ___?"
+                corr = f"{nxt}"
+                raw_dist = [f"{nxt // 2 + 1}", f"{nxt + terms[-1]}", f"{nxt * 2}"]
+                exp = f"Common ratio is 2. Next term = {terms[-1]} * 2 = {nxt}."
+            elif archetype == 3:
+                d_north = 10 + (k * 2) % 20
+                d_east = 12 + (k * 3) % 24
+                disp = round(math.sqrt(d_north ** 2 + d_east ** 2), 2)
+                q = f"In drone telemetry survey #{k}, a unit flies {d_north}m North then {d_east}m East. What is the straight-line displacement from starting coordinates?"
+                corr = f"{disp} meters"
+                raw_dist = [f"{round(disp + 4.2, 2)} meters", f"{round(max(5.0, disp - 3.5), 2)} meters", f"{d_north + d_east} meters"]
+                exp = f"Displacement = sqrt({d_north}^2 + {d_east}^2) = {disp}m."
+            elif archetype == 4:
+                total_cand = 40 + (k % 30)
+                rank_top = 5 + (k % 20)
+                rank_bottom = total_cand - rank_top + 1
+                q = f"In talent assessment ranking #{k}, a candidate is rank {rank_top} from the top among {total_cand} candidates. What is the rank from the bottom?"
+                corr = f"{rank_bottom}th"
+                raw_dist = [f"{rank_bottom + 1}th", f"{rank_bottom - 1}th", f"{rank_bottom + 2}th"]
+                exp = f"Rank from bottom = {total_cand} - {rank_top} + 1 = {rank_bottom}."
+            elif archetype == 5:
+                q = f"In formal deductive logic assessment #{k}, consider:\nStatements:\n1. All service routers in Zone-{k} are secure.\n2. Some secure systems are redundant.\nConclusions:\nI. Some service routers are redundant.\nII. All redundant systems are secure."
+                corr = "Neither conclusion logically follows"
+                raw_dist = ["Only conclusion I follows", "Only conclusion II follows", "Both conclusions I and II follow"]
+                exp = "Undistributed middle term prevents a valid deductive link."
+            elif archetype == 6:
+                n_days = 7 + (k % 20)
+                rem = n_days % 7
+                days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                target_day = days[rem]
+                q = f"In automated cron schedule #{k}, if Day 0 is Monday, what day of the week will it be after exactly {n_days} days?"
+                corr = target_day
+                raw_dist = [days[(rem + 1) % 7], days[(rem + 2) % 7], days[(rem - 1) % 7]]
+                exp = f"{n_days} mod 7 = {rem} days after Monday -> {target_day}."
+            else:
+                q = f"In data architecture taxonomy #{k}, which of the following represents the odd item out from the set: {{Stack, Queue, Deque, B-Tree}}?"
+                corr = "B-Tree (Non-linear hierarchical search tree)"
+                raw_dist = ["Stack (Linear LIFO structure)", "Queue (Linear FIFO structure)", "Deque (Double-ended linear sequence)"]
+                exp = "Stack, Queue, and Deque are linear structures; B-Tree is non-linear."
+
+            return q, _dedup_opts(corr, raw_dist), 0, exp
+
+        else:
+            archetype = (index - 1) % 10
+            if archetype == 0:
+                val = (1 << (1 + (k % 5)))
+                val_test = val | 1
+                res = val_test & (val_test - 1)
+                q = f"In low-level bit manipulation review #{k}, what is the evaluation of `x & (x - 1)` in C/C++/Java/Python when `x = {val_test}`?"
+                corr = f"{res}"
+                raw_dist = [f"{val_test}", f"{res + 2}", "0"]
+                exp = f"`x & (x - 1)` clears the lowest set bit. For {val_test} ({bin(val_test)}), clearing the lowest bit yields {res}."
+            elif archetype == 1:
+                n_nodes = 5 + (k % 12)
+                max_edges = n_nodes * (n_nodes - 1) // 2
+                q = f"In graph topology benchmark #{k}, what is the maximum number of undirected edges possible in a simple connected graph with {n_nodes} vertices?"
+                corr = f"{max_edges} edges"
+                raw_dist = [f"{max_edges + n_nodes} edges", f"{n_nodes * (n_nodes - 1)} edges", f"{max(1, max_edges - n_nodes)} edges"]
+                exp = f"Maximum edges = V*(V-1)/2 = {n_nodes}*{n_nodes - 1}/2 = {max_edges}."
+            elif archetype == 2:
+                buckets = 100 * (1 + (k % 10))
+                keys = int(buckets * (0.75 + (k % 4) * 0.25))
+                load_factor = round(keys / buckets, 2)
+                q = f"In hash table indexing analysis #{k}, a hash map has {buckets:,} buckets and stores {keys:,} distinct keys. What is the current load factor (alpha)?"
+                corr = f"{load_factor}"
+                raw_dist = [f"{round(load_factor + 0.35, 2)}", f"{round(max(0.1, load_factor - 0.25), 2)}", f"{round(load_factor * 2, 2)}"]
+                exp = f"Load factor alpha = N / M = {keys} / {buckets} = {load_factor}."
+            elif archetype == 3:
+                q = f"In concurrency engineering #{k}, which of the following is NOT one of the Coffman conditions required for deadlock?"
+                corr = "Preemption allowed (Resources can be forcibly reclaimed)"
+                raw_dist = ["Mutual Exclusion", "Hold and Wait", "Circular Wait"]
+                exp = "Preemption breaks deadlocks; 'No Preemption' is the necessary Coffman condition."
+            elif archetype == 4:
+                page_size_kb = 4 * (1 + (k % 4))
+                offset_bits = int(math.log2(page_size_kb * 1024))
+                q = f"In virtual memory management #{k}, if the system uses a page size of {page_size_kb} KB, how many bits in a 32-bit address are required for the page offset?"
+                corr = f"{offset_bits} bits"
+                raw_dist = [f"{offset_bits + 2} bits", f"{offset_bits - 2} bits", f"{offset_bits + 4} bits"]
+                exp = f"Offset bits = log2({page_size_kb} * 1024) = {offset_bits} bits."
+            elif archetype == 5:
+                prefix = 24 + (k % 6)
+                host_bits = 32 - prefix
+                usable_hosts = (2 ** host_bits) - 2
+                q = f"In network engineering #{k}, what is the maximum number of usable host IPv4 addresses in a subnet with prefix `/{prefix}`?"
+                corr = f"{usable_hosts} hosts"
+                raw_dist = [f"{usable_hosts + 2} hosts", f"{usable_hosts * 2} hosts", f"{max(1, usable_hosts - 2)} hosts"]
+                exp = f"Usable hosts = 2^(32 - {prefix}) - 2 = {usable_hosts}."
+            elif archetype == 6:
+                q = f"In relational DBMS concurrency #{k}, which isolation level prevents Dirty Reads and Non-Repeatable Reads, but allows Phantom Reads under standard ANSI SQL?"
+                corr = "REPEATABLE READ"
+                raw_dist = ["READ UNCOMMITTED", "READ COMMITTED", "SERIALIZABLE"]
+                exp = "REPEATABLE READ locks read rows to avoid dirty/non-repeatable reads; phantom reads are prevented only in SERIALIZABLE."
+            elif archetype == 7:
+                depth = 3 + (k % 5)
+                max_nodes = (2 ** (depth + 1)) - 1
+                q = f"In binary tree data structures #{k}, what is the maximum total number of nodes in a binary tree of height {depth} (root at height 0)?"
+                corr = f"{max_nodes} nodes"
+                raw_dist = [f"{max_nodes + 1} nodes", f"{2 ** depth} nodes", f"{max_nodes // 2} nodes"]
+                exp = f"Max nodes = 2^(H+1) - 1 = {max_nodes}."
+            elif archetype == 8:
+                q = f"In REST API architecture #{k}, what is the primary benefit of making write operations idempotent?"
+                corr = "Safe client retries on network timeouts without duplicate side-effects"
+                raw_dist = ["Automatic gzip compression", "Bypassing authentication", "Guaranteed sub-1ms response"]
+                exp = "Idempotency ensures multiple requests produce the same state as one request, making retries safe."
+            else:
+                q = f"In asynchronous event-driven runtimes #{k}, what is the primary advantage of non-blocking I/O multiplexing over one-thread-per-connection?"
+                corr = "High-concurrency scalability without thread stack and context-switch overhead"
+                raw_dist = ["100% CPU thread utilization without GIL", "Automatic native compilation", "Zero RAM consumption"]
+                exp = "Non-blocking multiplexing allows a single thread to service thousands of sockets via epoll/kqueue."
+
+            return q, _dedup_opts(corr, raw_dist), 0, exp
 
     @classmethod
     async def build_paper(
@@ -543,14 +812,23 @@ class PaperBuilder:
         # Step 3B: Topic-aligned Fallback Generation for unseen questions
         if len(selected_master_items) < session.question_count:
             needed_qs = session.question_count - len(selected_master_items)
+            seen_in_paper = set(item["master"].question_text for item in selected_master_items)
+            index_offset = len(all_exclusions)
             for idx in range(needed_qs):
                 target_topic = session.topics[idx % len(session.topics)]
                 target_diff = blueprint_slots[min(len(selected_master_items), len(blueprint_slots) - 1)].difficulty
-                fb_q = cls._create_topic_fallback_question(target_topic, idx + 1, target_diff)
+                gen_idx = idx + 1 + index_offset
+                fb_q = cls._create_topic_fallback_question(target_topic, gen_idx, target_diff)
+                attempts = 0
+                while (fb_q.question_text in seen_in_paper or fb_q.id in used_master_ids) and attempts < 25:
+                    gen_idx += 50
+                    fb_q = cls._create_topic_fallback_question(target_topic, gen_idx, target_diff)
+                    attempts += 1
                 if fb_q.id not in used_master_ids:
                     is_rep = fb_q.question_fingerprint in all_exclusions
                     selected_master_items.append({"master": fb_q, "is_repeated": is_rep})
                     used_master_ids.add(fb_q.id)
+                    seen_in_paper.add(fb_q.question_text)
 
         # Step 3C: Exhaustion Fallback - If Question Bank is exhausted for candidate, allow RECYCLED questions
         if len(selected_master_items) < session.question_count:
