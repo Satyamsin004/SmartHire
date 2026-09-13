@@ -8,7 +8,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 60000,
+  timeout: 180000, // 3 min — allows for AI question generation (60-120s) on Railway cold starts
 });
 
 // REQUEST INTERCEPTOR: Always attach freshest token from localStorage

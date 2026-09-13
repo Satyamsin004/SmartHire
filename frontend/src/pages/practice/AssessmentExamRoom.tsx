@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ShieldAlert, Clock, CheckCircle2, XCircle, AlertTriangle, Maximize, Camera,
-  ArrowRight, ArrowLeft, Send, Sparkles, BookOpen, BarChart2, Award, History, Check
+  ArrowRight, ArrowLeft, Send, Sparkles, BookOpen, BarChart2, Award, History, Check,
+  Loader2
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -12,6 +13,8 @@ export const AssessmentExamRoom: React.FC = () => {
   const navigate = useNavigate();
 
   const [questions, setQuestions] = useState<any[]>([]);
+  const [loadingQuestions, setLoadingQuestions] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, number>>({});
   const [timeRemaining, setTimeRemaining] = useState<number>(900); // Default 15 mins
@@ -31,13 +34,20 @@ export const AssessmentExamRoom: React.FC = () => {
     }
 
     // 1. Fetch questions for the assessment
-    api.get(`/aptitude/session/${sessionId}/questions`)
+    setLoadingQuestions(true);
+    setLoadError(null);
+    api.get(`/aptitude/session/${sessionId}/questions`, { skipCache: true })
       .then((res) => {
         setQuestions(res.data || []);
+        setLoadingQuestions(false);
       })
       .catch((err) => {
         console.error(err);
-        alert("Failed to load assessment questions.");
+        const msg = err?.code === 'ECONNABORTED'
+          ? 'Question generation timed out. The AI engine is busy — please try again.'
+          : err?.response?.data?.detail || 'Failed to load assessment questions.';
+        setLoadError(msg);
+        setLoadingQuestions(false);
       });
 
     // 2. Check if session has a completed result (Review Test mode)
@@ -132,6 +142,50 @@ export const AssessmentExamRoom: React.FC = () => {
     const s = secs % 60;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
+
+  // LOADING SCREEN — AI generating questions (can take 60-120s on Railway)
+  if (loadingQuestions) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center space-y-6 max-w-md px-6">
+          <div className="w-20 h-20 rounded-3xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center mx-auto">
+            <Sparkles className="w-10 h-10 text-indigo-400 animate-pulse" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-white">Building Your Assessment</h2>
+            <p className="text-slate-400 text-sm font-semibold mt-2">AI is generating unique questions for you.<br />This may take up to 2 minutes on first load.</p>
+          </div>
+          <Loader2 className="w-6 h-6 animate-spin text-indigo-400 mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
+  // ERROR SCREEN — failed to load questions
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <div className="bg-rose-950/40 border border-rose-800 rounded-2xl p-8 max-w-md text-center space-y-4">
+          <AlertTriangle className="w-10 h-10 text-rose-400 mx-auto" />
+          <p className="text-rose-300 font-bold text-sm">{loadError}</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-xl transition-all"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => navigate('/practice')}
+              className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-extrabold rounded-xl transition-all"
+            >
+              Back to Hub
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // IF EXAM IS COMPLETED -> SHOW COMPREHENSIVE RESULT SCREEN
   if (result) {
