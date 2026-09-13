@@ -134,13 +134,24 @@ async def get_assessment_questions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches MCQs for the specified assessment session."""
+    """Fetches MCQs for the specified assessment session.
+    For completed sessions returns existing persisted questions without re-generating.
+    For active sessions generates/fetches as normal."""
     res_s = await db.execute(select(AssessmentSession).where(AssessmentSession.id == session_id))
     session = res_s.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Assessment session not found.")
 
-    questions = await assessment_service.generate_questions_for_session(db, session_id)
+    # For completed sessions, return existing questions directly — never re-generate
+    if session.status == "completed":
+        res_q = await db.execute(
+            select(AssessmentQuestion)
+            .where(AssessmentQuestion.session_id == session_id)
+            .order_by(AssessmentQuestion.order_index)
+        )
+        questions = res_q.scalars().all()
+    else:
+        questions = await assessment_service.generate_questions_for_session(db, session_id)
 
     out = []
     for q in questions:

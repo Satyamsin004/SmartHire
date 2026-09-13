@@ -28,6 +28,7 @@ const CandidateProfilePage = lazy(() => import('./pages/CandidateProfilePage').t
 const PostedJobsPage = lazy(() => import('./pages/PostedJobsPage').then(m => ({ default: m.PostedJobsPage })));
 const PracticeHubPage = lazy(() => import('./pages/practice/PracticeHubPage').then(m => ({ default: m.PracticeHubPage })));
 const AssessmentExamRoom = lazy(() => import('./pages/practice/AssessmentExamRoom').then(m => ({ default: m.AssessmentExamRoom })));
+const AssessmentReviewPage = lazy(() => import('./pages/practice/AssessmentReviewPage').then(m => ({ default: m.AssessmentReviewPage })));
 const RecruiterAssessmentsPage = lazy(() => import('./pages/recruiter/RecruiterAssessmentsPage').then(m => ({ default: m.RecruiterAssessmentsPage })));
 
 const getHomePathForRole = (role?: string) => {
@@ -111,6 +112,7 @@ const AppRoutes: React.FC = () => {
         {/* Routes WITHOUT Global Layout (Full Screen) */}
         <Route path="/interview/live" element={<ProtectedRoute allowedRoles={['candidate']}><LiveInterviewRoom /></ProtectedRoute>} />
         <Route path="/assessment/exam" element={<ProtectedRoute allowedRoles={['candidate', 'recruiter']}><AssessmentExamRoom /></ProtectedRoute>} />
+        <Route path="/assessment/review" element={<ProtectedRoute allowedRoles={['candidate', 'recruiter']}><AssessmentReviewPage /></ProtectedRoute>} />
         
         <Route path="/interview/*" element={<Navigate to="/interview/config" replace />} />
         <Route path="*" element={<Navigate to={user ? homePath : "/login"} replace />} />

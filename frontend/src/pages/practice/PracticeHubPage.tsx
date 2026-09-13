@@ -669,7 +669,7 @@ export const PracticeHubPage: React.FC = () => {
                         {a.overall_score !== undefined && a.overall_score !== null ? `${a.overall_score}%` : 'N/A'}
                       </span>
                       <button
-                        onClick={() => navigate(`/assessment/exam?session=${a.session_id}`)}
+                        onClick={() => navigate(`/assessment/review?session=${a.session_id}`)}
                         className="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline mt-1 block"
                       >
                         Review Test
