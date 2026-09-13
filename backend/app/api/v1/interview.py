@@ -321,8 +321,8 @@ async def start_interview_session(
             session_id=new_session.id,
             order_index=idx,
             question_text=q["question_text"],
-            category=q.get("category", "Technical"),
-            difficulty=q.get("difficulty", "Medium"),
+            category=str(q.get("category", "Technical"))[:250],
+            difficulty=str(q.get("difficulty", "Medium"))[:90],
             expected_keywords=q.get("expected_keywords", []),
             is_followup=False
         )
@@ -363,7 +363,7 @@ async def start_interview_session(
         "difficulty": new_session.difficulty,
         "duration_minutes": new_session.duration_minutes,
         "question_count": new_session.question_count,
-        "total_questions": len(response_questions),
+        "total_questions": new_session.question_count or len(response_questions) or 6,
         "first_question": response_questions[0],
         "questions": response_questions
     }
@@ -559,14 +559,14 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                         if main_q_list:
                             main_q_data = main_q_list[0]
                             return InterviewQuestion(
-                                session_id=session.id,
-                                order_index=question.order_index + 1,
-                                question_text=main_q_data.get("question_text", "Let's move on to our next technical topic."),
-                                category=main_q_data.get("category", "Technical"),
-                                difficulty=main_q_data.get("difficulty", question.difficulty),
-                                expected_keywords=main_q_data.get("expected_keywords", []),
-                                is_followup=False
-                            ), True
+                            session_id=session.id,
+                            order_index=question.order_index + 1,
+                            question_text=main_q_data.get("question_text", "Let's move on to our next technical topic."),
+                            category=str(main_q_data.get("category", "Technical"))[:250],
+                            difficulty=str(main_q_data.get("difficulty", question.difficulty))[:90],
+                            expected_keywords=main_q_data.get("expected_keywords", []),
+                            is_followup=False
+                        ), True
                     except Exception as e:
                         logger.warning(f"Fast main question generation fallback: {e}")
 
@@ -588,7 +588,7 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                         order_index=question.order_index + 1,
                         question_text=chosen_main,
                         category="Technical",
-                        difficulty=question.difficulty,
+                        difficulty=str(question.difficulty or "Medium")[:90],
                         expected_keywords=["architecture", "performance", "scalability"],
                         is_followup=False
                     ), True
@@ -604,8 +604,8 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                             session_id=session.id,
                             order_index=question.order_index + 1,
                             question_text=next_q_data.get("question_text", "Could you elaborate further on that?"),
-                            category=next_q_data.get("category", "Follow-up"),
-                            difficulty=next_q_data.get("difficulty", question.difficulty),
+                            category=str(next_q_data.get("category", "Follow-up"))[:250],
+                            difficulty=str(next_q_data.get("difficulty", question.difficulty))[:90],
                             expected_keywords=next_q_data.get("expected_keywords", []),
                             is_followup=True
                         ), False
@@ -626,7 +626,7 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                             order_index=question.order_index + 1,
                             question_text=chosen_followup,
                             category="Follow-up",
-                            difficulty=question.difficulty,
+                            difficulty=str(question.difficulty or "Medium")[:90],
                             expected_keywords=["trade-offs", "scalability", "reliability"],
                             is_followup=True
                         ), False
@@ -674,6 +674,16 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                     pass
             except Exception as dynamic_q_err:
                 logger.error(f"Dynamic Question Generation Error: {dynamic_q_err}")
+                try:
+                    await db.rollback()
+                    # Re-persist the current answer so candidate work is never lost
+                    db.add(answer)
+                    db.add(speech_db)
+                    db.add(vision_db)
+                    db.add(emotion_db)
+                    await db.flush()
+                except Exception as rb_err:
+                    logger.warning(f"Answer re-persistence notice after rollback: {rb_err}")
                 next_q_response = None
                 evaluation_feedback = "Thank you. We have concluded this portion of the interview."
         except Exception as dynamic_q_err:
@@ -826,7 +836,7 @@ async def get_interview_session_details(
             "duration_minutes": session.duration_minutes,
             "status": session.status,
             "candidate_name": cand_name,
-            "total_questions": len(questions_list),
+            "total_questions": session.question_count or len(questions_list) or 6,
             "first_question": current_q or (questions_list[0] if questions_list else None),
             "current_question": current_q,
             "questions": questions_list
@@ -1385,10 +1395,15 @@ async def get_mock_interview_history(
     )
     sessions = res_sess.scalars().all()
 
+    session_ids = [s.id for s in sessions]
+    reports_map = {}
+    if session_ids:
+        res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id.in_(session_ids)))
+        reports_map = {r.session_id: r for r in res_rep.scalars().all()}
+
     out = []
     for s in sessions:
-        res_rep = await db.execute(select(ScoringReport).where(ScoringReport.session_id == s.id))
-        rep = res_rep.scalars().first()
+        rep = reports_map.get(s.id)
 
         out.append({
             "session_id": s.id,

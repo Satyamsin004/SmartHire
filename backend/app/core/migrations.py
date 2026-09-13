@@ -94,7 +94,13 @@ MIGRATION_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS ix_job_applications_cand_job ON job_applications (candidate_id, job_id);",
 
     # --- Notification Idempotency Concurrency Constraint ---
-    "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_interview_type ON notifications(user_id, interview_id, notification_type) WHERE interview_id IS NOT NULL;"
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_interview_type ON notifications(user_id, interview_id, notification_type) WHERE interview_id IS NOT NULL;",
+
+    # --- Question & Telemetry String Length Resilience ---
+    "ALTER TABLE interview_questions ALTER COLUMN category TYPE VARCHAR(255);",
+    "ALTER TABLE interview_questions ALTER COLUMN difficulty TYPE VARCHAR(100);",
+    "ALTER TABLE speech_analysis ALTER COLUMN tone TYPE VARCHAR(255);",
+    "ALTER TABLE emotion_analysis ALTER COLUMN dominant_emotion TYPE VARCHAR(100);"
 ]
 
 async def run_migrations():

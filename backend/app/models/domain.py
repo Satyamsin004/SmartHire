@@ -476,8 +476,8 @@ class InterviewQuestion(Base):
     session_id = Column(String(36), ForeignKey("interview_sessions.id"), nullable=False, index=True)
     order_index = Column(Integer, default=1)
     question_text = Column(Text, nullable=False)
-    category = Column(String(50), default="System Design")
-    difficulty = Column(String(50), default="Medium")
+    category = Column(String(255), default="System Design")
+    difficulty = Column(String(100), default="Medium")
     expected_keywords = Column(JSON, default=lambda: ["Virtual DOM", "State Management", "SSR", "Optimization"])
     is_followup = Column(Boolean, default=False)
     is_test_data = Column(Boolean, default=False, index=True)
@@ -517,7 +517,7 @@ class SpeechAnalysis(Base):
     grammar_score = Column(Float, default=92.0)
     vocabulary_richness = Column(Float, default=88.0)
     clarity_score = Column(Float, default=94.0)
-    tone = Column(String(50), default="Confident & Professional")
+    tone = Column(String(255), default="Confident & Professional")
 
     answer = relationship("InterviewAnswer", back_populates="speech_analysis")
 
@@ -539,7 +539,7 @@ class EmotionAnalysis(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     answer_id = Column(String(36), ForeignKey("interview_answers.id"), nullable=False)
-    dominant_emotion = Column(String(50), default="neutral")
+    dominant_emotion = Column(String(100), default="neutral")
     confidence_percentage = Column(Float, default=90.0)
     stress_level = Column(Float, default=12.0)
     smile_ratio = Column(Float, default=35.0)

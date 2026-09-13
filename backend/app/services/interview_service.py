@@ -1,6 +1,7 @@
 import logging
 import uuid
 import re
+import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -250,10 +251,12 @@ class QuestionGeneratorService:
                         q_text = fb
                         break
             
+            cat_val = str(raw_q.get("category", "Follow-up") or "Follow-up")[:250]
+            diff_val = str(raw_q.get("difficulty", "Adaptive") or "Adaptive")[:90]
             return {
                 "question_text": q_text,
-                "category": raw_q.get("category", "Follow-up"),
-                "difficulty": raw_q.get("difficulty", "Adaptive"),
+                "category": cat_val,
+                "difficulty": diff_val,
                 "expected_keywords": raw_q.get("expected_keywords", [])
             }
         except Exception as e:
@@ -472,10 +475,38 @@ class EvaluationService:
         technical_answers = []
         transcripts = []
 
+        question_ids = [q.id for q in questions]
+        answers_map = {}
+        if question_ids:
+            res_ans = await db.execute(
+                select(InterviewAnswer)
+                .where(InterviewAnswer.question_id.in_(question_ids))
+                .order_by(InterviewAnswer.created_at.desc())
+            )
+            for a in res_ans.scalars().all():
+                if a.question_id not in answers_map:
+                    answers_map[a.question_id] = a
+
+        answer_ids = [a.id for a in answers_map.values()]
+        speech_map = {}
+        eye_map = {}
+        emotion_map = {}
+        if answer_ids:
+            res_sp = await db.execute(select(SpeechAnalysis).where(SpeechAnalysis.answer_id.in_(answer_ids)))
+            for sp_item in res_sp.scalars().all():
+                if sp_item.answer_id not in speech_map:
+                    speech_map[sp_item.answer_id] = sp_item
+            res_vi = await db.execute(select(EyeTracking).where(EyeTracking.answer_id.in_(answer_ids)))
+            for vi_item in res_vi.scalars().all():
+                if vi_item.answer_id not in eye_map:
+                    eye_map[vi_item.answer_id] = vi_item
+            res_em = await db.execute(select(EmotionAnalysis).where(EmotionAnalysis.answer_id.in_(answer_ids)))
+            for em_item in res_em.scalars().all():
+                if em_item.answer_id not in emotion_map:
+                    emotion_map[em_item.answer_id] = em_item
+
         for q in questions:
-            res_ans = await db.execute(select(InterviewAnswer).where(InterviewAnswer.question_id == q.id).order_by(InterviewAnswer.created_at.desc()))
-            answers = res_ans.scalars().all()
-            ans = answers[0] if answers else None
+            ans = answers_map.get(q.id)
 
             # Retrieve answer transcript text (prefer answer level, fallback to session persisted Phase 6 transcript)
             ans_text = None
@@ -501,9 +532,7 @@ class EvaluationService:
                     "technical_score": tech_score
                 })
 
-                res_sp = await db.execute(select(SpeechAnalysis).where(SpeechAnalysis.answer_id == ans.id)) if ans else None
-                speech_list = res_sp.scalars().all() if res_sp else []
-                sp = speech_list[0] if speech_list else None
+                sp = speech_map.get(ans.id) if ans else None
 
                 if sp:
                     speech_results.append({
@@ -520,10 +549,8 @@ class EvaluationService:
                         "clarity_score": 92.0
                     })
 
-                res_vi = await db.execute(select(EyeTracking).where(EyeTracking.answer_id == ans.id)) if ans else None
-                vi = res_vi.scalars().first() if res_vi else None
-                res_em = await db.execute(select(EmotionAnalysis).where(EmotionAnalysis.answer_id == ans.id)) if ans else None
-                em = res_em.scalars().first() if res_em else None
+                vi = eye_map.get(ans.id) if ans else None
+                em = emotion_map.get(ans.id) if ans else None
 
                 if vi and em:
                     vision_results.append({

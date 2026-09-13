@@ -127,7 +127,11 @@ ALTER_QUERIES = [
     "CREATE INDEX IF NOT EXISTS ix_interview_sessions_job_application_id ON interview_sessions(job_application_id);",
     "CREATE INDEX IF NOT EXISTS ix_interview_questions_session_id ON interview_questions(session_id);",
     "CREATE INDEX IF NOT EXISTS ix_interview_answers_question_id ON interview_answers(question_id);",
-    "CREATE INDEX IF NOT EXISTS ix_scoring_reports_session_id ON scoring_reports(session_id);"
+    "CREATE INDEX IF NOT EXISTS ix_scoring_reports_session_id ON scoring_reports(session_id);",
+    "ALTER TABLE interview_questions ALTER COLUMN category TYPE VARCHAR(255);",
+    "ALTER TABLE interview_questions ALTER COLUMN difficulty TYPE VARCHAR(100);",
+    "ALTER TABLE speech_analysis ALTER COLUMN tone TYPE VARCHAR(255);",
+    "ALTER TABLE emotion_analysis ALTER COLUMN dominant_emotion TYPE VARCHAR(100);"
 ]
 
 TABLES_FOR_ENV_COLUMNS = [

@@ -258,13 +258,13 @@ async def get_assessment_result(
     res_qs = await db.execute(select(AssessmentQuestion).where(AssessmentQuestion.session_id == session_id).order_by(AssessmentQuestion.order_index))
     questions = res_qs.scalars().all()
 
+    # Optimized: Batch fetch all answers in a single query to eliminate N+1 latency
+    res_ans = await db.execute(select(AssessmentAnswer).where(AssessmentAnswer.session_id == session_id))
+    answers_map = {a.question_id: a for a in res_ans.scalars().all()}
+
     question_review = []
     for q in questions:
-        res_ans = await db.execute(select(AssessmentAnswer).where(
-            AssessmentAnswer.session_id == session_id,
-            AssessmentAnswer.question_id == q.id
-        ))
-        ans = res_ans.scalar_one_or_none()
+        ans = answers_map.get(q.id)
 
         question_review.append({
             "question_id": q.id,

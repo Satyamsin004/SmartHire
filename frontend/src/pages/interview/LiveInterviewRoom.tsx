@@ -41,6 +41,7 @@ export const LiveInterviewRoom: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [micEnabled, setMicEnabled] = useState(true);
   const [camEnabled, setCamEnabled] = useState(true);
+  const [showEndModal, setShowEndModal] = useState(false);
 
   // Integrity & Proctoring State
   const [activeIncident, setActiveIncident] = useState<ActiveIncident | null>(null);
@@ -198,10 +199,12 @@ export const LiveInterviewRoom: React.FC = () => {
       const searchParams = new URLSearchParams(location.search);
       const qSessionId = searchParams.get('session');
 
-      if (!activeSession && qSessionId) {
+      if (qSessionId) {
         try {
           const res = await api.get(`/interview/session/${qSessionId}`);
-          activeSession = res.data;
+          if (res.data) {
+            activeSession = res.data;
+          }
         } catch (e) {
           console.warn("Failed to fetch session by ID:", e);
         }
@@ -945,8 +948,10 @@ export const LiveInterviewRoom: React.FC = () => {
   };
 
   const handleCompleteSession = async () => {
-    if (!sessionId || isSessionEndedRef.current) return;
+    const activeId = sessionId || activeSessionState?.session_id || activeSessionState?.id || new URLSearchParams(window.location.search).get('session');
+    if (!activeId || isSessionEndedRef.current) return;
     isSessionEndedRef.current = true;
+    setShowEndModal(false);
     integrityEngine.stopMonitoring();
     setIsFinalizingReport(true);
     setSubmitting(true);
@@ -971,13 +976,14 @@ export const LiveInterviewRoom: React.FC = () => {
     }
     try {
       // If there is an unsubmitted answer in the transcript textarea, submit it now
-      if (transcript && transcript.trim() && currentQuestion) {
+      const textToSubmit = (transcriptRef.current || transcript || '').trim();
+      if (textToSubmit && currentQuestion) {
         try {
           const elapsedSec = Math.max(0, Math.round((Date.now() - startTimeRef.current) / 1000));
           await api.post('/interview/submit-answer', {
-            session_id: sessionId,
+            session_id: activeId,
             question_id: currentQuestion?.question_id || currentQuestion?.id,
-            transcript_text: transcript.trim(),
+            transcript_text: textToSubmit,
             speech_duration_seconds: 45.0,
             elapsed_seconds: elapsedSec,
             vision_telemetry: {
@@ -992,13 +998,13 @@ export const LiveInterviewRoom: React.FC = () => {
         }
       }
       await finalizeAndUploadRecording();
-      await api.post(`/interview/finish/${sessionId}`, {}, { timeout: 30000 }).catch(() => {});
+      await api.post(`/interview/finish/${activeId}`, {}, { timeout: 15000 }).catch(() => {});
     } catch(e) {
       console.warn("Session finish notice:", e);
     } finally {
       setSubmitting(false);
     }
-    navigate(`/interview/results?session=${sessionId}`, { replace: true });
+    navigate(`/interview/results?session=${activeId}`, { replace: true });
   };
 
   // Timer
@@ -1133,8 +1139,9 @@ export const LiveInterviewRoom: React.FC = () => {
           </button>
 
           <button 
-            onClick={() => { if(window.confirm('End interview early and view results?')) handleCompleteSession(); }}
+            onClick={() => setShowEndModal(true)}
             className="px-4 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-extrabold transition-all cursor-pointer shadow-xs active:scale-95"
+            title="End interview session early and view report"
           >
             End Interview
           </button>
@@ -1377,8 +1384,8 @@ export const LiveInterviewRoom: React.FC = () => {
                 </button>
                 
                 <button
-                  onClick={() => handleSubmitAnswer(transcript)}
-                  disabled={submitting || isAiThinking || !transcript.trim()}
+                  onClick={() => handleSubmitAnswer(transcriptRef.current || transcript)}
+                  disabled={submitting || isAiThinking || (!transcript.trim() && !transcriptRef.current.trim())}
                   className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-98"
                 >
                   <span>{isAiThinking ? 'Analyzing Response...' : 'Submit Answer'}</span>
@@ -1394,6 +1401,37 @@ export const LiveInterviewRoom: React.FC = () => {
 
         </div>
       </main>
+
+      {/* End Interview Early Confirmation Modal */}
+      {showEndModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 shadow-2xl relative">
+            <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-black text-white">End Interview Early?</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Are you sure you want to conclude this interview session now? Your answers and telemetry recorded so far will be evaluated, and your performance report will be generated.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowEndModal(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-extrabold transition-all cursor-pointer"
+              >
+                Resume Interview
+              </button>
+              <button
+                onClick={() => handleCompleteSession()}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold transition-all shadow-lg shadow-rose-900/30 cursor-pointer"
+              >
+                Yes, End & View Results
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Overlay when Finalizing Report & Telemetry */}
       {isFinalizingReport && (
