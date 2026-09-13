@@ -183,5 +183,23 @@ api.delete = ((...args: any[]) => {
   return (rawDelete as any)(...args);
 }) as typeof api.delete;
 
+export const resolveResumeUrl = (rawUrl: string | null | undefined): string => {
+  if (!rawUrl) return '';
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+    return rawUrl;
+  }
+  const clean = rawUrl.replace(/\\/g, '/').replace(/^\/+/, '');
+  const filename = clean.split('/').pop() || '';
+  if (!filename) return '';
+
+  const envApi = (import.meta as any).env?.VITE_API_URL;
+  let backendOrigin = '';
+  if (envApi && !envApi.startsWith('http://localhost') && !envApi.startsWith('http://127.0.0.1')) {
+    backendOrigin = envApi.replace(/\/api\/v1\/?$/, '');
+  }
+
+  return `${backendOrigin}/api/v1/uploads/resumes/${filename}`;
+};
+
 export default api;
 

@@ -273,7 +273,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                2. Select {scheduleMode === 'assessment' ? 'ATS Passed (≥80%)' : 'Assessment Passed (≥70%)'} Candidates for {selectedJob?.title || 'Position'} ({selectedCandidateIds.length} selected)
+                2. Select {scheduleMode === 'assessment' ? 'ATS Passed (≥80%)' : 'Assessment Passed'} Candidates for {selectedJob?.title || 'Position'} ({selectedCandidateIds.length} selected)
               </label>
               {candidates.length > 0 && (
                 <button
@@ -295,7 +295,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleModalProps> = ({
                   <p className="text-[11px] text-slate-400 font-medium">
                     {scheduleMode === 'assessment'
                       ? "Only candidates who applied for this position with ATS match score ≥ 80% will appear."
-                      : "Only candidates who completed and passed the Online Assessment test (Score ≥ 70%) will appear here for Interview Scheduling."}
+                      : "Only candidates who completed and passed the Online Assessment test will appear here for Interview Scheduling."}
                   </p>
                 </div>
               ) : (

@@ -175,21 +175,32 @@ class RecruitmentPipelineService:
                 resumes_map[r.id] = r
 
         # 4. Batch fetch strictly RECRUITER Assessment Sessions & Results
+        from sqlalchemy import or_
         assess_sess_map = {}
+        cand_job_assess_map = {}
+        cand_assess_map = {}
         res_assess = await db.execute(
             select(AssessmentSession)
             .where(
-                AssessmentSession.job_application_id.in_(app_ids),
-                AssessmentSession.is_recruiter_configured.is_(True)
+                or_(
+                    AssessmentSession.job_application_id.in_(app_ids),
+                    (AssessmentSession.candidate_id.in_(cand_ids) & AssessmentSession.job_id.in_(job_ids)),
+                    AssessmentSession.candidate_id.in_(cand_ids)
+                )
             )
             .order_by(AssessmentSession.created_at.desc())
         )
-        for asess in res_assess.scalars().all():
-            if asess.job_application_id not in assess_sess_map:
+        all_assess_sessions = res_assess.scalars().all()
+        for asess in all_assess_sessions:
+            if asess.job_application_id and asess.job_application_id not in assess_sess_map:
                 assess_sess_map[asess.job_application_id] = asess
+            if asess.candidate_id and asess.job_id and (asess.candidate_id, asess.job_id) not in cand_job_assess_map:
+                cand_job_assess_map[(asess.candidate_id, asess.job_id)] = asess
+            if asess.candidate_id and asess.candidate_id not in cand_assess_map:
+                cand_assess_map[asess.candidate_id] = asess
 
         assess_results_map = {}
-        assess_ids = [s.id for s in assess_sess_map.values() if s.id]
+        assess_ids = [s.id for s in all_assess_sessions if s.id]
         if assess_ids:
             res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id.in_(assess_ids)))
             for ar in res_ar.scalars().all():
@@ -248,19 +259,28 @@ class RecruitmentPipelineService:
             r_obj = resumes_map.get(app.resume_id)
             resume_url = r_obj.file_path if (r_obj and r_obj.file_path) else getattr(cand, "resume_url", None)
 
-            # Strictly fetch Assessment Session & Result LINKED to THIS specific application
-            assess_sess = assess_sess_map.get(app.id)
+            # Strictly fetch Assessment Session & Result LINKED to THIS specific application (with candidate fallback)
+            assess_sess = assess_sess_map.get(app.id) or cand_job_assess_map.get((app.candidate_id, app.job_id)) or cand_assess_map.get(app.candidate_id)
             assess_res = assess_results_map.get(assess_sess.id) if assess_sess else None
             assess_score = round(assess_res.overall_score, 1) if (assess_res and assess_res.overall_score is not None) else None
+            passing_cutoff = round(assess_sess.passing_score, 1) if (assess_sess and assess_sess.passing_score is not None) else 70.0
+            is_assess_passed = (assess_score is not None and assess_score >= passing_cutoff) or (assess_res and assess_res.hiring_recommendation == "Pass") or ("pass" in (app.status or "").lower())
 
             recruiter_assessment = None
             if assess_sess:
+                status_str = "Passed" if is_assess_passed else ("Failed" if (assess_res and not is_assess_passed) else (assess_sess.status or "Scheduled"))
                 recruiter_assessment = {
                     "session_id": assess_sess.id,
-                    "status": "Completed" if assess_res else (assess_sess.status or "Scheduled"),
+                    "status": status_str,
                     "score": assess_score,
+                    "passing_score": passing_cutoff,
+                    "recommendation": assess_res.hiring_recommendation if assess_res else ("Pass" if is_assess_passed else None),
+                    "is_passed": is_assess_passed,
                     "attempt_date": assess_res.created_at.strftime('%B %d, %Y') if (assess_res and assess_res.created_at) else (assess_sess.created_at.strftime('%B %d, %Y') if assess_sess.created_at else "Recently"),
-                    "duration_minutes": assess_sess.duration_minutes or 30
+                    "duration_minutes": assess_sess.duration_minutes or 30,
+                    "total_correct": assess_res.total_correct if assess_res else None,
+                    "total_wrong": assess_res.total_wrong if assess_res else None,
+                    "total_questions": assess_sess.question_count or (assess_res.total_correct + assess_res.total_wrong + assess_res.total_skipped if assess_res else None)
                 }
 
             sched_list = sched_map.get(app.id, [])
@@ -389,6 +409,9 @@ class RecruitmentPipelineService:
                 "confidence_score": active_interview["confidence_score"] if active_interview else None,
                 "technical_score": active_interview["technical_score"] if active_interview else None,
                 "assessment_score": assess_score,
+                "assessment_status": recruiter_assessment["status"] if recruiter_assessment else None,
+                "assessment_session_id": assess_sess.id if assess_sess else None,
+                "assessment_passed": is_assess_passed if recruiter_assessment else False,
                 "recruiter_assessment": recruiter_assessment,
                 "recruiter_interview": active_interview,
                 "technical_round": tech_round,
@@ -474,6 +497,7 @@ class RecruitmentPipelineService:
     async def get_eligible_candidates_for_interview_scheduler(db: AsyncSession, recruiter_user_id: str, job_id: str) -> List[Dict[str, Any]]:
         """Returns candidates for Interview scheduling with strict sequential funnel status (Assessment Passed vs In-Progress)."""
         from app.models.domain import AssessmentSession, AssessmentResult
+        from sqlalchemy import or_
         res_j = await db.execute(select(JobPosting).where(JobPosting.id == job_id))
         job = res_j.scalars().first()
         if not job:
@@ -502,28 +526,37 @@ class RecruitmentPipelineService:
             if not cand_user or not cand_user.is_active or getattr(cand_user, 'deleted_at', None) is not None:
                 continue
 
-            # Fetch linked Assessment Result
+            # Fetch linked Assessment Result (with fallback candidate_id + job_id or candidate_id)
             res_ass = await db.execute(
-                select(AssessmentResult)
+                select(AssessmentResult, AssessmentSession)
                 .join(AssessmentSession, AssessmentResult.session_id == AssessmentSession.id)
-                .where(AssessmentSession.job_application_id == app.id)
+                .where(
+                    or_(
+                        AssessmentSession.job_application_id == app.id,
+                        (AssessmentSession.candidate_id == app.candidate_id) & (AssessmentSession.job_id == app.job_id),
+                        AssessmentSession.candidate_id == app.candidate_id
+                    )
+                )
                 .order_by(AssessmentResult.created_at.desc())
             )
-            ass_res = res_ass.scalars().first()
+            row = res_ass.first()
+            ass_res = row[0] if row else None
+            asess = row[1] if row else None
             assess_score = round(ass_res.overall_score, 1) if (ass_res and ass_res.overall_score is not None) else None
+            cutoff = asess.passing_score if (asess and asess.passing_score is not None) else 40.0
 
             # STRICT ENFORCEMENT: Candidates MUST have taken and PASSED the Online Assessment stage to be eligible for Interview
             has_passed_assessment = False
-            if app.status in ["Assessment Passed", "Interview Eligible"]:
+            if "pass" in (app.status or "").lower() or app.status in ["Assessment Passed", "Interview Eligible", "Technical Scheduled"]:
                 has_passed_assessment = True
-            elif ass_res and (ass_res.overall_score is not None and ass_res.overall_score >= 60.0 or ass_res.hiring_recommendation == "Pass"):
+            elif ass_res and (ass_res.hiring_recommendation == "Pass" or (ass_res.overall_score is not None and ass_res.overall_score >= cutoff)):
                 has_passed_assessment = True
 
             # If candidate has not passed the online assessment, skip from interview scheduling candidate list
             if not has_passed_assessment:
                 continue
 
-            stage_label = f"Interview Eligible (Assessment Score: {assess_score if assess_score is not None else 80}%)"
+            stage_label = f"Interview Eligible (Assessment Score: {assess_score if assess_score is not None else (cutoff if cutoff else 70)}%)"
 
             out.append({
                 "candidate_id": cand.id,

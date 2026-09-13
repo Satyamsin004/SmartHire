@@ -5,7 +5,7 @@ import {
   Briefcase, MapPin, UserCheck, Paperclip, ExternalLink, Download, Check, X, AlertCircle,
   Video, BookOpen, Star, DollarSign, Lock, Brain, Users, Eye
 } from 'lucide-react';
-import api from '../services/api';
+import api, { resolveResumeUrl } from '../services/api';
 import { useWebSocket } from '../context/WebSocketContext';
 
 export const MyApplicationsPage: React.FC = () => {
@@ -436,14 +436,8 @@ export const MyApplicationsPage: React.FC = () => {
 
                 {/* Submitted Resume & Attachments */}
                 {(() => {
-                  const apiBase = (api.defaults.baseURL && !api.defaults.baseURL.startsWith('/api')) ? api.defaults.baseURL : '';
                   const rawResume = app.resume_url || userProfile?.resume_url;
-                  let resumeUrl = rawResume;
-                  if (rawResume && !rawResume.startsWith('http')) {
-                    const cleanPath = rawResume.startsWith('/') ? rawResume : `/${rawResume}`;
-                    const normalized = cleanPath.startsWith('/uploads/') ? cleanPath : `/uploads/resumes${cleanPath}`;
-                    resumeUrl = `${apiBase}${normalized}`;
-                  }
+                  const resumeUrl = resolveResumeUrl(rawResume);
                   const resumeName = rawResume ? (rawResume.split('/').pop()?.split('\\').pop() || 'Candidate_Resume.pdf') : 'Application_Resume.pdf';
 
                   return (
@@ -457,7 +451,7 @@ export const MyApplicationsPage: React.FC = () => {
                           href={resumeUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-3 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-extrabold flex items-center gap-1.5 transition-colors"
+                          className="px-3 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                           <span>View Submitted Resume</span>

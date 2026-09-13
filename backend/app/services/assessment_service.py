@@ -15,8 +15,9 @@ from sqlalchemy.future import select
 from app.models.domain import (
     AssessmentAnswer, AssessmentQuestion, AssessmentQuestionHistory,
     AssessmentResult, AssessmentSession, JobApplication, Candidate, Notification,
-    JobPosting, User
+    JobPosting, User, Recruiter
 )
+from app.api.v1.websocket import ws_manager
 from app.services.ai_engine import ai_engine
 from app.services.paper_builder import paper_builder
 from app.services.email_service import email_service
@@ -259,12 +260,39 @@ Each object MUST match this schema:
         else:
             for field, value in fields.items():
                 setattr(result, field, value)
+
+        session.status = "completed"
+        session.is_recruiter_configured = True
+        session.completed_at = datetime.utcnow()
+
         application = None
         if session.job_application_id:
             application = (await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))).scalar_one_or_none()
+
+        # Fallback lookup if session.job_application_id is None
+        if not application and session.candidate_id and session.job_id:
+            application = (await db.execute(
+                select(JobApplication)
+                .where(JobApplication.candidate_id == session.candidate_id, JobApplication.job_id == session.job_id)
+                .order_by(JobApplication.applied_at.desc())
+            )).scalar_one_or_none()
             if application:
-                new_status = "Assessment Passed" if recommendation == "Pass" else "Assessment Failed"
-                application.status = new_status
+                session.job_application_id = application.id
+
+        if not application and session.candidate_id:
+            application = (await db.execute(
+                select(JobApplication)
+                .where(JobApplication.candidate_id == session.candidate_id)
+                .order_by(JobApplication.applied_at.desc())
+            )).scalar_one_or_none()
+            if application:
+                session.job_application_id = application.id
+                if not session.job_id:
+                    session.job_id = application.job_id
+
+        if application:
+            new_status = "Assessment Passed" if recommendation == "Pass" else "Assessment Failed"
+            application.status = new_status
 
         # Candidate In-App Notification & Email Dispatch
         cand = None
@@ -299,6 +327,44 @@ Each object MUST match this schema:
                         company_name = job_obj.company_name or company_name
 
         await db.commit()
+
+        # Recruiter Real-Time Notification & WebSocket Broadcast
+        try:
+            recruiter_user_id = None
+            if session.recruiter_id:
+                res_rec = await db.execute(select(Recruiter).where(Recruiter.id == session.recruiter_id))
+                rec_obj = res_rec.scalar_one_or_none()
+                if rec_obj:
+                    recruiter_user_id = rec_obj.user_id
+            elif application and application.job_id:
+                res_jp = await db.execute(select(JobPosting).where(JobPosting.id == application.job_id))
+                jp_obj = res_jp.scalar_one_or_none()
+                if jp_obj and jp_obj.recruiter_id:
+                    res_rec = await db.execute(select(Recruiter).where(Recruiter.id == jp_obj.recruiter_id))
+                    rec_obj = res_rec.scalar_one_or_none()
+                    if rec_obj:
+                        recruiter_user_id = rec_obj.user_id
+
+            rec_ws_payload = {
+                "event": "RECRUITER_APPLICATION_UPDATED",
+                "type": "RECRUITER_APPLICATION_UPDATED",
+                "data": {
+                    "application_id": application.id if application else None,
+                    "candidate_id": session.candidate_id,
+                    "candidate_name": cand_user.full_name if cand_user else "Candidate",
+                    "job_id": session.job_id or (application.job_id if application else None),
+                    "status": application.status if application else ("Assessment Passed" if recommendation == "Pass" else "Assessment Failed"),
+                    "assessment_score": overall_score,
+                    "hiring_recommendation": recommendation,
+                    "passing_score": session.passing_score or 70.0,
+                    "session_id": session.id
+                }
+            }
+            if recruiter_user_id:
+                await ws_manager.send_personal_message(rec_ws_payload, recruiter_user_id)
+            await ws_manager.broadcast(rec_ws_payload)
+        except Exception as ws_err:
+            logger.warning(f"Failed to dispatch recruiter assessment WS update: {ws_err}")
 
         # Candidate In-App Notification & Email Dispatch (Post Commit)
         if cand and cand_user and cand_user.email:

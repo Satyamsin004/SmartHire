@@ -631,6 +631,31 @@ async def get_ats_passed_evaluations(
         for r in res_rep.scalars().all():
             reports_map[r.session_id] = r
 
+    # Bulk fetch Assessment Sessions and Results for all applications in 1 query
+    assess_sess_map = {}
+    cand_assess_map = {}
+    if app_ids:
+        res_asess = await db.execute(
+            select(AssessmentSession)
+            .where(
+                (AssessmentSession.job_application_id.in_(app_ids)) |
+                (AssessmentSession.candidate_id.in_(cand_ids))
+            )
+            .order_by(AssessmentSession.created_at.desc())
+        )
+        for asess in res_asess.scalars().all():
+            if asess.job_application_id and asess.job_application_id not in assess_sess_map:
+                assess_sess_map[asess.job_application_id] = asess
+            if asess.candidate_id and asess.candidate_id not in cand_assess_map:
+                cand_assess_map[asess.candidate_id] = asess
+
+    all_asess_ids = list({s.id for s in assess_sess_map.values()} | {s.id for s in cand_assess_map.values()})
+    assess_results_map = {}
+    if all_asess_ids:
+        res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id.in_(all_asess_ids)))
+        for ar in res_ar.scalars().all():
+            assess_results_map[ar.session_id] = ar
+
     out = []
     for app in apps:
         cand_entry = cands_user_map.get(app.candidate_id)
@@ -640,10 +665,16 @@ async def get_ats_passed_evaluations(
         session = sessions_map.get(app.id)
         rep = reports_map.get(session.id) if session else None
 
+        as_sess = assess_sess_map.get(app.id) or cand_assess_map.get(app.candidate_id)
+        as_res = assess_results_map.get(as_sess.id) if as_sess else None
+        as_score = round(as_res.overall_score, 1) if (as_res and as_res.overall_score is not None) else None
+        pass_cutoff = round(as_sess.passing_score, 1) if (as_sess and as_sess.passing_score is not None) else 70.0
+        is_as_passed = (as_score is not None and as_score >= pass_cutoff) or (as_res and as_res.hiring_recommendation == "Pass") or ("pass" in (app.status or "").lower())
+
         out.append({
             "id": app.id,
             "application_id": app.id,
-            "session_id": session.id if session else None,
+            "session_id": session.id if session else (as_sess.id if as_sess else None),
             "candidate_id": app.candidate_id,
             "candidate_name": cand_user.full_name if cand_user else "Candidate",
             "candidate_email": cand_user.email if cand_user else "N/A",
@@ -653,22 +684,32 @@ async def get_ats_passed_evaluations(
             "ats_score": round(app.ats_score, 1) if app.ats_score is not None else None,
             "status": app.status,
             "pipeline_stage": app.status,
-            "interview_date": session.started_at.strftime('%b %d, %Y') if (session and session.started_at) else "Scheduled",
-            "interview_status": session.status if session else ("Scheduled" if app.status == "Interview Scheduled" else "Pending"),
+            "interview_date": session.started_at.strftime('%b %d, %Y') if (session and session.started_at) else (as_res.created_at.strftime('%b %d, %Y') if (as_res and as_res.created_at) else "Scheduled"),
+            "interview_status": session.status if session else ("Completed" if as_res else ("Scheduled" if app.status in ["Interview Scheduled", "Assessment Scheduled"] else app.status or "Pending")),
             "integrity_status": session.integrity_status if session else "CLEAN",
             "integrity_score": session.integrity_score if (session and session.integrity_score is not None) else 100.0,
             "total_integrity_incidents": session.total_integrity_incidents if session else 0,
             "termination_reason": session.termination_reason if session else None,
-            "overall_score": round(rep.overall_score, 1) if (rep and rep.overall_score is not None) else None,
+            "overall_score": round(rep.overall_score, 1) if (rep and rep.overall_score is not None) else as_score,
             "interview_score": round(rep.overall_score, 1) if (rep and rep.overall_score is not None) else None,
+            "assessment_score": as_score,
+            "assessment_status": "Passed" if is_as_passed else ("Failed" if (as_res and not is_as_passed) else (as_sess.status if as_sess else None)),
+            "assessment_session_id": as_sess.id if as_sess else None,
             "technical_score": round(rep.technical_score, 1) if (rep and rep.technical_score is not None) else None,
             "communication_score": round(rep.communication_score, 1) if (rep and rep.communication_score is not None) else None,
             "confidence_score": round(rep.confidence_score, 1) if (rep and rep.confidence_score is not None) else None,
             "professionalism_score": round(rep.professionalism_score, 1) if (rep and rep.professionalism_score is not None) else None,
             "grammar_score": round(rep.grammar_score, 1) if (rep and getattr(rep, 'grammar_score', None) is not None) else None,
             "problem_solving_score": round(rep.problem_solving_score, 1) if (rep and getattr(rep, 'problem_solving_score', None) is not None) else None,
-            "recommendation": rep.recommendation if (rep and getattr(rep, 'recommendation', None)) else ("Shortlist" if (app.ats_score and app.ats_score >= 80) else "Pending"),
-            "applied_date": app.applied_at.strftime('%b %d, %Y') if app.applied_at else "Recent"
+            "recommendation": rep.recommendation if (rep and getattr(rep, 'recommendation', None)) else ("Pass" if is_as_passed else ("Shortlist" if (app.ats_score and app.ats_score >= 80) else "Pending")),
+            "applied_date": app.applied_at.strftime('%b %d, %Y') if app.applied_at else "Recent",
+            "recruiter_assessment": {
+                "session_id": as_sess.id,
+                "status": "Passed" if is_as_passed else ("Failed" if (as_res and not is_as_passed) else (as_sess.status if as_sess else "Scheduled")),
+                "score": as_score,
+                "passing_score": pass_cutoff,
+                "is_passed": is_as_passed
+            } if as_sess else None
         })
     return out
 
@@ -689,6 +730,7 @@ async def get_evaluation_detail(
         res_a = await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))
         app = res_a.scalars().first()
 
+    as_sess_lookup = None
     if not app:
         res_a = await db.execute(select(JobApplication).where(JobApplication.id == id))
         app = res_a.scalars().first()
@@ -715,9 +757,32 @@ async def get_evaluation_detail(
                     session = res_s2.scalars().first()
 
     if not app and not session:
+        # Check if id is an AssessmentSession.id
+        res_as_look = await db.execute(select(AssessmentSession).where(AssessmentSession.id == id))
+        as_sess_lookup = res_as_look.scalars().first()
+        if as_sess_lookup:
+            if as_sess_lookup.job_application_id:
+                res_a = await db.execute(select(JobApplication).where(JobApplication.id == as_sess_lookup.job_application_id))
+                app = res_a.scalars().first()
+            if not app and as_sess_lookup.candidate_id and as_sess_lookup.job_id:
+                res_a = await db.execute(
+                    select(JobApplication)
+                    .where(JobApplication.candidate_id == as_sess_lookup.candidate_id, JobApplication.job_id == as_sess_lookup.job_id)
+                    .order_by(JobApplication.applied_at.desc())
+                )
+                app = res_a.scalars().first()
+            if not app and as_sess_lookup.candidate_id:
+                res_a = await db.execute(
+                    select(JobApplication)
+                    .where(JobApplication.candidate_id == as_sess_lookup.candidate_id)
+                    .order_by(JobApplication.applied_at.desc())
+                )
+                app = res_a.scalars().first()
+
+    if not app and not session and not as_sess_lookup:
         raise HTTPException(status_code=404, detail="Evaluation details not found.")
 
-    cand_id = (app.candidate_id if app else None) or (session.candidate_id if session else None)
+    cand_id = (app.candidate_id if app else None) or (session.candidate_id if session else None) or (as_sess_lookup.candidate_id if as_sess_lookup else None)
     res_c = await db.execute(select(Candidate).where(Candidate.id == cand_id))
     cand = res_c.scalars().first()
 
@@ -810,7 +875,8 @@ async def get_evaluation_detail(
 
     # 2. Extract Online Assessment details
     assessment_data = None
-    if app:
+    as_sess = as_sess_lookup
+    if not as_sess and app:
         res_as = await db.execute(
             select(AssessmentSession)
             .where(
@@ -821,58 +887,59 @@ async def get_evaluation_detail(
             .order_by(AssessmentSession.created_at.desc())
         )
         as_sess = res_as.scalars().first()
-        if as_sess:
-            res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == as_sess.id))
-            as_res = res_ar.scalars().first()
 
-            q_list = []
-            try:
-                res_aq = await db.execute(
-                    select(
-                        AssessmentQuestion.id,
-                        AssessmentQuestion.order_index,
-                        AssessmentQuestion.category,
-                        AssessmentQuestion.topic,
-                        AssessmentQuestion.question_text,
-                        AssessmentQuestion.options,
-                        AssessmentQuestion.correct_option
-                    )
-                    .where(AssessmentQuestion.session_id == as_sess.id)
-                    .order_by(AssessmentQuestion.order_index.asc())
+    if as_sess:
+        res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id == as_sess.id))
+        as_res = res_ar.scalars().first()
+
+        q_list = []
+        try:
+            res_aq = await db.execute(
+                select(
+                    AssessmentQuestion.id,
+                    AssessmentQuestion.order_index,
+                    AssessmentQuestion.category,
+                    AssessmentQuestion.topic,
+                    AssessmentQuestion.question_text,
+                    AssessmentQuestion.options,
+                    AssessmentQuestion.correct_option
                 )
-                as_questions = res_aq.all()
+                .where(AssessmentQuestion.session_id == as_sess.id)
+                .order_by(AssessmentQuestion.order_index.asc())
+            )
+            as_questions = res_aq.all()
 
-                for aq in as_questions:
-                    res_ans = await db.execute(
-                        select(AssessmentAnswer).where(
-                            AssessmentAnswer.question_id == aq.id,
-                            AssessmentAnswer.session_id == as_sess.id
-                        )
+            for aq in as_questions:
+                res_ans = await db.execute(
+                    select(AssessmentAnswer).where(
+                        AssessmentAnswer.question_id == aq.id,
+                        AssessmentAnswer.session_id == as_sess.id
                     )
-                    aq_ans = res_ans.scalars().first()
-                    q_list.append({
-                        "order_index": aq.order_index,
-                        "category": aq.category,
-                        "topic": aq.topic,
-                        "question_text": aq.question_text,
-                        "options": aq.options,
-                        "correct_option": aq.correct_option,
-                        "selected_option": aq_ans.selected_option if aq_ans else None,
-                        "is_correct": aq_ans.is_correct if aq_ans else False,
-                        "points_earned": aq_ans.points_earned if aq_ans else 0.0
-                    })
-            except Exception as err:
-                as_questions = []
+                )
+                aq_ans = res_ans.scalars().first()
+                q_list.append({
+                    "order_index": aq.order_index,
+                    "category": aq.category,
+                    "topic": aq.topic,
+                    "question_text": aq.question_text,
+                    "options": aq.options,
+                    "correct_option": aq.correct_option,
+                    "selected_option": aq_ans.selected_option if aq_ans else None,
+                    "is_correct": aq_ans.is_correct if aq_ans else False,
+                    "points_earned": aq_ans.points_earned if aq_ans else 0.0
+                })
+        except Exception as err:
+            as_questions = []
 
-            as_score = round(as_res.overall_score, 1) if as_res else None
-            pass_cutoff = as_sess.passing_score if as_sess.passing_score is not None else 70.0
-            is_assess_passed = (as_score is not None and as_score >= pass_cutoff)
-            assessment_data = {
-                "session_id": as_sess.id,
-                "title": as_sess.title,
-                "score": as_score,
-                "passing_score": pass_cutoff,
-                "status": "Passed" if is_assess_passed else ("Failed (Below Cutoff)" if as_score is not None else "Pending"),
+        as_score = round(as_res.overall_score, 1) if as_res else None
+        pass_cutoff = as_sess.passing_score if as_sess.passing_score is not None else 70.0
+        is_assess_passed = (as_score is not None and as_score >= pass_cutoff) or (as_res and as_res.hiring_recommendation == "Pass") or (app and "pass" in (app.status or "").lower())
+        assessment_data = {
+            "session_id": as_sess.id,
+            "title": as_sess.title,
+            "score": as_score,
+            "passing_score": pass_cutoff,
+            "status": "Passed" if is_assess_passed else ("Failed (Below Cutoff)" if as_score is not None else "Pending"),
                 "is_passed": is_assess_passed,
                 "duration_minutes": as_sess.duration_minutes or 15,
                 "total_questions": as_sess.question_count or len(as_questions),
@@ -1608,13 +1675,16 @@ async def get_candidate_full_profile(
         res_u = await db.execute(select(User).where(User.id == cand.user_id))
         user_obj = res_u.scalars().first()
     else:
-        res_u = await db.execute(select(User).where(User.id == cand_id_lookup))
+        res_u = await db.execute(select(User).where((User.id == cand_id_lookup) | (User.email.ilike(cand_id_lookup))))
         user_obj = res_u.scalars().first()
         if user_obj:
-            cand = Candidate(user_id=user_obj.id, status="Registered")
-            db.add(cand)
-            await db.commit()
-            await db.refresh(cand)
+            res_c2 = await db.execute(select(Candidate).where(Candidate.user_id == user_obj.id))
+            cand = res_c2.scalars().first()
+            if not cand:
+                cand = Candidate(user_id=user_obj.id, status="Registered")
+                db.add(cand)
+                await db.commit()
+                await db.refresh(cand)
 
     if not user_obj and not cand:
         raise HTTPException(status_code=404, detail="Candidate profile not found.")
@@ -1628,6 +1698,22 @@ async def get_candidate_full_profile(
 
     res_r = await db.execute(select(Resume).where(Resume.candidate_id == cand.id).order_by(Resume.created_at.desc()))
     resume = res_r.scalars().first()
+
+    # Fetch parsed resume breakdown (education, experience, projects, certifications, etc.)
+    parsed_resume_data = {}
+    if resume:
+        try:
+            parsed_resume_data = await resume_service.get_full_parsed_resume(db, resume.id)
+        except Exception:
+            parsed_resume_data = {}
+
+    experiences = parsed_resume_data.get("experiences", [])
+    education = parsed_resume_data.get("education", [])
+    projects = parsed_resume_data.get("projects", [])
+    internships = parsed_resume_data.get("internships", [])
+    certifications = parsed_resume_data.get("certifications", [])
+    languages = parsed_resume_data.get("languages", [])
+    ats_analysis = parsed_resume_data.get("ats_analysis", {})
 
     if not app:
         res_apps = await db.execute(select(JobApplication).where(JobApplication.candidate_id == cand.id).order_by(JobApplication.applied_at.desc()))
@@ -1650,6 +1736,9 @@ async def get_candidate_full_profile(
         skills = res_sk.scalars().all()
         for sk in skills:
             skills_map[sk.skill_name] = 85
+    if not skills_map and parsed_resume_data.get("skills"):
+        for sk in parsed_resume_data["skills"]:
+            skills_map[sk.get("skill_name", "Skill")] = 85
     if not skills_map and app and app.matching_skills:
         for sk in app.matching_skills:
             skills_map[sk] = 90
@@ -1725,18 +1814,61 @@ async def get_candidate_full_profile(
                 break
 
     # Fallback to application scores if interviews were conducted and evaluated
-    if not latest_eval and app and (app.overall_score is not None or (app.status or '').lower() in ('hired', 'offer released', 'offer accepted')):
+    if not latest_eval and app and (getattr(app, 'overall_score', None) is not None or (app.status or '').lower() in ('hired', 'offer released', 'offer accepted')):
         latest_eval = {
-            "session_id": app.session_id or app.id,
-            "session_title": f"{app.target_role or 'Candidate'} Comprehensive Recruiter Evaluation",
-            "overall_score": round(app.overall_score or 73.7, 1),
-            "communication_score": round(app.communication_score or 91.9, 1),
-            "confidence_score": round(app.confidence_score or 83.7, 1),
-            "technical_score": round(app.technical_score or 52.8, 1),
-            "professionalism_score": round(app.professionalism_score or 81.6, 1),
+            "session_id": getattr(app, 'session_id', None) or app.id,
+            "session_title": f"{getattr(app, 'target_role', None) or 'Candidate'} Comprehensive Recruiter Evaluation",
+            "overall_score": round(getattr(app, 'overall_score', None) or 73.7, 1),
+            "communication_score": round(getattr(app, 'communication_score', None) or 91.9, 1),
+            "confidence_score": round(getattr(app, 'confidence_score', None) or 83.7, 1),
+            "technical_score": round(getattr(app, 'technical_score', None) or 52.8, 1),
+            "professionalism_score": round(getattr(app, 'professionalism_score', None) or 81.6, 1),
             "strengths": ["Strong foundational skills", "Excellent communication", "High culture alignment"],
             "weaknesses": ["Scale optimizations"],
             "improvement_plan": ["Advance to production deployment workflows"]
+        }
+
+    # Fetch Candidate's Online Assessment (Stage 3)
+    assess_data = None
+    query_as = (
+        select(AssessmentSession, AssessmentResult)
+        .outerjoin(AssessmentResult, AssessmentResult.session_id == AssessmentSession.id)
+        .where(AssessmentSession.candidate_id == cand.id)
+    )
+    if app and app.job_id:
+        query_as = query_as.where(
+            (AssessmentSession.job_id == app.job_id) |
+            (AssessmentSession.job_application_id == app.id)
+        )
+    res_as = await db.execute(query_as.order_by(AssessmentSession.created_at.desc()))
+    as_row = res_as.first()
+    if as_row:
+        sess, a_res = as_row
+        pass_cutoff = sess.passing_score if (sess and sess.passing_score is not None) else 40.0
+        score_val = a_res.overall_score if a_res else (app.assessment_score if app else None)
+        is_passed_val = False
+        if a_res and a_res.hiring_recommendation:
+            is_passed_val = a_res.hiring_recommendation.lower() == 'pass'
+        elif score_val is not None:
+            is_passed_val = score_val >= pass_cutoff
+        elif app and app.status and 'assessment pass' in app.status.lower():
+            is_passed_val = True
+
+        assess_data = {
+            "session_id": sess.id if sess else None,
+            "title": (sess.title if sess else None) or "Online Technical Assessment",
+            "score": score_val,
+            "passing_score": pass_cutoff,
+            "is_passed": is_passed_val,
+            "status": "Passed" if is_passed_val else ("Failed" if score_val is not None else ((sess.status if sess else None) or "Completed")),
+            "total_correct": a_res.total_correct if a_res else None,
+            "total_wrong": a_res.total_wrong if a_res else None,
+            "total_skipped": a_res.total_skipped if a_res else None,
+            "section_scores": a_res.section_scores if a_res else {},
+            "weak_areas": a_res.weak_areas if a_res else [],
+            "strong_areas": a_res.strong_areas if a_res else [],
+            "improvement_suggestions": a_res.improvement_suggestions if a_res else [],
+            "hiring_recommendation": a_res.hiring_recommendation if a_res else ("Pass" if is_passed_val else "Fail")
         }
 
     ats_score = None
@@ -1757,11 +1889,24 @@ async def get_candidate_full_profile(
         "rating": cand.rating or 4.5,
         "recruiter_notes": cand.recruiter_notes or "",
         "ats_score": ats_score,
-        "resume_summary": (resume.summary if resume else None) or "Candidate profile verified in PostgreSQL. Deep technical background in web development, REST APIs, and database engineering.",
+        "resume_summary": (resume.summary if resume else None) or (cand.bio if cand and cand.bio else "Candidate profile verified in PostgreSQL. Deep technical background in software engineering."),
         "skills": skills_map,
         "resume_url": normalize_resume_path(resume.file_path if resume else cand.resume_url) if (resume or cand) else None,
         "latest_evaluation": latest_eval,
-        "qa_transcript": qa_transcript
+        "qa_transcript": qa_transcript,
+        "assessment": assess_data,
+        "experiences": experiences,
+        "education": education,
+        "projects": projects,
+        "internships": internships,
+        "certifications": certifications,
+        "languages": languages,
+        "ats_analysis": ats_analysis,
+        "github_url": cand.github_url or getattr(user_obj, 'github_profile', None),
+        "linkedin_url": cand.linkedin_url or getattr(user_obj, 'linkedin_profile', None),
+        "portfolio_url": cand.portfolio_url or getattr(user_obj, 'portfolio_url', None),
+        "location": cand.location or "Remote",
+        "bio": cand.bio or (resume.summary if resume else "Verified Candidate Profile")
     }
 
 @router.post("/candidate/{candidate_id}/notes", summary="Save Recruiter Notes and Rating")

@@ -132,6 +132,7 @@ async def create_scheduled_assessment(
             question_count=body.question_count or 10,
             duration_minutes=dur_mins,
             passing_score=pass_score,
+            is_recruiter_configured=True,
             status="scheduled"
         )
         db.add(session)
