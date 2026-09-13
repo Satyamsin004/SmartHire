@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ShieldAlert, Clock, CheckCircle2, XCircle, AlertTriangle, Maximize, Camera,
   ArrowRight, ArrowLeft, Send, Sparkles, BookOpen, BarChart2, Award, History, Check,
-  Loader2
+  Loader2, VideoOff, RefreshCw
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -23,7 +23,48 @@ export const AssessmentExamRoom: React.FC = () => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [result, setResult] = useState<any>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<'INITIALIZING' | 'READY' | 'DENIED' | 'UNAVAILABLE'>('INITIALIZING');
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try { track.stop(); } catch (e) {}
+      });
+      streamRef.current = null;
+    }
+  };
+
+  const startCamera = async () => {
+    try {
+      setCameraStatus('INITIALIZING');
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+        });
+      } catch (err) {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+
+      if (stream) {
+        streamRef.current = stream;
+        setCameraStatus('READY');
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch((e) => console.warn('Video play notice:', e));
+        }
+      }
+    } catch (err: any) {
+      console.warn("Camera access denied or unavailable:", err);
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        setCameraStatus('DENIED');
+      } else {
+        setCameraStatus('UNAVAILABLE');
+      }
+    }
+  };
 
   // 1. Fetch Session Questions & Start Camera
   useEffect(() => {
@@ -32,6 +73,8 @@ export const AssessmentExamRoom: React.FC = () => {
       navigate('/practice');
       return;
     }
+
+    startCamera();
 
     // 1. Fetch questions for the assessment
     setLoadingQuestions(true);
@@ -55,20 +98,14 @@ export const AssessmentExamRoom: React.FC = () => {
       .then((res) => {
         if (res.data) {
           setResult(res.data);
+          stopCamera();
         }
       })
       .catch(() => {
         // Session is still in progress (normal exam mode)
       });
 
-    // 3. Start Webcam feed
-    navigator.mediaDevices?.getUserMedia({ video: true })
-      .then((stream) => {
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      })
-      .catch(() => console.warn("Camera access denied or unavailable."));
-
-    // 2. Proctoring Listeners: Tab Switch & Window Blur Detection
+    // 3. Proctoring Listeners: Tab Switch & Window Blur Detection
     const handleBlur = () => {
       setViolations((prev) => {
         const next = prev + 1;
@@ -82,8 +119,21 @@ export const AssessmentExamRoom: React.FC = () => {
     };
 
     window.addEventListener('blur', handleBlur);
-    return () => window.removeEventListener('blur', handleBlur);
+    return () => {
+      stopCamera();
+      window.removeEventListener('blur', handleBlur);
+    };
   }, [sessionId]);
+
+  // Ensure camera stream is attached when questions finish loading and videoRef mounts
+  useEffect(() => {
+    if (!loadingQuestions && !result && cameraStatus === 'READY' && streamRef.current && videoRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch((e) => console.warn('Video play notice:', e));
+      }
+    }
+  }, [loadingQuestions, result, cameraStatus]);
 
   // Timer
   useEffect(() => {
@@ -394,10 +444,58 @@ export const AssessmentExamRoom: React.FC = () => {
               <span className="text-xs font-extrabold text-slate-300 flex items-center gap-1.5">
                 <Camera className="w-4 h-4 text-emerald-400" /> WebCam Monitor
               </span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase">Active</span>
+              {cameraStatus === 'READY' ? (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                </span>
+              ) : cameraStatus === 'INITIALIZING' ? (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-black uppercase">
+                  Connecting...
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-black uppercase">
+                  {cameraStatus === 'DENIED' ? 'Blocked' : 'Offline'}
+                </span>
+              )}
             </div>
-            <div className="h-44 bg-slate-950 rounded-2xl overflow-hidden relative border border-slate-800">
-              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror-mode"></video>
+            <div className="h-44 bg-slate-950 rounded-2xl overflow-hidden relative border border-slate-800 flex items-center justify-center">
+              <video
+                ref={(el) => {
+                  videoRef.current = el;
+                  if (el && streamRef.current && el.srcObject !== streamRef.current) {
+                    el.srcObject = streamRef.current;
+                    el.play().catch(e => console.warn('Video play notice:', e));
+                  }
+                }}
+                autoPlay
+                playsInline
+                muted
+                style={{ transform: 'scaleX(-1)' }}
+                className={`w-full h-full object-cover ${cameraStatus === 'READY' ? 'block' : 'hidden'}`}
+              />
+              {cameraStatus === 'INITIALIZING' && (
+                <div className="text-center p-4 space-y-2">
+                  <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
+                  <p className="text-[11px] font-bold text-slate-400">Activating camera feed...</p>
+                </div>
+              )}
+              {(cameraStatus === 'DENIED' || cameraStatus === 'UNAVAILABLE') && (
+                <div className="text-center p-4 space-y-2">
+                  <VideoOff className="w-6 h-6 text-rose-400 mx-auto" />
+                  <p className="text-[11px] font-bold text-slate-300">
+                    {cameraStatus === 'DENIED' ? 'Camera access blocked' : 'Camera unavailable'}
+                  </p>
+                  <p className="text-[9px] text-slate-500 max-w-[200px] mx-auto">
+                    {cameraStatus === 'DENIED' ? 'Please grant camera permissions in your browser address bar' : 'Connect a working webcam to enable proctoring'}
+                  </p>
+                  <button
+                    onClick={startCamera}
+                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 mx-auto transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" /> Retry Camera
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
