@@ -372,7 +372,6 @@ class CachedStaticFiles(StaticFiles):
 uploads_dir = os.path.join(os.getcwd(), "static", "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/uploads", CachedStaticFiles(directory=uploads_dir), name="uploads")
-app.mount(f"{settings.API_V1_STR}/uploads", CachedStaticFiles(directory=uploads_dir), name="api_uploads")
 
 from app.api.v1 import auth, users, resume, interview, coding, aptitude, recruiter, admin, scheduling, websocket, jobs, offers, notifications, uploads, applications, analytics
 
