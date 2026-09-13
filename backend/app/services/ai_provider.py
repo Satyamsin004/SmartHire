@@ -65,29 +65,29 @@ class AIProviderManager:
 
     MAX_RETRIES = 1
     RETRY_BACKOFF_DELAYS = [0.5, 1.0, 2.0]
-    REQUEST_TIMEOUT_SECONDS = 6
+    REQUEST_TIMEOUT_SECONDS = 30
     RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
-    # Task Priority Provider Routing Strategy (Groq fast sub-second primary -> OpenRouter -> Gemini)
+    # Task Priority Provider Routing Strategy (Groq fast sub-second primary -> Gemini -> OpenRouter)
     ROUTES = {
-        "ats": ("groq", "openrouter", "gemini"),
-        "ats_resume_screening": ("groq", "openrouter", "gemini"),
-        "interview_question": ("groq", "openrouter", "gemini"),
-        "interview_question_generation": ("groq", "openrouter", "gemini"),
-        "behavioral_interview": ("groq", "openrouter", "gemini"),
-        "hr_interview": ("groq", "openrouter", "gemini"),
-        "technical_interview": ("groq", "openrouter", "gemini"),
-        "interview": ("groq", "openrouter", "gemini"),
-        "assessment": ("groq", "openrouter", "gemini"),
-        "assessment_mcq_generation": ("groq", "openrouter", "gemini"),
-        "evaluation_reports": ("groq", "openrouter", "gemini"),
-        "evaluation_report": ("groq", "openrouter", "gemini"),
-        "report": ("groq", "openrouter", "gemini"),
-        "default": ("groq", "openrouter", "gemini"),
+        "ats": ("groq", "gemini", "openrouter"),
+        "ats_resume_screening": ("groq", "gemini", "openrouter"),
+        "interview_question": ("groq", "gemini", "openrouter"),
+        "interview_question_generation": ("groq", "gemini", "openrouter"),
+        "behavioral_interview": ("groq", "gemini", "openrouter"),
+        "hr_interview": ("groq", "gemini", "openrouter"),
+        "technical_interview": ("groq", "gemini", "openrouter"),
+        "interview": ("groq", "gemini", "openrouter"),
+        "assessment": ("groq", "gemini", "openrouter"),
+        "assessment_mcq_generation": ("groq", "gemini", "openrouter"),
+        "evaluation_reports": ("groq", "gemini", "openrouter"),
+        "evaluation_report": ("groq", "gemini", "openrouter"),
+        "report": ("groq", "gemini", "openrouter"),
+        "default": ("groq", "gemini", "openrouter"),
     }
 
     def __init__(self) -> None:
-        self._last_active_provider: Optional[str] = "openrouter"
+        self._last_active_provider: Optional[str] = "groq"
         self._last_active_key_index: Dict[str, int] = {
             "gemini": 1,
             "openrouter": 1,

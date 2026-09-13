@@ -172,8 +172,8 @@ Return ONLY a JSON array of exactly {requested_count} question objects. Each obj
 
         stored_records: List[MasterQuestionBank] = []
 
-        # Batch generation: max 10 items per LLM call to maximize throughput
-        batch_size = 10
+        # Batch generation: max 5 items per LLM call to maximize throughput and responsiveness
+        batch_size = 5
         slot_batches = [blueprint_slots[i:i + batch_size] for i in range(0, len(blueprint_slots), batch_size)]
 
         async def _process_single_batch(batch_idx: int, slot_batch: List[BlueprintSlot]) -> List[MasterQuestionBank]:

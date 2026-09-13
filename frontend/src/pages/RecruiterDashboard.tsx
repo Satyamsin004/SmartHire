@@ -379,8 +379,13 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
       if (stageIdx === 0) return { text: 'Completed', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 1) return { text: 'Completed (ATS Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 2) {
-        if (recAssess && recAssess.score !== null) return { text: 'Completed (Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
-        return { text: 'Waived (Direct Offer)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
+        if (recAssess && recAssess.score !== null) {
+          const passT = recAssess?.passing_score ?? 70;
+          return recAssess.score >= passT
+            ? { text: 'Completed (Passed)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true }
+            : { text: `Failed (<${passT}%)`, color: 'bg-rose-500 text-white border-rose-500', isFailed: true };
+        }
+        return { text: 'Assessment Pending', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
       }
       if (stageIdx === 3) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       if (stageIdx === 4) return { text: 'Passed (Qualified)', color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
@@ -427,11 +432,8 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
 
     const isAssessmentPassed = isExplicitlyPassed;
     const isAssessmentFailed = isExplicitlyFailed;
-    const isAssessmentWaived = !recAssess && !isAssessmentConducted && (
-      status.includes('interview') || status.includes('tech') || status.includes('selected') || status.includes('hired') || status.includes('offer')
-    );
 
-    // Stage 3: Online Assessment (Enforces automatic cutoff threshold)
+    // Stage 3: Online Assessment (Mandatory for all applicants)
     if (stageIdx === 2) {
       if (isAssessmentFailed) {
         return { text: `Failed (<${passThreshold}%)`, color: 'bg-rose-500 text-white border-rose-500', isFailed: true };
@@ -439,16 +441,13 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
       if (isAssessmentPassed) {
         return { text: `Passed (≥${passThreshold}%)`, color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
       }
-      if (isAssessmentWaived) {
-        return { text: 'Waived (Direct Interview)', color: 'bg-slate-500 text-white border-slate-500', isDone: true };
-      }
-      if (status.includes('assessment scheduled') || recAssess?.status === 'Scheduled' || recAssess?.status === 'active') {
+      if (status.includes('assessment scheduled') || recAssess?.status === 'Scheduled' || recAssess?.status === 'scheduled' || recAssess?.status === 'active') {
         return { text: 'Assessment Scheduled', color: 'bg-blue-600 text-white border-blue-600 animate-pulse', isCurrent: true };
       }
       return { text: 'Assessment Pending', color: 'bg-amber-500 text-white border-amber-500 animate-pulse', isCurrent: true };
     }
 
-    if (!isAssessmentPassed && !isAssessmentWaived) {
+    if (!isAssessmentPassed) {
       if (isAssessmentFailed) {
         return { text: 'Pipeline Stopped', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isUpcoming: true };
       }
@@ -1482,7 +1481,13 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
                           <div className="flex items-center gap-2">
                             {app.resume_url && (
                               <a
-                                href={app.resume_url.startsWith('http') ? app.resume_url : (app.resume_url.startsWith('/') ? app.resume_url : `/${app.resume_url}`)}
+                                href={
+                                  app.resume_url.startsWith('http')
+                                    ? app.resume_url
+                                    : app.resume_url.startsWith('/uploads')
+                                    ? app.resume_url
+                                    : `/uploads/resumes/${app.resume_url.replace(/^\/+/, '').replace(/^resumes\//, '')}`
+                                }
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-3 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -1583,23 +1588,11 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
                                     <span>{recAssess?.duration_minutes || 30} Mins</span>
                                   </div>
                                 </div>
-                              ) : isAssessmentWaived ? (
-                                <div className="space-y-1 py-1">
-                                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium">
-                                    <span>Status:</span>
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                      Waived (Direct Interview)
-                                    </span>
-                                  </div>
-                                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium leading-relaxed mt-1">
-                                    Advanced directly to interview simulation without online assessment.
-                                  </p>
-                                </div>
                               ) : (
                                 <div className="space-y-1 py-1">
                                   <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400">Not Scheduled</p>
                                   <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium leading-relaxed">
-                                    Aptitude / technical assessment test.
+                                    Online assessment required before technical interview.
                                   </p>
                                 </div>
                               )}

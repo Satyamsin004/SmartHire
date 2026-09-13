@@ -92,8 +92,18 @@ async def create_scheduled_assessment(
 
     scheduled_sessions = []
     for cand_id in body.candidate_ids:
-        res_c = await db.execute(select(Candidate).where(Candidate.id == cand_id))
-        cand = res_c.scalar_one_or_none()
+        # Try finding candidate by Candidate.id, Candidate.user_id, or JobApplication.id
+        cand = None
+        res_c = await db.execute(select(Candidate).where((Candidate.id == cand_id) | (Candidate.user_id == cand_id)))
+        cand = res_c.scalars().first()
+
+        if not cand:
+            res_app_lookup = await db.execute(select(JobApplication).where(JobApplication.id == cand_id))
+            app_l = res_app_lookup.scalars().first()
+            if app_l and app_l.candidate_id:
+                res_c2 = await db.execute(select(Candidate).where(Candidate.id == app_l.candidate_id))
+                cand = res_c2.scalars().first()
+
         if not cand:
             continue
 
@@ -125,23 +135,27 @@ async def create_scheduled_assessment(
             status="scheduled"
         )
         db.add(session)
+        await db.flush()
 
         if app:
             app.status = "Assessment Scheduled"
 
         if cand.user_id:
+            exam_link = f"/assessment/exam?session={session.id}"
             notif = Notification(
                 user_id=cand.user_id,
                 title="Online Assessment Scheduled",
                 message=f"Recruiter scheduled your Online Assessment for {job_title}. Duration: {dur_mins} Mins · Passing Cutoff: {pass_score:.0f}%.",
                 notification_type="assessment_scheduled",
-                link="/applications"
+                link=exam_link
             )
             db.add(notif)
 
             # Dispatch transactional email to candidate in background
             if cand_user and cand_user.email:
                 try:
+                    frontend_base = settings.FRONTEND_URL.rstrip('/') if settings.FRONTEND_URL else "http://localhost:3001"
+                    full_exam_url = f"{frontend_base}{exam_link}"
                     asyncio.create_task(email_service.send_assessment_scheduled_email(
                         db=None,
                         candidate_email=cand_user.email,
@@ -151,6 +165,7 @@ async def create_scheduled_assessment(
                         passing_score=pass_score,
                         topics=topics_list,
                         company_name=company_name,
+                        assessment_link=full_exam_url,
                         candidate_user_id=cand.user_id,
                         session_id=session.id
                     ))
@@ -394,16 +409,17 @@ async def get_candidate_schedule(
 ):
     """Fetches real scheduled interviews for authenticated candidate from PostgreSQL."""
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    cand = res_c.scalar_one_or_none()
-    if not cand:
+    cands = res_c.scalars().all()
+    if not cands:
         return []
+    cand_ids = [c.id for c in cands]
 
     # Auto-sync completed status from interview sessions
     from app.models.domain import InterviewSession
 
     res = await db.execute(
         select(ScheduledInterview)
-        .where(ScheduledInterview.candidate_id == cand.id)
+        .where(ScheduledInterview.candidate_id.in_(cand_ids))
         .order_by(ScheduledInterview.scheduled_date.desc())
     )
     schedules = res.scalars().all()
@@ -460,14 +476,15 @@ async def get_candidate_assessments(
 ):
     """Fetches real scheduled / active online assessments for authenticated candidate from PostgreSQL."""
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
-    cand = res_c.scalar_one_or_none()
-    if not cand:
+    cands = res_c.scalars().all()
+    if not cands:
         return []
+    cand_ids = [c.id for c in cands]
 
     res = await db.execute(
         select(AssessmentSession)
         .where(
-            AssessmentSession.candidate_id == cand.id,
+            AssessmentSession.candidate_id.in_(cand_ids),
             AssessmentSession.status.in_(["scheduled", "active", "Scheduled", "Active"])
         )
         .order_by(AssessmentSession.created_at.desc())

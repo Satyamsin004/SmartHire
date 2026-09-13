@@ -1724,14 +1724,22 @@ class AnalyticsService:
         app_ids = [r[0] for r in app_rows]
         cand_ids = list(set([r[1] for r in app_rows if r[1]]))
 
+        if not app_ids:
+            return {
+                "total_evaluations": 0,
+                "average_overall": 0.0,
+                "overall_trend": "No Data",
+                "velocity": "+0.0% / Cycle",
+                "pass_rate": "0.0%",
+                "timeline": [],
+                "trends": []
+            }
+
         stmt_sess = (
             select(InterviewSession, ScoringReport)
             .join(ScoringReport, ScoringReport.session_id == InterviewSession.id)
             .where(
-                or_(
-                    InterviewSession.job_application_id.in_(app_ids),
-                    InterviewSession.candidate_id.in_(cand_ids)
-                ),
+                InterviewSession.job_application_id.in_(app_ids),
                 InterviewSession.status.in_(["completed", "Completed"])
             )
             .order_by(InterviewSession.started_at.asc())

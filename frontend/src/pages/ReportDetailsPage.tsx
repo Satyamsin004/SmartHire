@@ -496,20 +496,20 @@ export const ReportDetailsPage: React.FC = () => {
         )
       : 0;
 
-    // Extract weak/strong areas across all reports & sessions
+    // Extract weak/strong areas across all reports & sessions (only if real completed interviews exist)
     const rawStrengths = [
       ...(metrics?.strengths || []),
       ...sessions.flatMap((s) => s.strengths || [])
     ].filter(Boolean);
     const uniqueStrengths = Array.from(new Set(rawStrengths));
-    const allStrengths = uniqueStrengths;
+    const allStrengths = hasInterviewHistory ? uniqueStrengths : [];
 
     const rawWeaknesses = [
       ...(metrics?.weaknesses || []),
       ...sessions.flatMap((s) => s.weaknesses || [])
     ].filter(Boolean);
     const uniqueWeaknesses = Array.from(new Set(rawWeaknesses));
-    const allWeaknesses = uniqueWeaknesses;
+    const allWeaknesses = hasInterviewHistory ? uniqueWeaknesses : [];
 
     // Dynamic Topic improvements (only populated from real interview evaluations)
     const techAvg = metrics?.avg_technical_score || (avgInterviewScore > 0 ? Math.min(95, avgInterviewScore + 5) : 0);
@@ -741,7 +741,9 @@ export const ReportDetailsPage: React.FC = () => {
                 </ul>
               ) : (
                 <div className="py-6 flex flex-col items-center justify-center text-center space-y-1">
-                  <p className="text-xs text-slate-400 font-medium">Complete your first interview to discover your strengths.</p>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {isRecruiter ? 'No candidate evaluation strengths recorded yet.' : 'Complete your first interview to discover your strengths.'}
+                  </p>
                 </div>
               )}
             </div>
@@ -761,7 +763,9 @@ export const ReportDetailsPage: React.FC = () => {
                 </ul>
               ) : (
                 <div className="py-6 flex flex-col items-center justify-center text-center space-y-1">
-                  <p className="text-xs text-slate-400 font-medium">Complete your first interview to identify areas for improvement.</p>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {isRecruiter ? 'No candidate evaluation weak areas recorded yet.' : 'Complete your first interview to identify areas for improvement.'}
+                  </p>
                 </div>
               )}
             </div>
@@ -909,24 +913,61 @@ export const ReportDetailsPage: React.FC = () => {
 
           {/* Mock Assessment History */}
           {assessments.length > 0 && (
-            <div className="space-y-4 pt-4 border-t border-slate-200">
+            <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
               <h2 className="text-lg font-extrabold text-brand-ink">Mock Aptitude & Technical Assessment History ({assessments.length})</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {assessments.map((ass, i) => (
-                  <div key={ass.id || i} className="card-luxury p-5 flex items-center justify-between">
-                    <div>
-                      <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-extrabold uppercase">
-                        {ass.category || 'Aptitude'}
-                      </span>
-                      <h4 className="text-sm font-extrabold text-brand-ink mt-1">{ass.title || 'Aptitude Test'}</h4>
-                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">Completed • {ass.date || 'Recent'}</p>
+                {assessments.map((ass, i) => {
+                  const rawScore = ass.overall_score ?? ass.score;
+                  const hasScore = rawScore !== null && rawScore !== undefined;
+                  const finalScore = hasScore ? Math.round(Number(rawScore)) : 0;
+                  const passThreshold = ass.passing_score || 70;
+                  const isPass = (ass.status === 'Passed' || ass.hiring_recommendation === 'Pass' || (hasScore && finalScore >= passThreshold)) && ass.status !== 'Failed' && ass.hiring_recommendation !== 'Fail';
+                  const sid = ass.session_id || ass.id;
+
+                  return (
+                    <div
+                      key={sid || i}
+                      onClick={() => sid && navigate(`/assessment/exam?session=${sid}`)}
+                      className="card-luxury p-5 flex items-center justify-between hover:border-indigo-400 dark:hover:border-indigo-500 cursor-pointer transition-all group"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-extrabold uppercase">
+                            {ass.category || (ass.topics && ass.topics[0]) || 'Aptitude'}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400">
+                            {ass.difficulty || 'Intermediate'}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-extrabold text-brand-ink group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors mt-1">
+                          {ass.title || 'Technical Assessment'}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                          {ass.status === 'completed' ? 'Completed' : (ass.status || 'Completed')} • {ass.date || 'Recent'}
+                        </p>
+                      </div>
+                      <div className="text-right flex flex-col items-end gap-1">
+                        {hasScore ? (
+                          <>
+                            <span className={`text-lg font-black ${isPass ? 'text-emerald-500' : 'text-rose-500'}`}>
+                              {finalScore}%
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${isPass ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'}`}>
+                              {isPass ? 'Passed' : 'Failed'}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300">
+                            In Progress
+                          </span>
+                        )}
+                        <span className="text-[10px] text-indigo-500 group-hover:underline font-bold mt-1 flex items-center gap-0.5">
+                          View Assessment →
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-lg font-black text-brand-primary">{ass.score || 85}%</span>
-                      <p className="text-[9px] font-bold text-emerald-600">Passed</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

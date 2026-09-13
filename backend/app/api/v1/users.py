@@ -208,13 +208,8 @@ async def get_candidate_metrics(
                 "interview_score_trend": interview_score_trend,
                 "ats_trend": ats_trend
             },
-            "strengths": list(dict.fromkeys(all_st))[:6] if all_st else [
-                "Demonstrated solid technical problem decomposition",
-                "Clear, structured technical communication"
-            ],
-            "weaknesses": list(dict.fromkeys(all_wk))[:6] if all_wk else [
-                "Expand candidate sourcing for niche competencies"
-            ]
+            "strengths": list(dict.fromkeys(all_st))[:6] if all_st else [],
+            "weaknesses": list(dict.fromkeys(all_wk))[:6] if all_wk else []
         }
 
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))

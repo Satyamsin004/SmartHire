@@ -1656,17 +1656,21 @@ async def get_candidate_full_profile(
     if not skills_map:
         skills_map = {"React": 90, "TypeScript": 85, "Python": 85, "FastAPI": 80, "PostgreSQL": 80}
 
-    # Fetch Candidate's Completed Interview Sessions and Scoring Reports
-    query_sess = select(InterviewSession).where(InterviewSession.candidate_id == cand.id)
+    # Fetch Candidate's Completed Interview Sessions and Scoring Reports strictly for THIS specific job application
     if app:
-        query_sess = query_sess.where(InterviewSession.job_application_id == app.id)
+        query_sess = select(InterviewSession).where(
+            InterviewSession.candidate_id == cand.id,
+            InterviewSession.job_application_id == app.id
+        )
+    else:
+        # If viewed outside an application, only view sessions without job_application_id
+        query_sess = select(InterviewSession).where(
+            InterviewSession.candidate_id == cand.id,
+            InterviewSession.job_application_id.is_(None)
+        )
 
     res_sess = await db.execute(query_sess.order_by(InterviewSession.started_at.desc()))
     sessions = res_sess.scalars().all()
-
-    if not sessions:
-        res_all_s = await db.execute(select(InterviewSession).where(InterviewSession.candidate_id == cand.id).order_by(InterviewSession.started_at.desc()))
-        sessions = res_all_s.scalars().all()
 
     latest_eval = None
     qa_transcript = []

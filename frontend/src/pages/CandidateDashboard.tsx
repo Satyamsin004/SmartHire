@@ -372,7 +372,10 @@ export const CandidateDashboard: React.FC = () => {
         ))}
         
         {/* Active Interview Banner */}
-        {schedules.filter(s => s.status === 'Scheduled' || s.status === 'Upcoming').map((sched) => {
+        {schedules.filter(s => {
+          const st = (s.status || '').toLowerCase();
+          return st === 'scheduled' || st === 'upcoming' || st === 'active';
+        }).map((sched) => {
           const schedTimeMs = sched.scheduled_date ? new Date(sched.scheduled_date).getTime() : null;
           const isEarly = schedTimeMs !== null && !isNaN(schedTimeMs) && Date.now() < schedTimeMs;
           const schedDateObj = schedTimeMs ? new Date(schedTimeMs) : null;

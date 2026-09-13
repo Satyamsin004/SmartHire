@@ -231,7 +231,8 @@ Each object MUST match this schema:
                 strong_topics.add(question.topic)
             else:
                 total_wrong += 1
-                points = -abs(session.negative_marking)
+                neg_mark = session.negative_marking if session.negative_marking is not None else 0.25
+                points = -abs(neg_mark)
                 total_points += points
                 weak_topics.add(question.topic)
             db.add(AssessmentAnswer(
@@ -241,7 +242,7 @@ Each object MUST match this schema:
         total_questions = len(questions)
         overall_score = round(min(100.0, max(0.0, max(0.0, total_points) / max(1, total_questions) * 100)), 1)
         section_scores = {section: round(section_correct.get(section, 0) / total * 100, 1) for section, total in section_total.items()}
-        recommendation = "Pass" if overall_score >= session.passing_score else "Fail"
+        recommendation = "Pass" if overall_score >= (session.passing_score or 70.0) else "Fail"
         suggestions = [f"Review core concepts and practice additional problems in {topic}." for topic in list(weak_topics)[:3]]
         if not suggestions:
             suggestions = ["Outstanding technical and reasoning performance across all topics!"]
@@ -267,6 +268,11 @@ Each object MUST match this schema:
                 application.status = new_status
 
         # Candidate In-App Notification & Email Dispatch
+        cand = None
+        cand_user = None
+        job_title = "Online Assessment"
+        company_name = "SmartHire Enterprise"
+
         if session.candidate_id:
             res_c = await db.execute(select(Candidate).where(Candidate.id == session.candidate_id))
             cand = res_c.scalar_one_or_none()
@@ -286,8 +292,6 @@ Each object MUST match this schema:
 
                 # Fetch Job details
                 target_job_id = session.job_id or (application.job_id if application else None)
-                job_title = "Technical Role"
-                company_name = "SmartHire Enterprise"
                 if target_job_id:
                     res_j = await db.execute(select(JobPosting).where(JobPosting.id == target_job_id))
                     job_obj = res_j.scalar_one_or_none()
@@ -298,7 +302,7 @@ Each object MUST match this schema:
         await db.commit()
 
         # Candidate In-App Notification & Email Dispatch (Post Commit)
-        if session.candidate_id and cand_user and cand_user.email:
+        if cand and cand_user and cand_user.email:
             try:
                 asyncio.create_task(email_service.send_assessment_result_email(
                     db=None,
@@ -306,7 +310,7 @@ Each object MUST match this schema:
                     candidate_name=cand_user.full_name or "Candidate",
                     job_title=job_title,
                     score=overall_score,
-                    passing_score=session.passing_score,
+                    passing_score=session.passing_score or 70.0,
                     passed=(recommendation == "Pass"),
                     company_name=company_name,
                     section_scores=section_scores,

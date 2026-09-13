@@ -155,7 +155,25 @@ class PaperBuilder:
 
                 ("In SQL, which clause is used with window functions to partition rows into subset groups?",
                  ["PARTITION BY", "GROUP BY", "ORDER BY", "HAVING"], 0,
-                 "PARTITION BY divides the query result set into partitions to which the window function is applied.")
+                 "PARTITION BY divides the query result set into partitions to which the window function is applied."),
+
+                ("Which ACID property ensures that transactions execute concurrently without interfering with each other?",
+                 ["Isolation", "Atomicity", "Consistency", "Durability"], 0,
+                 "Isolation guarantees that concurrently running transactions appear to run sequentially without intermediate state interference."),
+
+                ("In relational databases, what is the primary purpose of Database Normalization (up to 3NF)?",
+                 ["To eliminate data redundancy and reduce update anomalies.",
+                  "To improve full table scan performance.",
+                  "To automatically shard tables across clusters.",
+                  "To convert SQL tables into NoSQL documents."], 0,
+                 "Normalization organizes schemas to remove duplicate data and prevent insert, update, and delete anomalies."),
+
+                ("What is the operational difference between `DELETE` and `TRUNCATE` in SQL?",
+                 ["TRUNCATE is a DDL operation that deallocates data pages without row-by-row logging; DELETE is DML.",
+                  "DELETE cannot be rolled back; TRUNCATE can always be rolled back.",
+                  "TRUNCATE fires individual row triggers; DELETE does not.",
+                  "There is no functional or performance difference."], 0,
+                 "TRUNCATE resets storage and avoids per-row transaction logging, whereas DELETE removes rows individually.")
             ]
         elif "dsa" in t_low or "data structures" in t_low or "algorithm" in t_low or "coding" in t_low:
             test_cases = [
@@ -167,22 +185,72 @@ class PaperBuilder:
                  ["O(N^2)", "O(N log N)", "O(N)", "O(log N)"], 0,
                  "When the array is already sorted and pivot is always picked as first/last element, QuickSort produces maximally unbalanced partitions resulting in O(N^2)."),
 
-                ("Given an array of integers `nums` and an integer `target`, return indices of two numbers such that they add up to target. What is the optimal time complexity using a HashMap?",
+                ("Given an array of integers `nums` and an integer `target`, what is the optimal time complexity to find two indices summing to target using a HashMap?",
                  ["O(N) time and O(N) space", "O(N^2) time and O(1) space", "O(N log N) time and O(1) space", "O(1) time and O(N) space"], 0,
-                 "Using a HashMap to store seen complement values achieves linear O(N) time and O(N) auxiliary space.")
+                 "Using a HashMap to store seen complement values achieves linear O(N) time and O(N) auxiliary space."),
+
+                ("Which data structure is fundamentally used in Depth First Search (DFS) of a graph?",
+                 ["Stack", "Queue", "Min-Heap", "Circular Buffer"], 0,
+                 "DFS uses a Last-In-First-Out (LIFO) Stack, either explicitly or via call-stack recursion."),
+
+                ("What is the time complexity of searching for an element in a balanced Binary Search Tree (AVL or Red-Black Tree)?",
+                 ["O(log N)", "O(N)", "O(1)", "O(N log N)"], 0,
+                 "Balanced BSTs maintain logarithmic tree height, ensuring lookups take O(log N) operations."),
+
+                ("Which algorithmic paradigm does Dijkstra's algorithm for single-source shortest paths on weighted graphs use?",
+                 ["Greedy Approach", "Divide and Conquer", "Dynamic Programming", "Backtracking"], 0,
+                 "Dijkstra greedily chooses the closest unvisited vertex using a Priority Queue at each step."),
+
+                ("What is the worst-case time complexity of finding a cycle in an undirected graph with V vertices and E edges using BFS/DFS?",
+                 ["O(V + E)", "O(V * E)", "O(V^2)", "O(E log V)"], 0,
+                 "Graph traversal visiting every vertex and inspecting incident edges operates in O(V + E) linear time."),
+
+                ("What is the auxiliary space complexity of Merge Sort when sorting an array of size N?",
+                 ["O(N)", "O(1)", "O(log N)", "O(N^2)"], 0,
+                 "Merge Sort requires a temporary buffer of size N during the merge step to combine subarrays."),
+
+                ("In a Min-Heap with N elements, what is the time complexity of the `extract-min` operation?",
+                 ["O(log N)", "O(1)", "O(N)", "O(N log N)"], 0,
+                 "Removing the root requires replacing it with the last element and heapifying down, taking O(log N)."),
+
+                ("Which data structure is most optimal for implementing a Least Recently Used (LRU) Cache with O(1) get and put operations?",
+                 ["Doubly Linked List and Hash Map", "Binary Search Tree and Array", "Singly Linked List and Queue", "Two Stacks"], 0,
+                 "A Hash Map provides O(1) node lookup and a Doubly Linked List enables O(1) node removal and re-insertion."),
+
+                ("What is the amortized time complexity of inserting an element into a dynamic array (like std::vector or Python list)?",
+                 ["O(1)", "O(N)", "O(log N)", "O(N^2)"], 0,
+                 "While occasional capacity doublings cost O(N), spread over N insertions the amortized cost per append is O(1).")
             ]
         elif "javascript" in t_low or "typescript" in t_low or t_low in {"js", "ts"}:
             pool = [
                 ("In JavaScript/TypeScript, what is the output of `typeof null` and `typeof undefined`?",
                  ["object, undefined", "null, undefined", "object, object", "undefined, null"], 0,
-                 "In JS, typeof null evaluates to 'object' while typeof undefined is 'undefined'."),
+                 "In JS, typeof null evaluates to 'object' (historic legacy bug) while typeof undefined is 'undefined'."),
 
                 ("What is the primary difference between `Promise.all()` and `Promise.allSettled()` in JS/TS?",
                  ["Promise.all short-circuits on first rejection; Promise.allSettled waits for all promises to finish.",
                   "Promise.allSettled short-circuits on rejection; Promise.all waits.",
                   "Promise.all only works with strings; Promise.allSettled works with numbers.",
                   "Promise.all is synchronous; Promise.allSettled is asynchronous."], 0,
-                 "Promise.all short-circuits on error, whereas Promise.allSettled returns outcomes for all promises.")
+                 "Promise.all short-circuits on error, whereas Promise.allSettled returns outcomes for all promises."),
+
+                ("In JavaScript, what happens when using the `==` operator compared to the `===` operator?",
+                 ["`==` performs implicit type coercion; `===` checks both value and type without coercion.",
+                  "`===` converts both operands to strings before comparing.",
+                  "`==` is used for objects only; `===` is for primitives only.",
+                  "They are functionally equivalent in ES6."], 0,
+                 "Strict equality `===` evaluates to false if types differ, whereas `==` coerces operand types."),
+
+                ("In the JavaScript Event Loop, which queue takes precedence for execution after synchronous code completes?",
+                 ["Microtask Queue (Promises, queueMicrotask)", "Macrotask Queue (setTimeout, setInterval)", "Render Queue", "I/O Polling Queue"], 0,
+                 "Microtasks are drained completely after the synchronous call stack empties before any macrotask is processed."),
+
+                ("In TypeScript, what is the key difference between an `interface` and a `type` alias regarding declaration merging?",
+                 ["Interfaces support declaration merging; type aliases cannot be merged.",
+                  "Types support declaration merging; interfaces cannot.",
+                  "Interfaces only work with primitive types.",
+                  "Type aliases cannot be used in function signatures."], 0,
+                 "Multiple interface declarations with the same name automatically merge into one; type aliases cannot be re-declared.")
             ]
         elif "react" in t_low:
             pool = [
@@ -191,7 +259,28 @@ class PaperBuilder:
                   "useMemo memoizes functions; useCallback memoizes values.",
                   "useCallback triggers side-effects; useMemo handles DOM events.",
                   "Both hooks perform identical operations."], 0,
-                 "useCallback returns a memoized callback function; useMemo returns a memoized value.")
+                 "useCallback returns a memoized callback function; useMemo returns a memoized value."),
+
+                ("In React, why must hooks never be called inside conditional statements or loops?",
+                 ["React relies on consistent hook call order across renders to maintain internal state pointers.",
+                  "Hooks called conditionally consume double memory.",
+                  "Conditional hooks trigger immediate component unmounting.",
+                  "React fiber reconciler does not allow if statements in JSX."], 0,
+                 "React uses an internal linked list to track hook state, requiring identical execution order on every render."),
+
+                ("What is the purpose of the dependency array in the `useEffect` hook in React?",
+                 ["Specifies variables that, when changed between renders, cause the effect to re-run.",
+                  "Restricts the hook to run only on user mouse clicks.",
+                  "Forces synchronous rendering before DOM painting.",
+                  "Bypasses the virtual DOM reconciliation process."], 0,
+                 "React compares dependency array references with Object.is to determine if the effect needs execution."),
+
+                ("In React 18, what is the function of the `useTransition` hook?",
+                 ["Marks state updates as non-blocking transitions to keep the UI responsive during heavy re-renders.",
+                  "Animates CSS transforms across component routes.",
+                  "Transfers component state to server-side cookies.",
+                  "Prevents unmounted components from throwing warnings."], 0,
+                 "useTransition allows developers to prioritize urgent updates (e.g. typing) over deferred transitions.")
             ]
         elif "python" in t_low:
             pool = [
@@ -200,31 +289,75 @@ class PaperBuilder:
                   "To accelerate loop execution speed.",
                   "To declare private class attributes.",
                   "To compile Python code to C bytecode."], 0,
-                 "Context managers automatically invoke __enter__ and __exit__ for clean resource management.")
+                 "Context managers automatically invoke __enter__ and __exit__ for clean resource management."),
+
+                ("In Python, what is the Global Interpreter Lock (GIL)?",
+                 ["A mutex that protects Python objects, preventing multiple native threads from executing Python bytecodes concurrently.",
+                  "A security lock preventing unauthorized network requests.",
+                  "A cache compiler that transforms Python into machine code.",
+                  "A database connection pool mechanism."], 0,
+                 "The GIL ensures thread-safe memory management in CPython by allowing only one native thread to hold the Python interpreter at a time."),
+
+                ("In Python, what is the difference between `__init__` and `__new__`?",
+                 ["`__new__` creates and returns a new class instance; `__init__` initializes the existing instance.",
+                  "`__init__` allocates memory; `__new__` assigns attribute values.",
+                  "`__new__` is only for static methods.",
+                  "They are aliases with identical behavior."], 0,
+                 "`__new__` is the constructor that instantiates the object, while `__init__` is the initializer."),
+
+                ("What is the time complexity of checking membership (`x in collection`) in a Python `set` versus a Python `list`?",
+                 ["Average O(1) in a set; O(N) in a list.",
+                  "O(N) in both set and list.",
+                  "O(log N) in a set; O(1) in a list.",
+                  "O(N log N) in a set; O(N) in a list."], 0,
+                 "Python sets are implemented as Hash Tables providing average O(1) lookups, while lists require O(N) linear scanning.")
+            ]
+        elif "system design" in t_low or "architecture" in t_low:
+            pool = [
+                ("In distributed systems, what does the CAP Theorem state?",
+                 ["A distributed system can guarantee at most two of Consistency, Availability, and Partition Tolerance simultaneously.",
+                  "Cache, Application, and Persistence layers must always run on separate nodes.",
+                  "Capacity, Availability, and Performance must scale linearly.",
+                  "Concurrency, Asynchrony, and Parallelism cannot coexist."], 0,
+                 "In the presence of network partitions, a distributed system must choose between strong consistency and high availability."),
+
+                ("What is the primary architectural purpose of a Reverse Proxy (such as NGINX or Envoy)?",
+                 ["To handle SSL termination, load balancing, compression, and route client traffic to internal backend services.",
+                  "To run database queries faster than PostgreSQL.",
+                  "To store source code repositories.",
+                  "To compile frontend React code."], 0,
+                 "Reverse proxies sit in front of web servers to manage security, load distribution, and TLS termination."),
+
+                ("Which caching strategy updates both the cache and the primary database synchronously before returning success to the client?",
+                 ["Write-Through", "Cache-Aside", "Write-Behind (Write-Back)", "Refresh-Ahead"], 0,
+                 "Write-Through ensures cache and storage consistency by writing to the cache and the database in the same transaction.")
             ]
         else:
             pool = [
-                (f"Which of the following represents a core principle in {topic}?",
+                (f"Which of the following represents a core best practice in {topic}?",
                  [f"Establishing modular, maintainable, and high-performance standards for {topic}.",
                   f"Deprecating all synchronous control flows.",
                   f"Bypassing data validation layers.",
                   f"Executing un-monitored background tasks."], 0,
                  f"Core principles of {topic} prioritize modularity, reliability, and clean execution."),
 
-                (f"When optimizing a system implemented in {topic}, what is a recommended best practice?",
+                (f"When optimizing a system implemented in {topic}, what is a recommended architectural approach?",
                  [f"Analyze execution trade-offs, cache high-frequency outputs, and eliminate bottlenecks.",
                   f"Disable error logging to increase speed.",
                   f"Hardcode external API endpoints.",
                   f"Avoid memory cleanup routines."], 0,
-                 f"Performance optimization in {topic} relies on metrics analysis and efficient resource handling.")
+                 f"Performance optimization in {topic} relies on metrics analysis and efficient resource handling."),
+
+                (f"In {topic}, how should errors and edge cases be handled in production services?",
+                 [f"Implement structured logging, graceful degradation, and actionable error telemetry.",
+                  f"Suppress all exceptions silently.",
+                  f"Crash the container immediately on any warning.",
+                  f"Return empty responses without HTTP error codes."], 0,
+                 f"Robust {topic} services log exceptions clearly with trace context and provide helpful user diagnostics.")
             ]
 
         item = pool[(index - 1) % len(pool)]
-        base_text = item[0]
-        if index > len(pool):
-            q_text = f"{base_text} [Scenario #{index}]"
-        else:
-            q_text = base_text
+        q_text = item[0]
 
         raw_opts = list(item[1])
         raw_corr = int(item[2])

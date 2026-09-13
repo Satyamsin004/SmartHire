@@ -172,10 +172,6 @@ export const MyApplicationsPage: React.FC = () => {
 
     const isAssessmentPassed = isExplicitlyPassed;
     const isAssessmentFailed = isExplicitlyFailed;
-    const isAssessmentWaived = !hasAssessmentSession && !isAssessmentConducted && (
-      status.includes('interview') || status.includes('tech') || status.includes('selected') || status.includes('hired') || status.includes('offer')
-    );
-
     // Stage 3: Online Assessment
     if (stageIdx === 2) {
       if (isAssessmentFailed) {
@@ -183,9 +179,6 @@ export const MyApplicationsPage: React.FC = () => {
       }
       if (isAssessmentPassed) {
         return { text: `Passed (≥${passThreshold}%)`, color: 'bg-emerald-500 text-white border-emerald-500', isDone: true };
-      }
-      if (isAssessmentWaived) {
-        return { text: 'Waived (Direct Interview)', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isWaived: true };
       }
       if (recAssess?.status === 'active' || recAssess?.status === 'in_progress') {
         return { text: 'Assessment In Progress', color: 'bg-indigo-600 text-white border-indigo-600 animate-pulse', isCurrent: true };
@@ -196,7 +189,7 @@ export const MyApplicationsPage: React.FC = () => {
       return { text: 'Not Scheduled', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isUpcoming: true };
     }
 
-    if (!isAssessmentPassed && !isAssessmentWaived) {
+    if (!isAssessmentPassed) {
       if (isAssessmentFailed) {
         return { text: 'Pipeline Stopped', color: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700', isUpcoming: true };
       }
@@ -442,23 +435,37 @@ export const MyApplicationsPage: React.FC = () => {
                 </div>
 
                 {/* Submitted Resume & Attachments */}
-                <div className="flex items-center justify-between p-3.5 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 flex-wrap gap-3">
-                  <div className="flex items-center gap-2">
-                    <Paperclip className="w-4 h-4 text-indigo-500" />
-                    <span>Submitted Resume: <strong className="text-slate-900 dark:text-white font-extrabold">{userProfile?.resume_url ? (userProfile.resume_url.split('/').pop() || 'Candidate_Resume.pdf') : 'Application_Resume.pdf'}</strong></span>
-                  </div>
-                  {userProfile?.resume_url && (
-                    <a
-                      href={userProfile.resume_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-extrabold flex items-center gap-1.5 transition-colors"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>View Submitted Resume</span>
-                    </a>
-                  )}
-                </div>
+                {(() => {
+                  const apiBase = (api.defaults.baseURL && !api.defaults.baseURL.startsWith('/api')) ? api.defaults.baseURL : '';
+                  const rawResume = app.resume_url || userProfile?.resume_url;
+                  let resumeUrl = rawResume;
+                  if (rawResume && !rawResume.startsWith('http')) {
+                    const cleanPath = rawResume.startsWith('/') ? rawResume : `/${rawResume}`;
+                    const normalized = cleanPath.startsWith('/uploads/') ? cleanPath : `/uploads/resumes${cleanPath}`;
+                    resumeUrl = `${apiBase}${normalized}`;
+                  }
+                  const resumeName = rawResume ? (rawResume.split('/').pop()?.split('\\').pop() || 'Candidate_Resume.pdf') : 'Application_Resume.pdf';
+
+                  return (
+                    <div className="flex items-center justify-between p-3.5 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 flex-wrap gap-3">
+                      <div className="flex items-center gap-2">
+                        <Paperclip className="w-4 h-4 text-indigo-500" />
+                        <span>Submitted Resume: <strong className="text-slate-900 dark:text-white font-extrabold">{resumeName}</strong></span>
+                      </div>
+                      {resumeUrl && (
+                        <a
+                          href={resumeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-extrabold flex items-center gap-1.5 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>View Submitted Resume</span>
+                        </a>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* 2. RECRUITER RECRUITMENT PIPELINE STAGES */}
                 <div className="space-y-3 pt-2">
@@ -512,9 +519,6 @@ export const MyApplicationsPage: React.FC = () => {
                   const passThreshold = recAssess?.passing_score ?? 70;
 
                   const hasAssessmentSession = Boolean(recAssess?.session_id || app.assessment_session_id);
-                  const isAssessmentWaived = !hasAssessmentSession && !isAssessConducted && (
-                    statusLower.includes('interview') || statusLower.includes('tech') || statusLower.includes('selected') || statusLower.includes('hired') || statusLower.includes('offer') || isOfferIssued
-                  );
 
                   const isAssessPassed = isAssessConducted && (
                     (actualAssessScore !== null && actualAssessScore >= passThreshold) ||
@@ -533,8 +537,8 @@ export const MyApplicationsPage: React.FC = () => {
                     recAssess?.status === 'active' || recAssess?.status === 'in_progress'
                   );
 
-                  // Gating 1: Tech requires ATS and (Assessment passed OR Assessment waived/direct interview OR Tech round scheduled)
-                  const isTechEligible = isAtsPassed && (isAssessPassed || isAssessmentWaived || Boolean(techRound) || Boolean(recInt) || statusLower.includes('interview') || statusLower.includes('tech') || isOfferIssued) && !isAssessFailed;
+                  // Gating 1: Tech requires ATS and (Assessment passed OR Tech round scheduled/completed OR Offer issued)
+                  const isTechEligible = isAtsPassed && (isAssessPassed || Boolean(techRound) || Boolean(recInt) || statusLower.includes('tech passed') || isOfferIssued) && !isAssessFailed;
                   const techScore = techRound?.technical_score ?? techRound?.overall_score ?? (recInt?.technical_score ?? null);
                   const isTechFailed = !isOfferIssued && (statusLower.includes('tech failed') || statusLower.includes('technical failed') || (statusLower === 'rejected' && !behavRound && !hrRound) || techRound?.status === 'Failed');
                   const isTechPassed = isOfferIssued || (!isTechFailed && (
@@ -640,18 +644,6 @@ export const MyApplicationsPage: React.FC = () => {
                                 <span>Duration:</span>
                                 <span>{recAssess?.duration_minutes || 30} Mins</span>
                               </div>
-                            </div>
-                          ) : isAssessmentWaived ? (
-                            <div className="space-y-1 py-1">
-                              <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-medium text-xs">
-                                <span>Status:</span>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                  Waived (Direct Interview)
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium leading-relaxed mt-1">
-                                Advanced directly to interview round without online assessment.
-                              </p>
                             </div>
                           ) : (
                             <div className="space-y-1 py-1">
