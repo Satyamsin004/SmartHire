@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -193,8 +194,6 @@ Each object MUST match this schema:
         """Generates an entire, unique assessment paper for a specific session using Master Question Bank & Paper Builder."""
         logger.info("ENTERPRISE PAPER BUILDER EXECUTED | session_id=%s", session_id)
         return await paper_builder.build_paper(db, session_id)
-
-        return db_questions
 
     @staticmethod
     async def evaluate_assessment_submission(

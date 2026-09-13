@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
@@ -11,7 +13,8 @@ from app.models.domain import User, Candidate, Recruiter, JobPosting, JobApplica
 from app.dependencies.auth import get_current_user, require_role
 from app.services.assessment_service import assessment_service, AssessmentGenerationError
 from app.services.email_service import email_service
-import asyncio
+
+logger = logging.getLogger("smarthire.aptitude_api")
 
 router = APIRouter(prefix="/aptitude", tags=["Unified AI Assessment Engine"])
 
