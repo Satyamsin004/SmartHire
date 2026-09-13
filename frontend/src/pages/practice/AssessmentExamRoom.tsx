@@ -36,7 +36,7 @@ export const AssessmentExamRoom: React.FC = () => {
     // 1. Fetch questions for the assessment
     setLoadingQuestions(true);
     setLoadError(null);
-    api.get(`/aptitude/session/${sessionId}/questions`, { skipCache: true })
+    api.get(`/aptitude/session/${sessionId}/questions`, { skipCache: true } as any)
       .then((res) => {
         setQuestions(res.data || []);
         setLoadingQuestions(false);
