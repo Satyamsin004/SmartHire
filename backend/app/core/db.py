@@ -1,3 +1,5 @@
+import os
+import sys
 import asyncio
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
@@ -18,12 +20,24 @@ def get_engine() -> AsyncEngine:
     except RuntimeError:
         current_loop = None
 
-    if _engine is not None and current_loop is not None and _engine_loop is not None and _engine_loop is not current_loop:
+    needs_reset = False
+    if _engine is not None:
+        if _engine_loop is not None and _engine_loop.is_closed():
+            needs_reset = True
+        elif current_loop is not None and _engine_loop is not current_loop:
+            needs_reset = True
+
+    if needs_reset:
+        try:
+            _engine.sync_engine.dispose()
+        except Exception:
+            pass
         _engine = None
         _engine_loop = None
         _async_session_factory = None
 
     if _engine is None:
+        is_testing = "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ or os.environ.get("TESTING") == "1"
         connect_args = {}
         if settings.DATABASE_URL.startswith("sqlite"):
             from sqlalchemy.pool import AsyncAdaptedQueuePool
@@ -38,6 +52,17 @@ def get_engine() -> AsyncEngine:
                 "max_overflow": 15,
                 "pool_timeout": 30,
                 "pool_recycle": 1800,
+                "connect_args": connect_args
+            }
+        elif is_testing:
+            from sqlalchemy.pool import NullPool
+            connect_args["server_settings"] = {"jit": "off"}
+            connect_args["statement_cache_size"] = 0
+            connect_args["command_timeout"] = 30.0
+            engine_kwargs = {
+                "echo": False,
+                "future": True,
+                "poolclass": NullPool,
                 "connect_args": connect_args
             }
         else:
@@ -89,13 +114,27 @@ def get_session_factory() -> async_sessionmaker:
         )
     return _async_session_factory
 
+def dispose_engine_sync():
+    global _engine, _engine_loop, _async_session_factory
+    if _engine is not None:
+        try:
+            _engine.sync_engine.dispose()
+        except Exception:
+            pass
+        _engine = None
+        _engine_loop = None
+        _async_session_factory = None
+
 async def dispose_engine():
     global _engine, _engine_loop, _async_session_factory
     if _engine is not None:
         try:
             await _engine.dispose()
         except Exception:
-            pass
+            try:
+                _engine.sync_engine.dispose()
+            except Exception:
+                pass
         _engine = None
         _engine_loop = None
         _async_session_factory = None

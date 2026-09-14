@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import text, func
+from sqlalchemy import text, func, or_, and_
 from app.core.cache import fast_cache
 
 from app.core.db import get_db
@@ -675,7 +675,7 @@ async def get_my_applications(
             AssessmentSession.is_recruiter_configured == True,
             or_(
                 AssessmentSession.job_application_id.in_(app_ids),
-                (AssessmentSession.candidate_id.in_(candidate_ids) & AssessmentSession.job_id.in_(job_ids))
+                and_(AssessmentSession.candidate_id.in_(candidate_ids), AssessmentSession.job_id.in_(job_ids))
             )
         )
         .order_by(AssessmentSession.created_at.desc())

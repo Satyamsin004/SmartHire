@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.openapi.utils import get_openapi
 from sqlalchemy import text
 from app.core.config import settings
-from app.core.db import engine, Base
+from app.core.db import get_engine, Base
 from app.services.ai_engine import ai_engine
 from app.services.ai_provider import ai_provider
 from app.api.v1 import auth, users, resume, interview, coding, aptitude, recruiter, admin, scheduling, websocket
@@ -174,7 +174,7 @@ async def startup():
         ]
         for col_def in col_defs:
             try:
-                async with engine.begin() as conn:
+                async with get_engine().begin() as conn:
                     await conn.execute(text(col_def))
             except Exception:
                 pass

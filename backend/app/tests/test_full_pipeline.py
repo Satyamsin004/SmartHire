@@ -5,7 +5,7 @@ import uuid
 import asyncio
 from fastapi.testclient import TestClient
 from app.main import app
-from app.core.db import dispose_engine
+from app.core.db import dispose_engine, dispose_engine_sync
 import unittest
 
 BASE_URL = "/api/v1"
@@ -14,6 +14,7 @@ class TestFullSmartHirePipeline(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        dispose_engine_sync()
         cls.client = TestClient(app)
         global requests
         requests = cls.client
@@ -71,8 +72,8 @@ class TestFullSmartHirePipeline(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        asyncio.run(dispose_engine())
         cls.client.close()
+        dispose_engine_sync()
 
     def test_01_health_and_gemini_diagnostics(self):
         """PHASE 1: Verify API health and Gemini live connection."""
