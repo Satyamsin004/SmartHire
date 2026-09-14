@@ -213,15 +213,45 @@ async def submit_assessment(
         except Exception as e_err:
             logger.warning("Failed to schedule assessment result email: %s", e_err)
 
+    res_qs = await db.execute(select(AssessmentQuestion).where(AssessmentQuestion.session_id == session_id).order_by(AssessmentQuestion.order_index))
+    questions = res_qs.scalars().all()
+    res_ans = await db.execute(select(AssessmentAnswer).where(AssessmentAnswer.session_id == session_id))
+    answers_map = {a.question_id: a for a in res_ans.scalars().all()}
+
+    question_review = []
+    for q in questions:
+        ans = answers_map.get(q.id)
+        question_review.append({
+            "question_id": q.id,
+            "order_index": q.order_index,
+            "category": q.category,
+            "topic": q.topic,
+            "question_text": q.question_text,
+            "code_snippet": q.code_snippet,
+            "options": q.options,
+            "correct_option": q.correct_option,
+            "selected_option": ans.selected_option if ans else None,
+            "is_correct": ans.is_correct if ans else False,
+            "points_earned": ans.points_earned if ans else 0.0,
+            "explanation": q.explanation
+        })
+
     return {
         "status": "success",
         "session_id": session_id,
+        "title": session.title,
+        "difficulty": session.difficulty,
         "overall_score": result.overall_score,
         "total_correct": result.total_correct,
         "total_wrong": result.total_wrong,
         "total_skipped": result.total_skipped,
+        "section_scores": result.section_scores,
+        "weak_areas": result.weak_areas,
+        "strong_areas": result.strong_areas,
+        "improvement_suggestions": result.improvement_suggestions,
         "hiring_recommendation": result.hiring_recommendation,
-        "proctoring_violations": result.proctoring_violations
+        "proctoring_violations": result.proctoring_violations,
+        "question_review": question_review
     }
 
 @router.get("/session/{session_id}/result", summary="Get Full Assessment Report & Question Review")

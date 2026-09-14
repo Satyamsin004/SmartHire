@@ -403,6 +403,7 @@ class RecruitmentPipelineService:
                 "candidate_name": cand_user.full_name if cand_user else "Candidate",
                 "candidate_email": cand_user.email if cand_user else "N/A",
                 "job_title": job.title if job else "Position",
+                "company_name": job.company_name if (job and job.company_name) else None,
                 "ats_score": round(app.ats_score, 1) if app.ats_score is not None else 0.0,
                 "resume_url": normalize_resume_path(resume_url),
                 "overall_score": active_interview["overall_score"] if active_interview else None,

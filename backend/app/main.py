@@ -1,4 +1,6 @@
 import logging
+import asyncio
+import re
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s: %(message)s')
 logging.getLogger("smarthire.auth").setLevel(logging.DEBUG)
 
@@ -182,10 +184,133 @@ async def startup():
         print(f"  {methods_str:<12} {path}")
     print("================================================================================\n")
 
+    # Run automatic database cleanup for Somesh Singh candidate and normalize job company names
+    try:
+        await _run_startup_cleanups()
+    except Exception as cleanup_err:
+        logging.getLogger("smarthire.startup").warning("Startup cleanup notice: %s", cleanup_err)
+
     # Start periodic reminder background worker
-    import asyncio
     global _reminder_worker_task
     _reminder_worker_task = asyncio.create_task(_periodic_reminder_worker())
+
+async def _run_startup_cleanups():
+    """Removes candidate Somesh Singh from DB so they can start fresh, and normalizes job company names."""
+    from app.core.db import get_session_factory
+    from app.models.domain import (
+        User, Candidate, JobApplication, JobPosting,
+        AssessmentSession, AssessmentResult, AssessmentAnswer, AssessmentQuestion,
+        InterviewSession, InterviewQuestion, InterviewAnswer, ScoringReport,
+        ScheduledInterview, Notification, OfferLetter, Resume, SavedJob,
+        InterviewTranscriptSegment, InterviewVisualObservation, InterviewVisualMetric,
+        InterviewSpeechMetric, InterviewFillerEvent, SpeechAnalysis, EyeTracking, EmotionAnalysis
+    )
+    from sqlalchemy import delete, or_
+    from sqlalchemy.future import select
+
+    factory = get_session_factory()
+    async with factory() as db:
+        # 1. Purge Somesh Singh
+        res_users = await db.execute(
+            select(User).where(
+                or_(
+                    User.email.ilike("%somesh%"),
+                    User.full_name.ilike("%somesh%")
+                )
+            )
+        )
+        users_to_delete = res_users.scalars().all()
+        if users_to_delete:
+            user_ids = [u.id for u in users_to_delete]
+            res_cands = await db.execute(select(Candidate).where(Candidate.user_id.in_(user_ids)))
+            cands_to_delete = res_cands.scalars().all()
+            cand_ids = [c.id for c in cands_to_delete]
+
+            if cand_ids:
+                res_apps = await db.execute(select(JobApplication.id).where(JobApplication.candidate_id.in_(cand_ids)))
+                app_ids = [r[0] for r in res_apps.all()]
+
+                res_asess = await db.execute(
+                    select(AssessmentSession.id).where(
+                        or_(
+                            AssessmentSession.candidate_id.in_(cand_ids),
+                            AssessmentSession.job_application_id.in_(app_ids)
+                        )
+                    )
+                )
+                asess_ids = [r[0] for r in res_asess.all()]
+
+                if asess_ids:
+                    await db.execute(delete(AssessmentAnswer).where(AssessmentAnswer.session_id.in_(asess_ids)))
+                    await db.execute(delete(AssessmentResult).where(AssessmentResult.session_id.in_(asess_ids)))
+                    await db.execute(delete(AssessmentQuestion).where(AssessmentQuestion.session_id.in_(asess_ids)))
+                    await db.execute(delete(AssessmentSession).where(AssessmentSession.id.in_(asess_ids)))
+
+                res_isess = await db.execute(
+                    select(InterviewSession.id).where(
+                        or_(
+                            InterviewSession.candidate_id.in_(cand_ids),
+                            InterviewSession.job_application_id.in_(app_ids)
+                        )
+                    )
+                )
+                isess_ids = [r[0] for r in res_isess.all()]
+
+                if isess_ids:
+                    await db.execute(delete(ScoringReport).where(ScoringReport.session_id.in_(isess_ids)))
+                    await db.execute(delete(InterviewTranscriptSegment).where(InterviewTranscriptSegment.session_id.in_(isess_ids)))
+                    await db.execute(delete(InterviewVisualObservation).where(InterviewVisualObservation.session_id.in_(isess_ids)))
+                    await db.execute(delete(InterviewVisualMetric).where(InterviewVisualMetric.session_id.in_(isess_ids)))
+                    await db.execute(delete(InterviewSpeechMetric).where(InterviewSpeechMetric.session_id.in_(isess_ids)))
+                    await db.execute(delete(InterviewFillerEvent).where(InterviewFillerEvent.session_id.in_(isess_ids)))
+                    
+                    res_iqs = await db.execute(select(InterviewQuestion.id).where(InterviewQuestion.session_id.in_(isess_ids)))
+                    iq_ids = [r[0] for r in res_iqs.all()]
+                    if iq_ids:
+                        res_ians = await db.execute(select(InterviewAnswer.id).where(InterviewAnswer.question_id.in_(iq_ids)))
+                        ian_ids = [r[0] for r in res_ians.all()]
+                        if ian_ids:
+                            await db.execute(delete(SpeechAnalysis).where(SpeechAnalysis.answer_id.in_(ian_ids)))
+                            await db.execute(delete(EyeTracking).where(EyeTracking.answer_id.in_(ian_ids)))
+                            await db.execute(delete(EmotionAnalysis).where(EmotionAnalysis.answer_id.in_(ian_ids)))
+                            await db.execute(delete(InterviewAnswer).where(InterviewAnswer.id.in_(ian_ids)))
+                        await db.execute(delete(InterviewQuestion).where(InterviewQuestion.id.in_(iq_ids)))
+
+                    await db.execute(delete(InterviewSession).where(InterviewSession.id.in_(isess_ids)))
+
+                await db.execute(delete(ScheduledInterview).where(or_(ScheduledInterview.candidate_id.in_(cand_ids), ScheduledInterview.job_application_id.in_(app_ids))))
+                await db.execute(delete(OfferLetter).where(or_(OfferLetter.candidate_id.in_(cand_ids), OfferLetter.job_application_id.in_(app_ids))))
+                await db.execute(delete(JobApplication).where(JobApplication.candidate_id.in_(cand_ids)))
+                await db.execute(delete(SavedJob).where(SavedJob.candidate_id.in_(cand_ids)))
+                await db.execute(delete(Resume).where(Resume.candidate_id.in_(cand_ids)))
+                await db.execute(delete(Candidate).where(Candidate.id.in_(cand_ids)))
+
+            await db.execute(delete(Notification).where(Notification.user_id.in_(user_ids)))
+            await db.execute(delete(User).where(User.id.in_(user_ids)))
+            await db.commit()
+            logging.getLogger("smarthire.startup").info(f"Purged candidate Somesh Singh successfully.")
+
+        # 2. Fix JobPosting company names (Zomato for Support Engineer, Infosys for SDE/Intern)
+        res_all_jobs = await db.execute(select(JobPosting))
+        all_jobs = res_all_jobs.scalars().all()
+        updated_jobs = 0
+        for job in all_jobs:
+            curr_comp = (job.company_name or "").strip()
+            needs_update = not curr_comp or any(p in curr_comp.lower() for p in ["smarthire", "smart-hire", "corporate", "acme"])
+            if needs_update:
+                title_l = (job.title or "").lower()
+                if "support" in title_l:
+                    job.company_name = "Zomato"
+                    updated_jobs += 1
+                elif any(k in title_l for k in ["sde", "intern", "software", "engineer", "developer"]):
+                    job.company_name = "Infosys"
+                    updated_jobs += 1
+                else:
+                    job.company_name = "Infosys"
+                    updated_jobs += 1
+        if updated_jobs > 0:
+            await db.commit()
+            logging.getLogger("smarthire.startup").info(f"Updated {updated_jobs} job postings with real company names.")
 
 @app.on_event("shutdown")
 async def shutdown():

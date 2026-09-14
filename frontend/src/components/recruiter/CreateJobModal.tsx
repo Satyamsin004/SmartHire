@@ -20,7 +20,7 @@ export const CreateJobModal: React.FC<CreateJobModalProps> = ({
 
   // Form State
   const [title, setTitle] = useState('');
-  const [companyName, setCompanyName] = useState('SmartHire Enterprise');
+  const [companyName, setCompanyName] = useState('');
   const [companyLogo, setCompanyLogo] = useState('');
   const [department, setDepartment] = useState('Engineering');
   const [employmentType, setEmploymentType] = useState('Full Time');
@@ -40,7 +40,7 @@ export const CreateJobModal: React.FC<CreateJobModalProps> = ({
   useEffect(() => {
     if (initialData) {
       setTitle(initialData.title || '');
-      setCompanyName(initialData.company_name || 'SmartHire Enterprise');
+      setCompanyName(initialData.company_name || '');
       setCompanyLogo(initialData.company_logo || '');
       setDepartment(initialData.department || 'Engineering');
       setEmploymentType(initialData.employment_type || 'Full Time');
@@ -190,6 +190,7 @@ export const CreateJobModal: React.FC<CreateJobModalProps> = ({
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="e.g. Zomato, Infosys, Google"
                 className="w-full bg-cream-100 dark:bg-slate-800 border border-stoneBorder dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-bold text-brand-ink dark:text-white focus:outline-none focus:border-brand-primary dark:focus:border-brand-accent"
               />
             </div>

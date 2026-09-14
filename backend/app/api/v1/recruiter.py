@@ -1,6 +1,7 @@
 import os
 import uuid
 import logging
+import asyncio
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
@@ -442,6 +443,7 @@ async def get_job_applications_by_id(
             "resume_url": normalize_resume_path(resume.file_path if resume else getattr(cand, "resume_url", None)) if cand else None,
             "job_id": app.job_id,
             "job_title": job.title,
+            "company_name": job.company_name if job else None,
             "applied_date": app.applied_at.strftime('%b %d, %Y') if app.applied_at else "Recent",
             "ats_score": round(app.ats_score, 1) if app.ats_score is not None else None,
             "matching_skills": app.matching_skills or [],

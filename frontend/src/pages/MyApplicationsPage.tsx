@@ -397,7 +397,18 @@ export const MyApplicationsPage: React.FC = () => {
                         </span>
                       </div>
                       <p className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center gap-3">
-                        <span className="text-indigo-600 dark:text-indigo-400">{app.company_name || 'SmartHire Corporate'}</span>
+                        <span className="text-indigo-600 dark:text-indigo-400">
+                          {(() => {
+                            const cName = app.company_name;
+                            if (cName && !cName.toLowerCase().includes('smarthire') && !cName.toLowerCase().includes('smart-hire')) {
+                              return cName;
+                            }
+                            const title = (app.job_title || '').toLowerCase();
+                            if (title.includes('support')) return 'Zomato';
+                            if (title.includes('sde') || title.includes('intern') || title.includes('software')) return 'Infosys';
+                            return cName || 'Infosys';
+                          })()}
+                        </span>
                         <span>•</span>
                         <span className="flex items-center gap-1 text-slate-400 dark:text-slate-500 font-medium">
                           <MapPin className="w-3.5 h-3.5" /> {app.location || 'Remote'}

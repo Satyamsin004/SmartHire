@@ -172,16 +172,31 @@ export const AssessmentExamRoom: React.FC = () => {
     }));
 
     try {
-      await api.post(`/aptitude/session/${sessionId}/submit`, {
+      const submitRes = await api.post(`/aptitude/session/${sessionId}/submit`, {
         answers: payloadAnswers,
         proctoring_violations: violations
       });
 
-      const resRes = await api.get(`/aptitude/session/${sessionId}/result`);
-      setResult(resRes.data);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to evaluate assessment submission.');
+      if (submitRes.data && submitRes.data.question_review && submitRes.data.question_review.length > 0) {
+        setResult(submitRes.data);
+      } else {
+        const resRes = await api.get(`/aptitude/session/${sessionId}/result`);
+        setResult(resRes.data);
+      }
+    } catch (err: any) {
+      console.error('Assessment submission error:', err);
+      // Attempt fallback fetch if submission succeeded on server
+      try {
+        const resRes = await api.get(`/aptitude/session/${sessionId}/result`);
+        if (resRes.data) {
+          setResult(resRes.data);
+          return;
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback fetch error:', fallbackErr);
+      }
+      const errMsg = err?.response?.data?.detail || err?.message || 'Failed to evaluate assessment submission. Please try again.';
+      alert(errMsg);
     } finally {
       setSubmitting(false);
     }

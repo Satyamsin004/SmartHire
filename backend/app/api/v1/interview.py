@@ -1,6 +1,7 @@
 import uuid
 import logging
 import asyncio
+import time
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, Response, Query, status
 import pdfplumber

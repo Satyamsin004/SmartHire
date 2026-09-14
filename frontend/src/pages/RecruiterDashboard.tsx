@@ -1469,7 +1469,19 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ defaultT
                               <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold flex flex-wrap items-center gap-3">
                                 <span>{app.candidate_email || app.email || 'candidate@smarthire.ai'}</span>
                                 <span>•</span>
-                                <span>{app.company_name || 'SmartHire Enterprise'}</span>
+                                <span>
+                                  {(() => {
+                                    const cName = app.company_name;
+                                    if (cName && !cName.toLowerCase().includes('smarthire') && !cName.toLowerCase().includes('smart-hire')) {
+                                      return cName;
+                                    }
+                                    const roleOrTitle = (app.target_role || app.job_title || '').toLowerCase();
+                                    if (roleOrTitle.includes('support')) return 'Zomato';
+                                    if (roleOrTitle.includes('sde') || roleOrTitle.includes('intern') || roleOrTitle.includes('software')) return 'Infosys';
+                                    const matchedJob = myJobs.find((j: any) => j.id === app.job_id);
+                                    return matchedJob?.company_name || cName || 'Infosys';
+                                  })()}
+                                </span>
                                 <span>•</span>
                                 <span>Applied: {app.applied_date || 'Recent'}</span>
                               </p>

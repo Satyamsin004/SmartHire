@@ -6,6 +6,7 @@ import random
 import re
 import time
 import uuid
+from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -208,6 +209,9 @@ Each object MUST match this schema:
         questions = {q.id: q for q in (await db.execute(
             select(AssessmentQuestion).where(AssessmentQuestion.session_id == session_id)
         )).scalars().all()}
+        from sqlalchemy import delete
+        await db.execute(delete(AssessmentAnswer).where(AssessmentAnswer.session_id == session_id))
+
         total_correct = total_wrong = total_skipped = 0
         total_points = 0.0
         section_correct: Dict[str, int] = {}
@@ -262,15 +266,14 @@ Each object MUST match this schema:
                 setattr(result, field, value)
 
         session.status = "completed"
-        session.is_recruiter_configured = True
         session.completed_at = datetime.utcnow()
 
+        # Strictly handle recruiter-linked applications only (never contaminate mock practice assessments)
         application = None
         if session.job_application_id:
             application = (await db.execute(select(JobApplication).where(JobApplication.id == session.job_application_id))).scalar_one_or_none()
 
-        # Fallback lookup if session.job_application_id is None
-        if not application and session.candidate_id and session.job_id:
+        if not application and session.is_recruiter_configured and session.candidate_id and session.job_id:
             application = (await db.execute(
                 select(JobApplication)
                 .where(JobApplication.candidate_id == session.candidate_id, JobApplication.job_id == session.job_id)
@@ -279,18 +282,7 @@ Each object MUST match this schema:
             if application:
                 session.job_application_id = application.id
 
-        if not application and session.candidate_id:
-            application = (await db.execute(
-                select(JobApplication)
-                .where(JobApplication.candidate_id == session.candidate_id)
-                .order_by(JobApplication.applied_at.desc())
-            )).scalar_one_or_none()
-            if application:
-                session.job_application_id = application.id
-                if not session.job_id:
-                    session.job_id = application.job_id
-
-        if application:
+        if application and session.is_recruiter_configured:
             new_status = "Assessment Passed" if recommendation == "Pass" else "Assessment Failed"
             application.status = new_status
 
