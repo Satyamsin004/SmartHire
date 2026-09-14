@@ -159,6 +159,10 @@ async def test_recruiter_assessment_pass_and_fail_progress_sync():
         app_fail.status = "Assessment Failed"
         await db_session.commit()
 
+        # Invalidate in-memory cache since direct ORM test inserts bypass API mutation handlers
+        from app.core.cache import fast_cache
+        fast_cache.clear()
+
         # Verify failing candidate in recruiter applications
         apps_data_2 = await RecruitmentPipelineService.get_applications(db_session, rec_user.id, job_id=job.id)
         matched_app_fail = next((a for a in apps_data_2 if a["id"] == app_fail.id), None)

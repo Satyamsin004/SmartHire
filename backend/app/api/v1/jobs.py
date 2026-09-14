@@ -666,20 +666,27 @@ async def get_my_applications(
             jobs_map[j.id] = j
 
     # 2. Batch fetch ONLY recruiter-scheduled assessment sessions & results (exclude practice/mock)
+    # ISOLATION GUARANTEE: Never match candidate_id alone without job_id
     assess_sess_map = {}
+    cand_job_assess_map = {}
     res_assess = await db.execute(
         select(AssessmentSession)
         .where(
-            AssessmentSession.job_application_id.in_(app_ids),
-            AssessmentSession.is_recruiter_configured == True
+            AssessmentSession.is_recruiter_configured == True,
+            or_(
+                AssessmentSession.job_application_id.in_(app_ids),
+                (AssessmentSession.candidate_id.in_(candidate_ids) & AssessmentSession.job_id.in_(job_ids))
+            )
         )
         .order_by(AssessmentSession.created_at.desc())
     )
     for asess in res_assess.scalars().all():
-        if asess.job_application_id not in assess_sess_map:
+        if asess.job_application_id and asess.job_application_id not in assess_sess_map:
             assess_sess_map[asess.job_application_id] = asess
+        if asess.candidate_id and asess.job_id and (asess.candidate_id, asess.job_id) not in cand_job_assess_map:
+            cand_job_assess_map[(asess.candidate_id, asess.job_id)] = asess
 
-    assess_sess_ids = [s.id for s in assess_sess_map.values() if s.id]
+    assess_sess_ids = list({s.id for s in assess_sess_map.values() if s.id} | {s.id for s in cand_job_assess_map.values() if s.id})
     assess_results_map = {}
     if assess_sess_ids:
         res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id.in_(assess_sess_ids)))
@@ -739,7 +746,7 @@ async def get_my_applications(
 
     for app in apps:
         job = jobs_map.get(app.job_id)
-        assess_sess = assess_sess_map.get(app.id)
+        assess_sess = assess_sess_map.get(app.id) or cand_job_assess_map.get((app.candidate_id, app.job_id))
 
         recruiter_assessment = None
         if assess_sess:

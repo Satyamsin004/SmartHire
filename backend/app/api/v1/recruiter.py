@@ -681,16 +681,17 @@ async def get_ats_passed_evaluations(
             reports_map[r.session_id] = r
 
     # Bulk fetch ONLY recruiter-scheduled Assessment Sessions (not practice/mock) for pipeline
+    # ISOLATION GUARANTEE: Never match candidate_id alone without job_id
     assess_sess_map = {}
-    cand_assess_map = {}
+    cand_job_assess_map = {}
     if app_ids:
         res_asess = await db.execute(
             select(AssessmentSession)
             .where(
                 AssessmentSession.is_recruiter_configured == True,
-                (
-                    (AssessmentSession.job_application_id.in_(app_ids)) |
-                    (AssessmentSession.candidate_id.in_(cand_ids))
+                or_(
+                    AssessmentSession.job_application_id.in_(app_ids),
+                    (AssessmentSession.candidate_id.in_(cand_ids) & AssessmentSession.job_id.in_(job_ids))
                 )
             )
             .order_by(AssessmentSession.created_at.desc())
@@ -698,10 +699,10 @@ async def get_ats_passed_evaluations(
         for asess in res_asess.scalars().all():
             if asess.job_application_id and asess.job_application_id not in assess_sess_map:
                 assess_sess_map[asess.job_application_id] = asess
-            if asess.candidate_id and asess.candidate_id not in cand_assess_map:
-                cand_assess_map[asess.candidate_id] = asess
+            if asess.candidate_id and asess.job_id and (asess.candidate_id, asess.job_id) not in cand_job_assess_map:
+                cand_job_assess_map[(asess.candidate_id, asess.job_id)] = asess
 
-    all_asess_ids = list({s.id for s in assess_sess_map.values()} | {s.id for s in cand_assess_map.values()})
+    all_asess_ids = list({s.id for s in assess_sess_map.values()} | {s.id for s in cand_job_assess_map.values()})
     assess_results_map = {}
     if all_asess_ids:
         res_ar = await db.execute(select(AssessmentResult).where(AssessmentResult.session_id.in_(all_asess_ids)))
@@ -717,7 +718,7 @@ async def get_ats_passed_evaluations(
         session = sessions_map.get(app.id)
         rep = reports_map.get(session.id) if session else None
 
-        as_sess = assess_sess_map.get(app.id) or cand_assess_map.get(app.candidate_id)
+        as_sess = assess_sess_map.get(app.id) or cand_job_assess_map.get((app.candidate_id, app.job_id))
         as_res = assess_results_map.get(as_sess.id) if as_sess else None
         as_score = round(as_res.overall_score, 1) if (as_res and as_res.overall_score is not None) else None
         pass_cutoff = round(as_sess.passing_score, 1) if (as_sess and as_sess.passing_score is not None) else 70.0
@@ -824,13 +825,6 @@ async def get_evaluation_detail(
                     .order_by(JobApplication.applied_at.desc())
                 )
                 app = res_a.scalars().first()
-            if not app and as_sess_lookup.candidate_id:
-                res_a = await db.execute(
-                    select(JobApplication)
-                    .where(JobApplication.candidate_id == as_sess_lookup.candidate_id)
-                    .order_by(JobApplication.applied_at.desc())
-                )
-                app = res_a.scalars().first()
 
     if not app and not session and not as_sess_lookup:
         raise HTTPException(status_code=404, detail="Evaluation details not found.")
@@ -934,8 +928,7 @@ async def get_evaluation_detail(
             select(AssessmentSession)
             .where(
                 (AssessmentSession.job_application_id == app.id) |
-                ((AssessmentSession.candidate_id == cand_id) & ((AssessmentSession.job_id == job_id) | (AssessmentSession.job_id.is_(None)))) |
-                (AssessmentSession.candidate_id == cand_id)
+                ((AssessmentSession.candidate_id == cand_id) & (AssessmentSession.job_id == job_id))
             )
             .order_by(AssessmentSession.created_at.desc())
         )

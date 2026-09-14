@@ -200,18 +200,19 @@ class RecruitmentPipelineService:
                 resumes_map[r.id] = r
 
         # 4. Batch fetch strictly RECRUITER Assessment Sessions & Results (exclude practice/mock)
+        # ISOLATION GUARANTEE: Must strictly match application ID or (candidate_id, job_id).
+        # Never match candidate_id alone without job_id to prevent assessments for one job (e.g. Zomato)
+        # from leaking into applications for another job (e.g. Infosys).
         from sqlalchemy import or_
         assess_sess_map = {}
         cand_job_assess_map = {}
-        cand_assess_map = {}
         res_assess = await db.execute(
             select(AssessmentSession)
             .where(
                 AssessmentSession.is_recruiter_configured == True,
                 or_(
                     AssessmentSession.job_application_id.in_(app_ids),
-                    (AssessmentSession.candidate_id.in_(cand_ids) & AssessmentSession.job_id.in_(job_ids)),
-                    AssessmentSession.candidate_id.in_(cand_ids)
+                    (AssessmentSession.candidate_id.in_(cand_ids) & AssessmentSession.job_id.in_(job_ids))
                 )
             )
             .order_by(AssessmentSession.created_at.desc())
@@ -222,8 +223,6 @@ class RecruitmentPipelineService:
                 assess_sess_map[asess.job_application_id] = asess
             if asess.candidate_id and asess.job_id and (asess.candidate_id, asess.job_id) not in cand_job_assess_map:
                 cand_job_assess_map[(asess.candidate_id, asess.job_id)] = asess
-            if asess.candidate_id and asess.candidate_id not in cand_assess_map:
-                cand_assess_map[asess.candidate_id] = asess
 
         assess_results_map = {}
         assess_ids = [s.id for s in all_assess_sessions if s.id]
@@ -285,8 +284,8 @@ class RecruitmentPipelineService:
             r_obj = resumes_map.get(app.resume_id)
             resume_url = r_obj.file_path if (r_obj and r_obj.file_path) else getattr(cand, "resume_url", None)
 
-            # Strictly fetch Assessment Session & Result LINKED to THIS specific application (with candidate fallback)
-            assess_sess = assess_sess_map.get(app.id) or cand_job_assess_map.get((app.candidate_id, app.job_id)) or cand_assess_map.get(app.candidate_id)
+            # Strictly fetch Assessment Session & Result LINKED to THIS specific application or (candidate_id, job_id)
+            assess_sess = assess_sess_map.get(app.id) or cand_job_assess_map.get((app.candidate_id, app.job_id))
             assess_res = assess_results_map.get(assess_sess.id) if assess_sess else None
             assess_score = round(assess_res.overall_score, 1) if (assess_res and assess_res.overall_score is not None) else None
             passing_cutoff = round(assess_sess.passing_score, 1) if (assess_sess and assess_sess.passing_score is not None) else 70.0
@@ -555,7 +554,7 @@ class RecruitmentPipelineService:
             if not cand_user or not cand_user.is_active or getattr(cand_user, 'deleted_at', None) is not None:
                 continue
 
-            # Fetch linked RECRUITER Assessment Result only (exclude practice/mock)
+            # Fetch linked RECRUITER Assessment Result strictly for THIS application or (candidate_id, job_id)
             res_ass = await db.execute(
                 select(AssessmentResult, AssessmentSession)
                 .join(AssessmentSession, AssessmentResult.session_id == AssessmentSession.id)
@@ -563,8 +562,7 @@ class RecruitmentPipelineService:
                     AssessmentSession.is_recruiter_configured == True,
                     or_(
                         AssessmentSession.job_application_id == app.id,
-                        (AssessmentSession.candidate_id == app.candidate_id) & (AssessmentSession.job_id == app.job_id),
-                        AssessmentSession.candidate_id == app.candidate_id
+                        (AssessmentSession.candidate_id == app.candidate_id) & (AssessmentSession.job_id == app.job_id)
                     )
                 )
                 .order_by(AssessmentResult.created_at.desc())
@@ -577,7 +575,7 @@ class RecruitmentPipelineService:
 
             # STRICT ENFORCEMENT: Candidates MUST have taken and PASSED the Online Assessment stage to be eligible for Interview
             has_passed_assessment = False
-            if "pass" in (app.status or "").lower() or app.status in ["Assessment Passed", "Interview Eligible", "Technical Scheduled"]:
+            if app.status in ["Assessment Passed", "Interview Eligible", "Technical Scheduled"] or "assessment pass" in (app.status or "").lower():
                 has_passed_assessment = True
             elif ass_res and (ass_res.hiring_recommendation == "Pass" or (ass_res.overall_score is not None and ass_res.overall_score >= cutoff)):
                 has_passed_assessment = True
