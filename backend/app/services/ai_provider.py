@@ -224,10 +224,11 @@ class AIProviderManager:
 
             logger.info("Attempting provider=%s request using model=%s...", provider, model)
 
+            task_timeout = 4.0 if ("interview" in task and "report" not in task) else self.REQUEST_TIMEOUT_SECONDS
             for key_index, api_key in enumerate(keys, start=1):
                 try:
                     result = await self._generate_with_key(
-                        provider, model, api_key, key_index, prompt, json_mode
+                        provider, model, api_key, key_index, prompt, json_mode, timeout=task_timeout
                     )
                     # Mark healthy on success
                     state.status = "healthy"
@@ -334,6 +335,7 @@ class AIProviderManager:
         key_index: int,
         prompt: str,
         json_mode: bool,
+        timeout: Optional[float] = None,
     ) -> ProviderResult:
         last_error: Optional[ProviderRequestError] = None
 
@@ -342,11 +344,11 @@ class AIProviderManager:
             try:
                 if provider == "gemini":
                     text, tokens = await self._generate_gemini(
-                        api_key, model, prompt, json_mode
+                        api_key, model, prompt, json_mode, timeout=timeout
                     )
                 else:
                     text, tokens = await self._generate_openai_compatible(
-                        provider, api_key, model, prompt, json_mode
+                        provider, api_key, model, prompt, json_mode, timeout=timeout
                     )
 
                 latency_ms = round((time.perf_counter() - started_at) * 1000, 1)
@@ -422,14 +424,15 @@ class AIProviderManager:
         raise last_error or ProviderRequestError(provider, None, "unknown_failure")
 
     async def _generate_gemini(
-        self, api_key: str, model: str, prompt: str, json_mode: bool
+        self, api_key: str, model: str, prompt: str, json_mode: bool, timeout: Optional[float] = None
     ) -> Tuple[str, Optional[int]]:
         if genai is None or not hasattr(genai, "Client"):
             raise ProviderRequestError("gemini", 503, "Google GenAI SDK not available in environment")
         client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=60_000),
+            http_options=types.HttpOptions(timeout=int((timeout or self.REQUEST_TIMEOUT_SECONDS) * 1000)),
         )
+        req_timeout = timeout or self.REQUEST_TIMEOUT_SECONDS
         try:
             config = (
                 types.GenerateContentConfig(response_mime_type="application/json")
@@ -441,7 +444,7 @@ class AIProviderManager:
                     client.aio.models.generate_content(
                         model=model, contents=prompt, config=config
                     ),
-                    timeout=self.REQUEST_TIMEOUT_SECONDS,
+                    timeout=req_timeout,
                 )
             except Exception as initial_err:
                 # If model is deprecated/not found (e.g. gemini-2.5-flash discontinued), fallback to gemini-3.6-flash
@@ -453,7 +456,7 @@ class AIProviderManager:
                         client.aio.models.generate_content(
                             model=fallback_model, contents=prompt, config=config
                         ),
-                        timeout=self.REQUEST_TIMEOUT_SECONDS,
+                        timeout=req_timeout,
                     )
                     self._gemini_preferred_model = fallback_model
                 else:
@@ -474,7 +477,7 @@ class AIProviderManager:
             await client.aio.aclose()
 
     async def _generate_openai_compatible(
-        self, provider: str, api_key: str, model: str, prompt: str, json_mode: bool
+        self, provider: str, api_key: str, model: str, prompt: str, json_mode: bool, timeout: Optional[float] = None
     ) -> Tuple[str, Optional[int]]:
         url = (
             "https://openrouter.ai/api/v1/chat/completions"
@@ -502,7 +505,8 @@ class AIProviderManager:
             logger.info("payload=%s", _json.dumps(payload)[:500])
             logger.info("==========================================")
 
-        async with httpx.AsyncClient(timeout=self.REQUEST_TIMEOUT_SECONDS) as client:
+        req_timeout = timeout or self.REQUEST_TIMEOUT_SECONDS
+        async with httpx.AsyncClient(timeout=req_timeout) as client:
             response = await client.post(url, headers=headers, json=payload)
             # If Groq model is not found/deprecated (e.g. llama-3.3-70b-versatile), fallback to available Groq models
             if provider == "groq" and response.status_code == 404 and "model_not_found" in response.text:

@@ -555,19 +555,19 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                                 context=context_payload,
                                 num_questions=1
                             ),
-                            timeout=7.5
+                            timeout=3.8
                         )
                         if main_q_list:
                             main_q_data = main_q_list[0]
                             return InterviewQuestion(
-                            session_id=session.id,
-                            order_index=question.order_index + 1,
-                            question_text=main_q_data.get("question_text", "Let's move on to our next technical topic."),
-                            category=str(main_q_data.get("category", "Technical"))[:250],
-                            difficulty=str(main_q_data.get("difficulty", question.difficulty))[:90],
-                            expected_keywords=main_q_data.get("expected_keywords", []),
-                            is_followup=False
-                        ), True
+                                session_id=session.id,
+                                order_index=question.order_index + 1,
+                                question_text=main_q_data.get("question_text", "Let's move on to our next technical topic."),
+                                category=str(main_q_data.get("category", "Technical"))[:250],
+                                difficulty="Easy",
+                                expected_keywords=main_q_data.get("expected_keywords", []),
+                                is_followup=False
+                            ), True
                     except Exception as e:
                         logger.warning(f"Fast main question generation fallback: {e}")
 
@@ -600,24 +600,24 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                             QuestionGeneratorService.generate_dynamic_followup_question(
                                 context=context_payload
                             ),
-                            timeout=7.5
+                            timeout=3.8
                         )
                         return InterviewQuestion(
                             session_id=session.id,
                             order_index=question.order_index + 1,
-                            question_text=next_q_data.get("question_text", "Could you elaborate further on that?"),
+                            question_text=next_q_data.get("question_text", "Could you share a simple example of that?"),
                             category=str(next_q_data.get("category", "Follow-up"))[:250],
-                            difficulty=str(next_q_data.get("difficulty", question.difficulty))[:90],
+                            difficulty="Easy",
                             expected_keywords=next_q_data.get("expected_keywords", []),
                             is_followup=True
                         ), False
                     except Exception as e:
                         logger.warning(f"Fast followup question fallback: {e}")
                         fallback_followups = [
-                            "Thank you for that explanation. Could you walk me through the key technical trade-offs you considered?",
-                            "Could you elaborate on how you handled edge cases and failure modes in that architecture?",
-                            "What metrics or logging did you rely on to verify that your implementation met latency and stability requirements?",
-                            "If you were to re-architect that solution to handle 100x the traffic today, what would you change?"
+                            "Thank you for that explanation! Can you share a simple example of where you used or practiced that?",
+                            "In simple terms, what is one major benefit of using that approach?",
+                            "What was the most interesting part of working with that concept or tool for you?",
+                            "If a fellow beginner asked you for advice on getting started with that, what simple tip would you give?"
                         ]
                         chosen_followup = next(
                             (ff for ff in fallback_followups if ff not in previously_asked and ff != question.question_text),
@@ -628,8 +628,8 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                             order_index=question.order_index + 1,
                             question_text=chosen_followup,
                             category="Follow-up",
-                            difficulty=str(question.difficulty or "Medium")[:90],
-                            expected_keywords=["trade-offs", "scalability", "reliability"],
+                            difficulty="Easy",
+                            expected_keywords=["basics", "fundamentals", "understanding"],
                             is_followup=True
                         ), False
 
@@ -643,7 +643,7 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                             is_transition=question.is_followup,
                             next_topic=None
                         ),
-                        timeout=2.8
+                        timeout=2.2
                     )
                 except Exception as e:
                     logger.warning(f"AI evaluation remark timeout/error: {e}")
@@ -652,10 +652,13 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                     return "Good answer! That is a solid explanation. Let's probe a bit further into that."
 
             try:
-                q_res, evaluation_feedback = await asyncio.gather(
-                    get_next_question(),
-                    get_feedback(),
-                    return_exceptions=False
+                q_res, evaluation_feedback = await asyncio.wait_for(
+                    asyncio.gather(
+                        get_next_question(),
+                        get_feedback(),
+                        return_exceptions=False
+                    ),
+                    timeout=4.5
                 )
                 next_q_db, is_trans = q_res
                 db.add(next_q_db)
@@ -676,18 +679,41 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                     pass
             except Exception as dynamic_q_err:
                 logger.error(f"Dynamic Question Generation Error: {dynamic_q_err}")
+                # Ensure candidate is never left without a question: pick safe, fast fallback
                 try:
-                    await db.rollback()
-                    # Re-persist the current answer so candidate work is never lost
-                    db.add(answer)
-                    db.add(speech_db)
-                    db.add(vision_db)
-                    db.add(emotion_db)
+                    safe_pool = [
+                        "Can you explain what a function is in programming and why functions are useful?",
+                        "In simple terms, what is the difference between a list (or array) and a dictionary?",
+                        "In web development, what is the basic difference between a GET request and a POST request?",
+                        "What is a database table, and what is the purpose of a primary key in simple terms?",
+                        "Could you tell me about a simple project you built or worked on recently and what it does?"
+                    ]
+                    chosen_safe = next((fb for fb in safe_pool if fb not in previously_asked and fb != question.question_text), safe_pool[0])
+                    fallback_q_db = InterviewQuestion(
+                        session_id=session.id,
+                        order_index=question.order_index + 1,
+                        question_text=chosen_safe,
+                        category="Technical Fundamentals",
+                        difficulty="Easy",
+                        expected_keywords=["basics", "fundamentals"],
+                        is_followup=not question.is_followup
+                    )
+                    db.add(fallback_q_db)
                     await db.flush()
-                except Exception as rb_err:
-                    logger.warning(f"Answer re-persistence notice after rollback: {rb_err}")
-                next_q_response = None
-                evaluation_feedback = "Thank you. We have concluded this portion of the interview."
+                    next_q_response = {
+                        "question_id": fallback_q_db.id,
+                        "session_id": session.id,
+                        "order_index": fallback_q_db.order_index,
+                        "question_text": fallback_q_db.question_text,
+                        "category": fallback_q_db.category,
+                        "difficulty": fallback_q_db.difficulty,
+                        "is_followup": fallback_q_db.is_followup
+                    }
+                    evaluation_feedback = "Good answer! That is a solid explanation. Let's move to the next question."
+                except Exception as fb_err:
+                    logger.error(f"Fallback question insertion notice: {fb_err}")
+                    next_q_response = None
+                    evaluation_feedback = "Thank you. We have concluded this portion of the interview."
         except Exception as dynamic_q_err:
             logger.error(f"Dynamic Question Pipeline Error: {dynamic_q_err}")
             next_q_response = None

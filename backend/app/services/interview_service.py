@@ -281,14 +281,17 @@ class QuestionGeneratorService:
     ) -> List[Dict[str, Any]]:
         """Generates role and resume-skill specific questions, guaranteeing no duplicate questions."""
 
-        # Fetch existing questions asked to candidate across all past sessions
-        stmt_prev = (
-            select(InterviewQuestion.question_text)
-            .join(InterviewSession, InterviewQuestion.session_id == InterviewSession.id)
-            .where(InterviewSession.candidate_id == session.candidate_id)
-        )
-        res_prev = await db.execute(stmt_prev)
-        raw_prev_texts = list(res_prev.scalars().all())
+        # Fetch existing questions asked to candidate across all past sessions (or reuse context)
+        if "previously_asked_questions" in context and context["previously_asked_questions"]:
+            raw_prev_texts = list(context["previously_asked_questions"])
+        else:
+            stmt_prev = (
+                select(InterviewQuestion.question_text)
+                .join(InterviewSession, InterviewQuestion.session_id == InterviewSession.id)
+                .where(InterviewSession.candidate_id == session.candidate_id)
+            )
+            res_prev = await db.execute(stmt_prev)
+            raw_prev_texts = list(res_prev.scalars().all())
         prev_texts = set(raw_prev_texts)
         norm_history = {re.sub(r'[^a-zA-Z0-9]', '', t.lower()) for t in raw_prev_texts if t}
         logger.info("Question Memory Loaded ✅ Candidate ID: %s | Historical Questions Logged: %d", session.candidate_id, len(prev_texts))

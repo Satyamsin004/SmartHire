@@ -858,7 +858,7 @@ export const LiveInterviewRoom: React.FC = () => {
           dominant_emotion: "neutral",
           confidence_percentage: 88
         }
-      }, { timeout: 45000 });
+      }, { timeout: 90000 });
 
       setTranscript('');
       transcriptRef.current = '';
@@ -887,6 +887,32 @@ export const LiveInterviewRoom: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Submit answer error:', err);
+      // Seamless recovery: check if server recorded the answer and moved ahead
+      try {
+        const sessionCheck = await api.get(`/interview/session/${sessionId}`, { timeout: 10000 });
+        if (sessionCheck.data) {
+          const sData = sessionCheck.data;
+          if (sData.status === 'completed') {
+            await handleCompleteSession();
+            return;
+          }
+          const serverQ = sData.current_question;
+          const currQId = String(currentQuestion?.question_id || currentQuestion?.id || '');
+          const serverQId = String(serverQ?.question_id || serverQ?.id || '');
+          if (serverQ && serverQId && serverQId !== currQId && (serverQ.order_index || 0) > (currentQuestion?.order_index || 0)) {
+            setTranscript('');
+            transcriptRef.current = '';
+            lastSpokenQuestionIdRef.current = serverQId;
+            setCurrentQuestion(serverQ);
+            setQuestionIndex(prev => Math.max(prev + 1, serverQ.order_index || 1));
+            speakQuestion(`Great! Let's proceed to the next question. ${serverQ.question_text}`);
+            return;
+          }
+        }
+      } catch (checkErr) {
+        console.warn("Session recovery check notice:", checkErr);
+      }
+
       const msg = err.response?.data?.detail || err.message || 'Failed to submit answer.';
       alert(`Submission Notice: ${msg}. Please click Submit Answer again.`);
     } finally {
