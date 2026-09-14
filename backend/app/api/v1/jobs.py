@@ -624,11 +624,14 @@ async def get_my_applications(
         for j in res_j.scalars().all():
             jobs_map[j.id] = j
 
-    # 2. Batch fetch assessment sessions & results
+    # 2. Batch fetch ONLY recruiter-scheduled assessment sessions & results (exclude practice/mock)
     assess_sess_map = {}
     res_assess = await db.execute(
         select(AssessmentSession)
-        .where(AssessmentSession.job_application_id.in_(app_ids))
+        .where(
+            AssessmentSession.job_application_id.in_(app_ids),
+            AssessmentSession.is_recruiter_configured == True
+        )
         .order_by(AssessmentSession.created_at.desc())
     )
     for asess in res_assess.scalars().all():

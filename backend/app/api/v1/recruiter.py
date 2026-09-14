@@ -631,15 +631,18 @@ async def get_ats_passed_evaluations(
         for r in res_rep.scalars().all():
             reports_map[r.session_id] = r
 
-    # Bulk fetch Assessment Sessions and Results for all applications in 1 query
+    # Bulk fetch ONLY recruiter-scheduled Assessment Sessions (not practice/mock) for pipeline
     assess_sess_map = {}
     cand_assess_map = {}
     if app_ids:
         res_asess = await db.execute(
             select(AssessmentSession)
             .where(
-                (AssessmentSession.job_application_id.in_(app_ids)) |
-                (AssessmentSession.candidate_id.in_(cand_ids))
+                AssessmentSession.is_recruiter_configured == True,
+                (
+                    (AssessmentSession.job_application_id.in_(app_ids)) |
+                    (AssessmentSession.candidate_id.in_(cand_ids))
+                )
             )
             .order_by(AssessmentSession.created_at.desc())
         )

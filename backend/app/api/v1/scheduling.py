@@ -486,6 +486,7 @@ async def get_candidate_assessments(
         select(AssessmentSession)
         .where(
             AssessmentSession.candidate_id.in_(cand_ids),
+            AssessmentSession.is_recruiter_configured == True,
             AssessmentSession.status.in_(["scheduled", "active", "Scheduled", "Active"])
         )
         .order_by(AssessmentSession.created_at.desc())
