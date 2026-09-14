@@ -9,7 +9,7 @@ export const InterviewConfig: React.FC = () => {
   
   const [mockRole, setMockRole] = useState('Software Engineer');
   const [mockRound, setMockRound] = useState('Technical');
-  const [mockDifficulty, setMockDifficulty] = useState('Medium');
+  const [mockDifficulty, setMockDifficulty] = useState('Easy');
   const [mockLanguage, setMockLanguage] = useState('English');
   const [mockDuration, setMockDuration] = useState(15);
   const [mockResumeText, setMockResumeText] = useState('');

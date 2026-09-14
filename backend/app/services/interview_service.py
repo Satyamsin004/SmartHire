@@ -219,31 +219,26 @@ class QuestionGeneratorService:
 
                 if "behavioral" in round_type_str or "star" in round_type_str:
                     fallbacks = [
-                        "Could you elaborate on the specific actions YOU personally took in that scenario, and how your team reacted?",
-                        "What was the measurable outcome or final result of that situation, and what would you do differently today?",
-                        "Can you share an instance where you faced a significant conflict with a colleague and how you resolved it diplomatically?",
-                        "Tell me about a time when you took initiative to solve an unexpected project roadblock under tight deadlines."
+                        "Could you share what you enjoyed most about working with your team on that?",
+                        "What was a simple, positive outcome of that situation?",
+                        "How did you and your teammates help each other during that project?",
+                        "Can you tell me about a time you learned something new from a colleague?"
                     ]
                 elif "hr" in round_type_str or "culture" in round_type_str:
                     fallbacks = [
-                        "How do your personal professional values and long-term career aspirations align with our company culture?",
-                        "What kind of management style and workplace dynamic allows you to perform at your highest potential?",
-                        "How do you prioritize your work-life balance and mental focus when managing multiple high-priority deliverables?"
+                        "What kind of friendly team environment helps you do your best work?",
+                        "What are you most excited to learn and improve in your career next?",
+                        "How do you like to organize your day to stay relaxed and productive?"
                     ]
                 else:
                     fallbacks = [
-                        "How do you handle API versioning, error schemas, and backward compatibility in production?",
-                        "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?",
-                        f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?",
-                        "How do you approach automated testing, continuous integration, and canary deployments for microservices?",
-                        "What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?",
-                        "How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?",
-                        "Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?"
+                        "Can you share a simple example of where you used that in your work or practice?",
+                        "In simple terms, what is one major benefit of using that approach?",
+                        "What was the most fun or interesting part of working with that tool or language?",
+                        "If a fellow beginner asked you how to get started with that, what simple tip would you share?",
+                        "What other simple tool or library did you find helpful alongside it?",
+                        "How did you first learn about that concept, and what helped you understand it best?"
                     ]
-                    if "api" in cand_ans or "rest" in cand_ans:
-                        fallbacks.insert(0, "How do you handle API versioning, error schemas, and backward compatibility in production?")
-                    elif "database" in cand_ans or "sql" in cand_ans:
-                        fallbacks.insert(0, "What is your strategy for handling database migrations, connection pooling, and locks under heavy write load?")
                 
                 for fb in fallbacks:
                     fb_dup = any(fb.lower() == h.lower() or (len(fb) > 20 and fb.lower() in h.lower()) for h in all_history)
@@ -252,7 +247,7 @@ class QuestionGeneratorService:
                         break
             
             cat_val = str(raw_q.get("category", "Follow-up") or "Follow-up")[:250]
-            diff_val = str(raw_q.get("difficulty", "Adaptive") or "Adaptive")[:90]
+            diff_val = "Easy"
             return {
                 "question_text": q_text,
                 "category": cat_val,
@@ -264,16 +259,16 @@ class QuestionGeneratorService:
             round_type_str = str(context.get('round_type') or 'Technical').lower()
             if "behavioral" in round_type_str:
                 return {
-                    "question_text": "Thank you for explaining that. Could you describe the specific outcome of that situation and what you learned from it?",
+                    "question_text": "Thank you for explaining that! Could you tell me what you enjoyed most about working on that task?",
                     "category": "Behavioral",
-                    "difficulty": "Medium",
-                    "expected_keywords": ["situation", "outcome", "learning"]
+                    "difficulty": "Easy",
+                    "expected_keywords": ["teamwork", "learning", "outcome"]
                 }
             return {
-                "question_text": "Thank you for sharing. Could you provide a specific technical example from your past experience?",
+                "question_text": "Thank you for sharing! Could you give a simple example of where you used that in your practice?",
                 "category": "Technical",
-                "difficulty": "Medium",
-                "expected_keywords": ["example", "experience"]
+                "difficulty": "Easy",
+                "expected_keywords": ["example", "practice", "tool"]
             }
 
     @staticmethod
@@ -326,39 +321,37 @@ class QuestionGeneratorService:
 
             if "behavioral" in round_type_str or "star" in round_type_str:
                 main_fallbacks = [
-                    "Could you walk me through a challenging situation in a past project where you had to resolve a conflict within your team, and what was the outcome?",
-                    "Tell me about a time when you took initiative to fix a broken process or technical bottleneck without being directly asked.",
-                    "Can you describe a scenario where you faced tight deadlines and conflicting priorities? How did you prioritize and execute?",
-                    "Tell me about a time when you received constructive or critical feedback on your work and how you incorporated it.",
-                    "Describe a time you made a mistake on a project. How did you communicate it to stakeholders and resolve it?",
-                    "Walk me through a project where you collaborated closely with cross-functional partners (e.g. Product, Design, QA) to achieve a key deliverable."
+                    "To start off, could you tell me a little bit about yourself and what you enjoy most about working in technology?",
+                    "Could you share an example of how you like to collaborate with teammates on a group project?",
+                    "When you get stuck on a coding problem, what simple steps do you take to find help or solve it?",
+                    "Can you tell me about a simple project you worked on recently that you felt proud of?",
+                    "How do you organize your tasks when you have multiple things to work on in a day?",
+                    "Tell me about a time when a colleague or mentor gave you helpful feedback that you learned from."
                 ]
-                fb_category = "Behavioral & STAR"
-                fb_keywords = ["teamwork", "leadership", "STAR", "conflict", "deadlines"]
+                fb_category = "Behavioral & Introduction"
+                fb_keywords = ["introduction", "teamwork", "learning", "collaboration"]
             elif "hr" in round_type_str or "culture" in round_type_str:
                 main_fallbacks = [
-                    f"To begin, tell me about your career journey as a {role}, what drives your passion, and why this role is the right next step for you?",
-                    f"What key core values and team dynamics are most important to you when choosing an employer?",
-                    f"Looking ahead, what professional milestones or leadership skills do you aim to develop over the next 2 to 3 years?",
-                    "How do you ensure you maintain work-life balance and productivity in a fast-paced work environment?"
+                    f"To begin, what inspired you to pursue a career in {role} and what are you most excited to learn?",
+                    "What kind of friendly and supportive team environment helps you do your best work?",
+                    "Looking ahead, what are some basic skills or technologies you would love to learn over the next year?",
+                    "How do you like to organize your schedule to stay productive, positive, and balanced?"
                 ]
-                fb_category = "HR & Cultural Fit"
-                fb_keywords = ["career", "motivation", "values", "culture"]
+                fb_category = "HR & Motivation"
+                fb_keywords = ["career", "motivation", "learning", "culture"]
             else:
                 main_fallbacks = [
-                    f"How do you design scalable REST APIs and handle data validation in {role} applications?",
-                    f"Could you explain your approach to database indexing and query optimization for high-traffic {role} services?",
-                    f"How do you configure CI/CD pipelines, containerization, and automated deployments for {role} services?",
-                    f"What strategies do you use for error handling, logging, and monitoring in {role} backend microservices?",
-                    f"Could you describe a challenging technical architecture decision you made in a recent {role} project?",
-                    f"How do you handle distributed caching, session persistence, and invalidation strategies in {role} systems?",
-                    f"What approaches do you take to design fault-tolerant microservices with circuit breakers and fallback mechanisms for {role} applications?",
-                    f"How do you ensure data consistency, transaction management, and saga patterns across microservices in {role} projects?",
-                    f"Could you elaborate on your experience implementing real-time messaging, WebSockets, and event-driven architectures for {role} services?",
-                    f"What performance profiling tools and load testing strategies do you use to benchmark high-scale {role} backends?"
+                    f"To get started, could you briefly introduce yourself and tell me what programming languages or tools you enjoy using the most?",
+                    "In simple words, can you explain what a variable and a function are in programming?",
+                    f"Could you tell me about a simple project you worked on as a {role} and what it does?",
+                    "Can you explain the difference between a list (or array) and a dictionary (or key-value map) in simple terms?",
+                    "In web development, what is the basic difference between a GET request and a POST request?",
+                    "Can you explain what an if-else statement or a loop does in your code?",
+                    "In simple terms, what is the difference between the frontend and the backend of a website?",
+                    "What is a database table, and what is the purpose of a primary key in simple terms?"
                 ]
-                fb_category = "Technical Architecture"
-                fb_keywords = ["architecture", "design", "performance"]
+                fb_category = "Programming Fundamentals"
+                fb_keywords = ["basics", "programming", "functions", "variables", "web"]
 
             for fb_text in main_fallbacks:
                 norm_fb = re.sub(r'[^a-zA-Z0-9]', '', fb_text.lower())
@@ -366,7 +359,7 @@ class QuestionGeneratorService:
                     unique_questions.append({
                         "question_text": fb_text,
                         "category": fb_category,
-                        "difficulty": session.difficulty or "Medium",
+                        "difficulty": "Easy",
                         "expected_keywords": fb_keywords
                     })
                     prev_texts.add(fb_text)
@@ -379,21 +372,21 @@ class QuestionGeneratorService:
         while len(unique_questions) < num_questions:
             idx = len(unique_questions) + 1
             if "behavioral" in round_type_str:
-                fb_text = f"Can you share another example from your professional experience demonstrating teamwork and problem-solving (Scenario #{idx})?"
-                fb_cat = "Behavioral & STAR"
+                fb_text = f"Can you share another simple example of good teamwork from your experience (Topic #{idx})?"
+                fb_cat = "Behavioral & Introduction"
             elif "hr" in round_type_str:
-                fb_text = f"Could you describe what kind of company culture and team collaboration enables you to do your best work (Dimension #{idx})?"
-                fb_cat = "HR & Cultural Fit"
+                fb_text = f"Could you tell me what kind of team activities or collaboration you enjoy most (Topic #{idx})?"
+                fb_cat = "HR & Motivation"
             else:
-                fb_text = f"Could you walk me through your technical approach and key design decisions for component #{idx} in your {session.role_target or 'Software Engineer'} project?"
-                fb_cat = "Technical Architecture"
+                fb_text = f"Can you share another basic concept or tool in {session.role_target or 'programming'} that you find helpful (Topic #{idx})?"
+                fb_cat = "Programming Fundamentals"
 
             if fb_text not in prev_texts:
                 unique_questions.append({
                     "question_text": fb_text,
                     "category": fb_cat,
-                    "difficulty": session.difficulty or "Medium",
-                    "expected_keywords": ["experience", "communication"]
+                    "difficulty": "Easy",
+                    "expected_keywords": ["basics", "learning"]
                 })
                 prev_texts.add(fb_text)
             else:

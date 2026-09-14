@@ -264,7 +264,7 @@ export const InterviewLobby: React.FC = () => {
         res = await api.post('/interview/start', {
           role_target: params.get('role') || 'Software Engineer',
           round_type: params.get('round') || 'Technical',
-          difficulty: params.get('difficulty') || 'Medium',
+          difficulty: params.get('difficulty') || 'Easy',
           language: params.get('language') || location.state?.language || 'English',
           duration_minutes: parseInt(params.get('duration') || '15'),
           resume_text: location.state?.resumeText || '',
@@ -299,7 +299,7 @@ export const InterviewLobby: React.FC = () => {
           const retryRes = await api.post('/interview/start', {
             role_target: params.get('role') || 'Software Engineer',
             round_type: params.get('round') || 'Technical',
-            difficulty: params.get('difficulty') || 'Medium',
+            difficulty: params.get('difficulty') || 'Easy',
             language: params.get('language') || location.state?.language || 'English',
             duration_minutes: parseInt(params.get('duration') || '15'),
             resume_text: location.state?.resumeText || '',

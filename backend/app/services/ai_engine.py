@@ -172,27 +172,40 @@ class AIEngine:
         {suggested_topic.replace('_', ' ').title()}
         ========================================================================
 
+        CRITICAL MANDATE - MAXIMUM EASY INTRODUCTORY QUESTIONS:
+        1. ALL questions generated MUST be VERY EASY, fundamental, introductory, and beginner-friendly (Maximum Easy level).
+        2. Ask simple, gentle, welcoming questions that any entry-level candidate or beginner can easily understand and answer with high confidence.
+        3. Never ask complex distributed systems, concurrency locks, race conditions, memory leaks, microservices saga patterns, or obscure system design questions.
+        4. Focus on core beginner fundamentals:
+           - Basic programming concepts (e.g. what is a variable, what is the purpose of a function, what is an if-else statement or loop).
+           - Data structures in simple words (e.g. difference between a list/array and a dictionary/key-value store).
+           - Basic web development (e.g. what is the basic difference between a GET request and a POST request).
+           - Introductory project discussions (e.g. tell me about a simple project you enjoyed building and what it does).
+           - Favorite tools: what programming language or framework you like using most and why.
+           - For behavioral/HR: simple introductory questions about team collaboration, favorite projects, or motivation to learn tech.
+        5. Set "difficulty" strictly to "Easy" in the JSON response.
+
         CRITICAL DIVERSITY & NON-REPETITION MANDATES:
         1. NEVER repeat any question or variant present in the PREVIOUSLY ASKED QUESTIONS list above!
         2. NEVER ask about any topic area listed in PREVIOUSLY COVERED TOPIC AREAS! Choose a COMPLETELY DIFFERENT domain!
         3. Focus this session on the SUGGESTED NEW TOPIC AREA: {suggested_topic.replace('_', ' ').title()}
         4. {domain_mandate}
         5. If candidate details are available, actively personalize the opening question by referencing candidate's specific background.
-        6. Two questions about the same technical concept (e.g. both about "concurrency") count as DUPLICATE even if worded differently!
+        6. Two questions about the same technical concept (e.g. both about "variables") count as DUPLICATE even if worded differently!
         7. NEVER ask questions specifically about "SmartHire", "SmartHire AI", "SmartHire Platform", or any hiring/recruitment platform the candidate may have listed in their resume. SmartHire is the platform conducting this interview — asking about it is circular. Instead, focus on the candidate's OTHER projects, skills, and general technical concepts relevant to the target role.
 
         STRICT ROUND DOMAIN BOUNDARY RULES:
-        1. If Interview Round is "Technical" or "Coding": Ask ONLY technical, coding, or algorithmic questions. NEVER ask HR or behavioral questions.
-        2. If Interview Round is "Behavioral": Ask ONLY STAR-method behavioral questions (Situation, Task, Action, Result) regarding teamwork, conflict, leadership, or deadlines. NEVER ask technical or code questions.
-        3. If Interview Round is "HR": Ask ONLY HR, career motivation, cultural fit, strengths, or salary expectations. NEVER ask technical or code questions.
-        4. If Interview Round is "System Design": Ask ONLY distributed system architecture, caching, database partitioning, microservices, and scalability.
-        5. If Interview Round is "Resume Discussion": Ask ONLY questions directly referencing the candidate's parsed resume skills and work experience.
-        6. If Interview Round is "Project Discussion": Ask ONLY about the specific project technical trade-offs, architecture, and role listed in candidate's parsed projects.
+        1. If Interview Round is "Technical" or "Coding": Ask ONLY very easy technical, coding, or fundamental programming questions. NEVER ask HR or behavioral questions.
+        2. If Interview Round is "Behavioral": Ask ONLY simple, friendly behavioral questions regarding teamwork, communication, or favorite projects. NEVER ask technical or code questions.
+        3. If Interview Round is "HR": Ask ONLY simple HR, career motivation, cultural fit, or learning interests. NEVER ask technical or code questions.
+        4. If Interview Round is "System Design": Ask ONLY basic, high-level web concepts (e.g. difference between frontend and backend, what a database table does, client vs server).
+        5. If Interview Round is "Resume Discussion": Ask ONLY simple, introductory questions referencing the candidate's parsed skills or favorite project.
+        6. If Interview Round is "Project Discussion": Ask ONLY a simple, high-level overview of a project listed on the resume.
 
         Instructions:
         1. Generate exactly {num_questions} opening interview question following the strict rules above.
-        2. Set a professional, conversational, and direct tone.
-        3. Make the question contextual and distinct from previous sessions.
+        2. Set a professional, friendly, conversational, and welcoming tone.
+        3. Make the question contextual, very easy, and distinct from previous sessions.
 
         Return ONLY a valid JSON object matching this exact structure:
         {{
@@ -200,7 +213,7 @@ class AIEngine:
                 {{
                     "question_text": "Detailed question text here",
                     "category": "Technical",
-                    "difficulty": "Medium",
+                    "difficulty": "Easy",
                     "expected_keywords": ["keyword1", "keyword2"]
                 }}
             ]
@@ -220,7 +233,7 @@ class AIEngine:
             except Exception as parse_err:
                 logger.error(f"AI response parse error: {parse_err}")
 
-        # Dynamic, round-type aware non-repeating fallback pool
+        # Dynamic, round-type aware non-repeating fallback pool (Maximum Easy difficulty)
         role = context.get('role', 'Software Engineer')
         round_type = (context.get('round_type') or 'Technical').lower()
         
@@ -228,28 +241,30 @@ class AIEngine:
 
         if "behavioral" in round_type or "star" in round_type:
             fallbacks = [
-                ("Welcome! To start off, could you walk me through a challenging situation in a previous project where you had to manage tight deadlines or team conflicts, and how you resolved it?", "Behavioral & STAR", ["conflict", "deadlines", "STAR method", "resolution"]),
-                ("Welcome! Could you share an instance where you took initiative to solve a major workflow bottleneck or team technical debt?", "Behavioral & STAR", ["initiative", "bottleneck", "workflow", "ownership"]),
-                ("Welcome! Tell me about a time when you received constructive feedback on a design decision and how you adapted your approach?", "Behavioral & STAR", ["feedback", "adaptability", "collaboration", "growth"])
+                ("Welcome! To start off, could you tell me a little bit about yourself and what you enjoy most about working with technology?", "Behavioral & Introduction", ["introduction", "interests", "motivation"]),
+                ("Welcome! Could you share an example of how you like to collaborate with teammates when working together on a project?", "Team Collaboration", ["teamwork", "communication", "collaboration"]),
+                ("Welcome! When you get stuck on a coding problem or difficult task, what simple steps do you take to find help or solve it?", "Problem Solving", ["problem solving", "learning", "debugging"]),
+                ("Welcome! Can you tell me about a project or task you worked on recently that you felt proud of?", "Project Experience", ["project", "pride", "learning"])
             ]
         elif "hr" in round_type:
             fallbacks = [
-                (f"Welcome! To begin, tell me about your professional journey as a {role}, your key career aspirations, and why this opportunity aligns with your goals?", "HR & Cultural Fit", ["career goals", "motivation", "company fit"]),
-                (f"Welcome! What key values and team dynamics do you look for in a company when taking on a new {role} role?", "HR & Cultural Fit", ["values", "team dynamics", "culture"]),
-                (f"Welcome! Looking ahead, what key technical skills or leadership milestones do you aim to achieve over the next 2 years as a {role}?", "HR & Cultural Fit", ["milestones", "growth", "career plan"])
+                (f"Welcome! To begin, what inspired you to pursue a career in {role} and what are you most excited to learn next?", "HR & Motivation", ["career goals", "motivation", "learning"]),
+                (f"Welcome! What kind of supportive and friendly team environment helps you do your best work?", "Work Environment", ["team", "environment", "collaboration"]),
+                (f"Welcome! How do you like to organize your daily schedule to stay productive and enjoy your work?", "Work Style", ["organization", "productivity", "balance"])
             ]
         elif "system" in round_type or "design" in round_type or "architecture" in round_type:
             fallbacks = [
-                (f"Welcome! To kick things off, how would you approach designing a high-throughput, fault-tolerant distributed system for a core {role} service?", "System Design & Scalability", ["system design", "scalability", "caching", "load balancing"]),
-                (f"Welcome! How do you handle database sharding, connection pooling, and multi-region replication for high-availability {role} applications?", "System Design & Scalability", ["sharding", "replication", "high availability"]),
-                (f"Welcome! Walk me through how you implement asynchronous event streaming and message queues using Kafka or Redis in modern {role} platforms.", "System Design & Scalability", ["event streaming", "Kafka", "Redis", "decoupling"])
+                (f"Welcome! In simple terms, how would you explain the difference between the frontend and the backend in a web application?", "Web Fundamentals", ["frontend", "backend", "client", "server"]),
+                (f"Welcome! Can you explain what a database is in simple words and why we use tables to store information?", "Database Basics", ["database", "tables", "records", "data"]),
+                (f"Welcome! In web development, what is the basic difference between a GET request and a POST request?", "HTTP Basics", ["GET", "POST", "HTTP", "requests"])
             ]
         else:
             fallbacks = [
-                (f"Welcome! To start off, could you walk me through a complex {role} project where you utilized {primary_skill}, focusing on key architectural decisions and performance optimizations?", "Technical Architecture", [primary_skill, "architecture", "design", "performance"]),
-                (f"Welcome! How do you handle API versioning, error schemas, and backward compatibility when exposing REST/gRPC services in {role} applications?", "API Design", ["REST", "gRPC", "versioning", "backward compatibility"]),
-                (f"Welcome! Could you describe your strategy for query optimization, indexing, and transaction isolation levels in PostgreSQL or relational databases?", "Database Engineering", ["PostgreSQL", "indexing", "query optimization", "transactions"]),
-                (f"Welcome! How do you implement robust CI/CD pipelines, containerization with Docker, and automated unit/integration testing for {role} codebases?", "DevOps & Testing", ["Docker", "CI/CD", "automated testing", "pipeline"])
+                (f"Welcome! To get started, could you briefly introduce yourself and tell me what programming language or tool you enjoy using the most?", "Basic Introduction", ["introduction", "programming language", "interest"]),
+                (f"Welcome! In simple words, can you explain what a variable and a function are in programming?", "Programming Fundamentals", ["variable", "function", "data", "code"]),
+                (f"Welcome! Could you tell me about a simple project or feature you worked on recently and what it does?", "Project Overview", ["project", "features", "learning"]),
+                (f"Welcome! Can you explain the difference between a list (or array) and a dictionary (or key-value map) in simple terms?", "Data Structures", ["list", "array", "dictionary", "key-value"]),
+                (f"Welcome! In web development, what is the basic difference between a GET request and a POST request?", "Web Basics", ["GET", "POST", "HTTP", "client", "server"])
             ]
 
         # Select first fallback that hasn't been asked yet
@@ -262,7 +277,7 @@ class AIEngine:
         return [{
             "question_text": chosen_fb[0],
             "category": chosen_fb[1],
-            "difficulty": context.get('difficulty', 'Medium'),
+            "difficulty": "Easy",
             "expected_keywords": chosen_fb[2]
         }]
 
@@ -341,20 +356,32 @@ class AIEngine:
         
         {domain_mandate}
 
+        CRITICAL MANDATE - MAXIMUM EASY FOLLOW-UP QUESTIONS:
+        1. ALL follow-up questions MUST be VERY EASY, friendly, simple, and encouraging (Maximum Easy level).
+        2. Ask simple, gentle follow-up questions based on what the candidate just answered.
+        3. Never ask complex architectural trade-offs, scalability bottlenecks, race conditions, deep algorithmic questions, or intimidating technical trade-offs.
+        4. Focus on simple, conversational follow-ups:
+           - "Can you share a simple example of where you used that in your work or practice?"
+           - "What was the most fun or interesting part of working with that for you?"
+           - "In simple terms, what is one major benefit of using that approach?"
+           - "What other simple tools or libraries did you find helpful alongside it?"
+           - "If a beginner asked you for advice on that, what simple tip would you give them?"
+        5. Set "difficulty" strictly to "Easy" in the JSON response.
+
         STRICT ROUND DOMAIN BOUNDARY RULES:
-        1. If Interview Round is "Technical" or "Coding": Follow up ONLY on technical terms, code decisions, algorithms, databases, or API protocols. NEVER ask HR or behavioral questions.
-        2. If Interview Round is "Behavioral": Follow up ONLY on STAR method details (Situation, Task, Action, Result) regarding personal role, leadership, conflict, or team impact. NEVER ask technical or code questions.
-        3. If Interview Round is "HR": Follow up ONLY on cultural fit, work style, motivation, and career expectations. NEVER ask technical questions.
-        4. If Interview Round is "System Design": Follow up ONLY on architecture trade-offs, scalability bottlenecks, availability, and component decoupling.
+        1. If Interview Round is "Technical" or "Coding": Follow up ONLY on very easy technical fundamentals or simple project questions. NEVER ask HR or behavioral questions.
+        2. If Interview Round is "Behavioral": Follow up ONLY on simple, friendly STAR method details (what did you do, how did teammates help, what was the simple outcome).
+        3. If Interview Round is "HR": Follow up ONLY on simple cultural fit, work style, motivation, and learning goals.
+        4. If Interview Round is "System Design": Follow up ONLY on basic, high-level web concepts (frontend, backend, database basics).
 
         EVALUATION & FOLLOW-UP RULES:
-        1. Deeply Probe Candidate's Answer:
-           - If candidate mentions specific situations, teams, or actions, ask follow-up questions probing deeper into THOSE SPECIFIC DETAILS before switching topics!
+        1. Keep follow-up questions gentle, clear, encouraging, and very easy to answer.
         2. NEVER repeat any question present in Conversation History or Previously Asked Questions.
-        3. Do NOT jump to an unrelated topic abruptly until the current topic has been thoroughly explored.
-        4. NEVER ask questions specifically about "SmartHire", "SmartHire AI", "SmartHire Platform", or any hiring/recruitment platform the candidate may have listed in their resume. SmartHire is the platform conducting this interview — asking about it is circular.
+        3. Do NOT jump to an unrelated topic abruptly until the current topic has been explored.
+        4. NEVER ask questions specifically about "SmartHire", "SmartHire AI", "SmartHire Platform", or any hiring/recruitment platform the candidate may have listed in their resume.
 
         Return JSON with keys: "question_text", "category", "difficulty", "expected_keywords", "evaluation_notes".
+        Set "difficulty" to "Easy".
         Pure JSON object only. No markdown.
         """
         try:
@@ -380,60 +407,46 @@ class AIEngine:
             
             if is_behavioral:
                 fallback_options = [
-                    ("Could you walk me through the specific actions YOU personally took in that situation, and how your team or stakeholders reacted?", ["Action", "personal role", "team reaction"]),
-                    ("What was the measurable outcome or result of that decision, and what key lesson did you take away from that experience?", ["Result", "outcome", "impact", "lesson"]),
-                    ("Looking back at that scenario, if you faced the exact same situation today, what is one thing you would handle differently?", ["reflection", "growth", "adaptability"]),
-                    ("Tell me about a time when you strongly disagreed with a team lead or colleague on a project decision. How did you resolve the disagreement?", ["disagreement", "conflict resolution", "diplomacy"]),
-                    ("Can you share an instance where you took initiative to solve a major workflow bottleneck or team issue without being instructed to do so?", ["initiative", "ownership", "proactivity"]),
-                    ("Describe a time when you had to manage tight deadlines and competing priorities under pressure. How did you prioritize and keep stakeholders informed?", ["prioritization", "deadlines", "stakeholder management"]),
-                    ("Can you share an example of when you received tough or critical feedback on your work? How did you respond and adapt?", ["feedback", "receptivity", "continuous growth"]),
-                    ("Tell me about a situation where a project or feature did not go as planned. What went wrong and how did you navigate the fallout?", ["failure", "resilience", "accountability"])
+                    ("Could you walk me through the specific actions YOU personally took in that situation, and how your team or teammates reacted?", ["Action", "personal role", "team reaction"]),
+                    ("What was the positive result or outcome of that, and what was a key lesson you learned from it?", ["Result", "outcome", "impact", "lesson"]),
+                    ("Looking back at that experience, what was one thing you enjoyed most about working through it?", ["reflection", "interest", "learning"]),
+                    ("Can you share an instance where you and a teammate helped each other solve a tricky task?", ["teamwork", "helping", "support"]),
+                    ("Can you tell me about a time when you received helpful advice from a colleague or mentor?", ["advice", "mentorship", "growth"]),
+                    ("Describe a time when you had to organize your tasks to meet a friendly project deadline.", ["prioritization", "deadlines", "organization"])
                 ]
                 round_cat = "Behavioral & STAR"
             elif is_hr:
                 fallback_options = [
-                    ("How do your personal professional values align with our engineering culture and company mission?", ["values", "culture fit", "alignment"]),
-                    ("What kind of work environment and management style brings out your best productivity and creativity?", ["work style", "management", "environment"]),
-                    ("Where do you see your career progression over the next 2 to 3 years, and how does this role support that journey?", ["career growth", "goals", "aspirations"]),
-                    ("How do you maintain a healthy work-life balance and stay motivated during high-intensity project delivery cycles?", ["work-life balance", "stress management", "well-being"])
+                    ("How do your personal professional values align with our supportive engineering team and company mission?", ["values", "culture fit", "alignment"]),
+                    ("What kind of work environment and collaboration style brings out your best creativity and enthusiasm?", ["work style", "management", "environment"]),
+                    ("Where do you see your learning and skills growing over the next 1 to 2 years?", ["career growth", "learning", "aspirations"]),
+                    ("How do you like to take breaks and maintain a positive, healthy work-life balance?", ["work-life balance", "relaxation", "well-being"])
                 ]
                 round_cat = "HR & Cultural Fit"
             else:
-                # Pool of candidate fallback questions paired with keywords
+                # Pool of maximum easy candidate fallback follow-up questions
                 fallback_options = [
-                    ("What is the difference between PUT and PATCH in terms of payload representation and idempotency, and how do you handle JWT authorization headers for these endpoints?", ["PUT", "PATCH", "idempotency", "JWT", "Authorization"]),
-                    ("Could you detail how you structure your REST endpoints, handle HTTP status codes (200, 201, 400, 401, 404, 500), and enforce API rate limiting?", ["REST", "status codes", "rate limiting", "endpoints", "error handling"]),
-                    ("How do you analyze slow database queries, configure indexing strategies, and prevent deadlock conditions under heavy concurrent traffic?", ["indexing", "transactions", "ACID", "concurrency", "deadlocks"]),
-                    ("How do you securely store JWT tokens on the client side, handle token expiration, and implement refresh token rotation?", ["JWT", "Refresh Token", "Security", "Token Rotation", "Cookies"]),
-                    ("You mentioned GET and POST. What is GET specifically, and when should you use PUT vs PATCH vs DELETE instead of POST?", ["GET", "POST", "PUT", "PATCH", "DELETE", "HTTP Methods"]),
-                    ("How do you handle authentication (e.g., JWT, Bearer tokens, or OAuth) and status code handling for these API endpoints?", ["JWT", "Authentication", "Bearer", "OAuth", "API Security"]),
-                    (f"Could you walk me through the key technical bottlenecks you solved in your latest {role} project?", ["bottlenecks", "performance", "architecture"]),
-                    ("How do you approach automated testing, continuous integration, and canary deployments for microservices?", ["testing", "CI/CD", "canary", "microservices"]),
-                    ("What strategies do you use for monitoring system metrics, distributed tracing, and alerting in production?", ["monitoring", "metrics", "tracing", "alerting"]),
-                    ("How do you secure REST services against CORS, CSRF, XSS, and SQL injection vulnerabilities?", ["security", "CORS", "CSRF", "XSS", "SQL injection"]),
-                    ("Could you describe how you implement asynchronous task queues and message brokers like Celery or RabbitMQ?", ["task queue", "Celery", "RabbitMQ", "asynchronous"]),
-                    ("Could you walk through how the Virtual DOM diffing algorithm works, and how you optimize React state management using hooks and memoization?", ["Virtual DOM", "hooks", "memoization", "re-rendering", "performance"]),
-                    ("Could you walk through your containerization strategy, multi-stage builds, and deployment pipeline configuration?", ["Docker", "Kubernetes", "multi-stage build", "CI/CD", "deployment"]),
-                    (f"You mentioned key technical components in your previous answer. Could you elaborate on the specific architectural trade-offs and performance bottlenecks you encountered in that implementation?", ["architecture", "trade-offs", "bottlenecks", "performance", "scalability"])
+                    ("Thank you for sharing that! Could you give a simple example of where you used that in your project or practice?", ["example", "practice", "use case"]),
+                    ("That's great! What was the most fun or interesting part of working with that for you?", ["interest", "learning", "favorite"]),
+                    ("In simple terms, what is one main advantage or benefit of using that approach?", ["advantage", "benefit", "simplicity"]),
+                    ("If a fellow beginner asked you how to get started with that, what simple advice would you give them?", ["advice", "beginner", "getting started"]),
+                    ("What other simple tool or library did you find helpful to use alongside it?", ["tools", "libraries", "helpful"]),
+                    ("Can you tell me a little bit about what the final result or feature looked like when you finished?", ["result", "feature", "outcome"]),
+                    ("When you were working on that, did you run into any small errors or typos, and how did you easily fix them?", ["debugging", "typos", "fixing errors"]),
+                    ("How did you first learn about that concept, and what helped you understand it best?", ["learning", "practice", "understanding"])
                 ]
-                round_cat = "Technical Architecture"
+                round_cat = "Technical Fundamentals"
 
             preferred = None
             if not is_behavioral and not is_hr:
-                if ("get" in cand_ans_lower and "post" in cand_ans_lower) or ("get" in prev_q_lower and "post" in prev_q_lower):
-                    preferred = fallback_options[4] if ("put" not in cand_ans_lower and "patch" not in cand_ans_lower) else fallback_options[5]
-                elif "put" in cand_ans_lower or "patch" in cand_ans_lower or "delete" in cand_ans_lower:
+                if "example" not in prev_q_lower:
                     preferred = fallback_options[0]
-                elif "jwt" in cand_ans_lower or "auth" in cand_ans_lower or "token" in cand_ans_lower:
-                    preferred = fallback_options[3]
-                elif "api" in cand_ans_lower or "rest" in cand_ans_lower or "api" in prev_q_lower:
+                elif "fun" not in prev_q_lower and "favorite" not in prev_q_lower:
                     preferred = fallback_options[1]
-                elif "database" in cand_ans_lower or "sql" in cand_ans_lower or "postgres" in cand_ans_lower or "database" in prev_q_lower:
+                elif "advantage" not in prev_q_lower:
                     preferred = fallback_options[2]
-                elif "react" in cand_ans_lower or "frontend" in cand_ans_lower or "component" in cand_ans_lower:
-                    preferred = fallback_options[11]
-                elif "docker" in cand_ans_lower or "kubernetes" in cand_ans_lower or "aws" in cand_ans_lower or "cloud" in cand_ans_lower:
-                    preferred = fallback_options[12]
+                else:
+                    preferred = fallback_options[3]
 
             def _is_dup(q_str: str) -> bool:
                 q_low = q_str.strip().lower()
@@ -451,23 +464,23 @@ class AIEngine:
             if not selected:
                 variant_num = len(asked_history) + 1
                 if is_behavioral:
-                    q_text = f"Could you provide another specific example from your past experience where you managed a major challenge or team milestone (Scenario #{variant_num})?"
-                    keywords = ["example", "challenge", "milestone", "outcome"]
+                    q_text = f"Could you share another simple example of good teamwork from your experience (Scenario #{variant_num})?"
+                    keywords = ["example", "teamwork", "outcome"]
                 elif is_hr:
-                    q_text = f"Could you elaborate on how you envision your day-to-day impact and relationship with leadership in this {role} position?"
-                    keywords = ["impact", "leadership", "collaboration"]
+                    q_text = f"Could you tell me what kind of team activities or collaboration you enjoy most (Topic #{variant_num})?"
+                    keywords = ["team", "collaboration", "enjoyment"]
                 else:
-                    q_text = f"Could you detail your technical approach to system architecture, testing, and performance optimization for component #{variant_num} in your {role} project?"
-                    keywords = ["architecture", "testing", "performance", "optimization"]
+                    q_text = f"Can you share another simple tool or programming concept that you find helpful in your projects (Topic #{variant_num})?"
+                    keywords = ["concept", "tools", "programming"]
             else:
                 q_text, keywords = selected
 
             return {
                 "question_text": q_text,
                 "category": round_cat,
-                "difficulty": "Adaptive",
+                "difficulty": "Easy",
                 "expected_keywords": keywords,
-                "evaluation_notes": f"Contextual {round_cat} follow-up probing generated successfully."
+                "evaluation_notes": "Maximum easy follow-up question generated successfully."
             }
 
 

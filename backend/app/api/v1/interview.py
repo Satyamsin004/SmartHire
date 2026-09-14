@@ -198,7 +198,7 @@ async def start_interview_session(
         # MODE 1: Mock Practice Interview (Candidate Configured)
         role_target = body.role_target or "Software Engineer"
         round_type = body.round_type or "Technical"
-        difficulty = body.difficulty or "Medium"
+        difficulty = body.difficulty or "Easy"
         duration_minutes = body.duration_minutes or 15
         question_count = 4 if duration_minutes <= 15 else (6 if duration_minutes <= 30 else 8)
         resume_text = body.resume_text
@@ -571,12 +571,13 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                         logger.warning(f"Fast main question generation fallback: {e}")
 
                     fallback_pool = [
-                        "How do you approach designing a resilient distributed caching architecture using Redis to avoid cache stampede and thundering herd problems?",
-                        "Can you describe how you implement and maintain database migrations, connection pooling, and optimistic locking in a high-concurrency production service?",
-                        "How do you structure comprehensive automated testing, CI/CD pipelines, and zero-downtime canary deployments for backend microservices?",
-                        "What observability and distributed tracing strategies do you implement using Prometheus, OpenTelemetry, or structured logging to troubleshoot latency bottlenecks?",
-                        "How do you secure modern REST and WebSocket APIs against CORS misconfigurations, rate limit bypasses, and unauthorized cross-origin requests?",
-                        "Can you walk me through your process for profiling and optimizing CPU and memory utilization in an asynchronous Python backend?"
+                        "Can you explain what a function is in programming and why functions are useful?",
+                        "In simple terms, what is the difference between a list (or array) and a dictionary (or key-value map)?",
+                        "In web development, what is the basic difference between a GET request and a POST request?",
+                        "Can you explain what an if-else statement or a loop does in your code?",
+                        "What is a database table, and what is the purpose of a primary key in simple terms?",
+                        "Could you tell me about a simple project you built or worked on recently and what it does?",
+                        "In simple terms, what is the difference between the frontend and the backend of a website?"
                     ]
                     chosen_main = next(
                         (fb for fb in fallback_pool if fb not in previously_asked and fb != question.question_text),
@@ -587,9 +588,9 @@ async def submit_answer(body: SubmitAnswerRequest, db: AsyncSession = Depends(ge
                         session_id=session.id,
                         order_index=question.order_index + 1,
                         question_text=chosen_main,
-                        category="Technical",
-                        difficulty=str(question.difficulty or "Medium")[:90],
-                        expected_keywords=["architecture", "performance", "scalability"],
+                        category="Programming Fundamentals",
+                        difficulty="Easy",
+                        expected_keywords=["basics", "programming", "simplicity"],
                         is_followup=False
                     ), True
                 else:

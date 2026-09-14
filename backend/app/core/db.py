@@ -26,22 +26,31 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         connect_args = {}
         if settings.DATABASE_URL.startswith("sqlite"):
-            connect_args["timeout"] = 60.0
-
-        engine_kwargs = {
-            "echo": False,
-            "future": True,
-            "pool_pre_ping": True,
-            "connect_args": connect_args
-        }
-
-        if not settings.DATABASE_URL.startswith("sqlite"):
-            engine_kwargs.update({
+            from sqlalchemy.pool import AsyncAdaptedQueuePool
+            connect_args["timeout"] = 30.0
+            connect_args["check_same_thread"] = False
+            engine_kwargs = {
+                "echo": False,
+                "future": True,
+                "pool_pre_ping": True,
+                "poolclass": AsyncAdaptedQueuePool,
                 "pool_size": 20,
-                "max_overflow": 10,
+                "max_overflow": 15,
+                "pool_timeout": 30,
                 "pool_recycle": 1800,
-                "pool_timeout": 30
-            })
+                "connect_args": connect_args
+            }
+        else:
+            engine_kwargs = {
+                "echo": False,
+                "future": True,
+                "pool_pre_ping": True,
+                "pool_size": 25,
+                "max_overflow": 15,
+                "pool_recycle": 1800,
+                "pool_timeout": 30,
+                "connect_args": connect_args
+            }
 
         _engine = create_async_engine(
             settings.DATABASE_URL,
@@ -56,6 +65,10 @@ def get_engine() -> AsyncEngine:
                 cursor.execute("PRAGMA journal_mode=WAL")
                 cursor.execute("PRAGMA busy_timeout=30000")
                 cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.execute("PRAGMA cache_size=-64000")
+                cursor.execute("PRAGMA mmap_size=268435456")
+                cursor.execute("PRAGMA temp_store=MEMORY")
+                cursor.execute("PRAGMA threads=4")
                 cursor.close()
 
     return _engine
