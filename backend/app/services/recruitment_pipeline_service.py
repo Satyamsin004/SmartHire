@@ -174,7 +174,7 @@ class RecruitmentPipelineService:
             for r in res_r.scalars().all():
                 resumes_map[r.id] = r
 
-        # 4. Batch fetch strictly RECRUITER Assessment Sessions & Results
+        # 4. Batch fetch strictly RECRUITER Assessment Sessions & Results (exclude practice/mock)
         from sqlalchemy import or_
         assess_sess_map = {}
         cand_job_assess_map = {}
@@ -182,6 +182,7 @@ class RecruitmentPipelineService:
         res_assess = await db.execute(
             select(AssessmentSession)
             .where(
+                AssessmentSession.is_recruiter_configured == True,
                 or_(
                     AssessmentSession.job_application_id.in_(app_ids),
                     (AssessmentSession.candidate_id.in_(cand_ids) & AssessmentSession.job_id.in_(job_ids)),
@@ -526,11 +527,12 @@ class RecruitmentPipelineService:
             if not cand_user or not cand_user.is_active or getattr(cand_user, 'deleted_at', None) is not None:
                 continue
 
-            # Fetch linked Assessment Result (with fallback candidate_id + job_id or candidate_id)
+            # Fetch linked RECRUITER Assessment Result only (exclude practice/mock)
             res_ass = await db.execute(
                 select(AssessmentResult, AssessmentSession)
                 .join(AssessmentSession, AssessmentResult.session_id == AssessmentSession.id)
                 .where(
+                    AssessmentSession.is_recruiter_configured == True,
                     or_(
                         AssessmentSession.job_application_id == app.id,
                         (AssessmentSession.candidate_id == app.candidate_id) & (AssessmentSession.job_id == app.job_id),
