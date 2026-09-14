@@ -107,7 +107,8 @@ class ResumeService:
         candidate: Candidate,
         file_name: str,
         file_path: str,
-        raw_text: str
+        raw_text: str,
+        file_content: Optional[bytes] = None
     ) -> Dict[str, Any]:
         """Runs Gemini 12-section parsing, calculates ATS telemetry, normalizes database schema, handles versioning and updates Candidate profile."""
         
@@ -182,11 +183,32 @@ class ResumeService:
         else:
             edu_level = education[0].get("degree") if (education and isinstance(education[0], dict)) else "Bachelor's Degree"
 
+        # If file_content binary was not provided directly, attempt to recover it from disk
+        if not file_content and file_path:
+            import os
+            clean_disk_fname = os.path.basename(file_path.replace("\\", "/").strip("/"))
+            for s_dir in [
+                os.path.join(os.getcwd(), "static", "uploads", "resumes"),
+                os.path.join(os.getcwd(), "backend", "static", "uploads", "resumes"),
+                os.path.join(os.getcwd(), "static", "uploads"),
+                os.path.join(os.getcwd(), "backend", "static", "uploads"),
+            ]:
+                candidate_path = os.path.join(s_dir, clean_disk_fname)
+                if os.path.isfile(candidate_path):
+                    try:
+                        with open(candidate_path, "rb") as f:
+                            file_content = f.read()
+                        if file_content:
+                            break
+                    except Exception:
+                        pass
+
         resume = Resume(
             id=f"res-{uuid.uuid4().hex[:8]}",
             candidate_id=candidate.id,
             file_name=file_name,
             file_path=file_path,
+            file_content=file_content,
             raw_text=raw_text,
             summary=p_summary.get("summary"),
             objective=p_summary.get("objective"),

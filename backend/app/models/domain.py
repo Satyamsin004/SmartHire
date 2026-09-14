@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, Integer, Float, BigInteger, ForeignKey, JSON, Enum, Text, Index, UniqueConstraint
+    Column, String, Boolean, DateTime, Integer, Float, BigInteger, ForeignKey, JSON, Enum, Text, Index, UniqueConstraint, LargeBinary
 )
 from sqlalchemy.orm import relationship
 from app.core.db import Base
@@ -126,6 +126,7 @@ class Resume(Base):
     candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False)
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=True)
+    file_content = Column(LargeBinary, nullable=True)  # Original uploaded PDF/DOCX binary for ephemeral disk recovery
     raw_text = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     objective = Column(Text, nullable=True)

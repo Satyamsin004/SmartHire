@@ -257,7 +257,8 @@ async def upload_resume(
         candidate=candidate,
         file_name=file.filename or f"resume{ext}",
         file_path=web_url,
-        raw_text=raw_text
+        raw_text=raw_text,
+        file_content=content
     )
 
     # Activity Log & Notification
@@ -811,6 +812,32 @@ async def view_uploaded_resume(
     if cand_obj and cand_obj.user_id:
         res_u = await db.execute(select(User).where(User.id == cand_obj.user_id))
         user_obj = res_u.scalars().first()
+
+    # Exact original uploaded file binary from PostgreSQL/SQLite recovery
+    if r_obj and getattr(r_obj, "file_content", None) is not None and len(r_obj.file_content) > 0:
+        content_bytes = bytes(r_obj.file_content)
+        orig_filename = r_obj.file_name or clean_fname
+        is_pdf_file = orig_filename.lower().endswith(".pdf") or clean_fname.lower().endswith(".pdf")
+        media_type = "application/pdf" if is_pdf_file else (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if orig_filename.lower().endswith(".docx") else "application/octet-stream"
+        )
+        try:
+            os.makedirs(RESUME_DIR, exist_ok=True)
+            cached_path = os.path.join(RESUME_DIR, clean_fname)
+            if not os.path.isfile(cached_path):
+                with open(cached_path, "wb") as f:
+                    f.write(content_bytes)
+        except Exception:
+            pass
+
+        return Response(
+            content=content_bytes,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{orig_filename}"',
+                "Cache-Control": "public, max-age=86400"
+            }
+        )
 
     cand_name = user_obj.full_name if user_obj else "Candidate Submission"
     cand_email = user_obj.email if user_obj else ""

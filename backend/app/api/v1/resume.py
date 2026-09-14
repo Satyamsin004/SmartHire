@@ -59,7 +59,8 @@ async def upload_and_parse_resume(
         candidate=candidate,
         file_name=filename,
         file_path=web_url,
-        raw_text=raw_text
+        raw_text=raw_text,
+        file_content=content
     )
 
     return full_parsed_resume

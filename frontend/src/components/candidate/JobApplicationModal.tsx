@@ -64,7 +64,7 @@ export const JobApplicationModal: React.FC<JobApplicationModalProps> = ({ job, i
         const res = await api.post('/uploads/resume', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        setExistingResume(res.data.resume);
+        setExistingResume(res.data?.resume || res.data);
       } catch (err: any) {
         alert(err.response?.data?.detail || 'Resume upload failed. Please ensure file is PDF format.');
       } finally {

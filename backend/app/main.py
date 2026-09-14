@@ -159,7 +159,9 @@ async def startup():
             "ALTER TABLE interview_questions ALTER COLUMN category TYPE VARCHAR(255);",
             "ALTER TABLE interview_questions ALTER COLUMN difficulty TYPE VARCHAR(100);",
             "ALTER TABLE speech_analysis ALTER COLUMN tone TYPE VARCHAR(255);",
-            "ALTER TABLE emotion_analysis ALTER COLUMN dominant_emotion TYPE VARCHAR(100);"
+            "ALTER TABLE emotion_analysis ALTER COLUMN dominant_emotion TYPE VARCHAR(100);",
+            "ALTER TABLE resumes ADD COLUMN IF NOT EXISTS file_content BYTEA;",
+            "ALTER TABLE resumes ADD COLUMN file_content BLOB;"
         ]:
             try:
                 async with engine.begin() as conn:
@@ -314,6 +316,32 @@ class CachedStaticFiles(StaticFiles):
                     if cand_obj and cand_obj.user_id:
                         res_u = await db.execute(select(User).where(User.id == cand_obj.user_id))
                         user_obj = res_u.scalars().first()
+
+                    # Exact original uploaded file binary from PostgreSQL/SQLite recovery
+                    if r_obj and getattr(r_obj, "file_content", None) is not None and len(r_obj.file_content) > 0:
+                        content_bytes = bytes(r_obj.file_content)
+                        orig_filename = r_obj.file_name or fname
+                        is_pdf_file = orig_filename.lower().endswith(".pdf") or fname.lower().endswith(".pdf")
+                        media_type = "application/pdf" if is_pdf_file else (
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if orig_filename.lower().endswith(".docx") else "application/octet-stream"
+                        )
+                        try:
+                            cached_path = os.path.join(uploads_dir, "resumes", fname)
+                            os.makedirs(os.path.dirname(cached_path), exist_ok=True)
+                            if not os.path.isfile(cached_path):
+                                with open(cached_path, "wb") as f:
+                                    f.write(content_bytes)
+                        except Exception:
+                            pass
+
+                        return Response(
+                            content=content_bytes,
+                            media_type=media_type,
+                            headers={
+                                "Content-Disposition": f'inline; filename="{orig_filename}"',
+                                "Cache-Control": "public, max-age=86400"
+                            }
+                        )
 
                     cand_name = user_obj.full_name if user_obj else "Candidate Submission"
                     cand_email = user_obj.email if user_obj else ""
