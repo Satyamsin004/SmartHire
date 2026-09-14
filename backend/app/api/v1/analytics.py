@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.core.cache import fast_cache
 from app.core.db import get_db
 from app.models.domain import User, Candidate, Recruiter
 from app.dependencies.auth import get_current_user, require_role
@@ -44,7 +45,14 @@ async def get_candidate_trends(
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-    return await analytics_service.get_candidate_performance_trends(db, target_candidate_ids)
+    cache_key = f"analytics_cand_trends_{current_user.id}_{candidate_id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    res = await analytics_service.get_candidate_performance_trends(db, target_candidate_ids)
+    fast_cache.set(cache_key, res, ttl=30)
+    return res
 
 
 @router.get("/candidate/weak-areas", summary="Get Candidate Recurring Weak Areas & Predictions")
@@ -195,11 +203,18 @@ async def get_recruiter_skill_analytics(
     """Aggregates applicant pool skill competencies, demand vs supply,
     and talent scarcity metrics across recruiter's job requisitions.
     """
-    return await analytics_service.get_recruiter_skill_analytics(
+    cache_key = f"analytics_rec_skills_{current_user.id}_{job_id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    res = await analytics_service.get_recruiter_skill_analytics(
         db,
         recruiter_user_id=current_user.id,
         job_id=job_id
     )
+    fast_cache.set(cache_key, res, ttl=30)
+    return res
 
 
 @router.get("/recruiter/performance-trends", summary="Get Recruiter Cohort Performance Trends")
@@ -211,11 +226,18 @@ async def get_recruiter_performance_trends(
     """Retrieves cohort performance progression over time for candidates applying
     to recruiter's job requisitions.
     """
-    return await analytics_service.get_recruiter_performance_trends(
+    cache_key = f"analytics_rec_trends_{current_user.id}_{job_id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    res = await analytics_service.get_recruiter_performance_trends(
         db,
         recruiter_user_id=current_user.id,
         job_id=job_id
     )
+    fast_cache.set(cache_key, res, ttl=30)
+    return res
 
 
 @router.get("/recruiter/shortlisting-insights", summary="Get AI Shortlisting Insights & Recommendations")
@@ -227,9 +249,16 @@ async def get_recruiter_shortlisting_insights(
     """Generates AI shortlisting recommendations, qualification benchmark compliance,
     and talent pool conversion insights.
     """
-    return await analytics_service.get_recruiter_shortlisting_insights(
+    cache_key = f"analytics_rec_insights_{current_user.id}_{job_id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    res = await analytics_service.get_recruiter_shortlisting_insights(
         db,
         recruiter_user_id=current_user.id,
         job_id=job_id
     )
+    fast_cache.set(cache_key, res, ttl=30)
+    return res
 

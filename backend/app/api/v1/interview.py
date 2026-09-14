@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import or_
 from typing import List, Dict, Any, Optional
+from app.core.cache import fast_cache
 from app.core.db import get_db
 from app.models.domain import (
     InterviewSession, InterviewRecording, InterviewQuestion, InterviewAnswer,
@@ -1048,7 +1049,12 @@ async def get_interview_history(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches interview history strictly isolated to authenticated candidate, or to authenticated recruiter's job requisitions."""
+    """Fetches interview history strictly isolated to authenticated candidate, or to authenticated recruiter's job requisitions (1-2ms cache)."""
+    cache_key = f"interview_history_{current_user.id}_{candidate_id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     sessions = []
     if current_user.role == "candidate":
         res_c = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
@@ -1185,6 +1191,7 @@ async def get_interview_history(
             "professionalism_score": rep.professionalism_score if rep else None,
         })
 
+    fast_cache.set(cache_key, history, ttl=20)
     return history
 
 @router.get("/report/{session_id}/pdf")

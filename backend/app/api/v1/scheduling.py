@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import uuid
 import asyncio
 
+from app.core.cache import fast_cache
 from app.core.db import get_db
 from app.models.domain import ScheduledInterview, Notification, User, Candidate, Recruiter, JobDescription, InterviewTemplate, JobApplication, JobPosting, Resume, AssessmentSession, AssessmentResult
 from app.api.v1.websocket import ws_manager
@@ -409,7 +410,12 @@ async def get_candidate_schedule(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches real scheduled interviews for authenticated candidate from PostgreSQL."""
+    """Fetches real scheduled interviews for authenticated candidate from PostgreSQL (1-2ms cache)."""
+    cache_key = f"cand_schedules_{user.id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
     cands = res_c.scalars().all()
     if not cands:
@@ -469,6 +475,7 @@ async def get_candidate_schedule(
             "can_start": can_start,
             "seconds_until_start": max(0, seconds_until_start)
         })
+    fast_cache.set(cache_key, out, ttl=20)
     return out
 
 @router.get("/candidate-assessments")
@@ -476,7 +483,12 @@ async def get_candidate_assessments(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches real scheduled / active online assessments for authenticated candidate from PostgreSQL."""
+    """Fetches real scheduled / active online assessments for authenticated candidate from PostgreSQL (1-2ms cache)."""
+    cache_key = f"cand_assessments_{user.id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res_c = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
     cands = res_c.scalars().all()
     if not cands:
@@ -529,6 +541,7 @@ async def get_candidate_assessments(
             "job_id": s.job_id,
             "job_application_id": s.job_application_id
         })
+    fast_cache.set(cache_key, out, ttl=20)
     return out
 
 @router.get("/detail/{schedule_id}")

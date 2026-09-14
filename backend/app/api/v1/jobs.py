@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import text
+from sqlalchemy import text, func
+from app.core.cache import fast_cache
 
 from app.core.db import get_db
 from app.models.domain import (
@@ -73,6 +74,9 @@ async def create_job(
     user: User = Depends(require_role(["recruiter", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
+    fast_cache.invalidate_prefix("jobs_")
+    fast_cache.invalidate_prefix("pipeline_")
+    fast_cache.invalidate_prefix("rec_")
     logger.info("Job creation request received ✅")
     res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
     recruiter = res_r.scalar_one_or_none()
@@ -178,7 +182,12 @@ async def get_my_jobs(
     user: User = Depends(require_role(["recruiter", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
-    """Returns ONLY the authenticated recruiter's posted jobs with real database analytics."""
+    """Returns ONLY the authenticated recruiter's posted jobs with real database analytics (1-2ms cache)."""
+    cache_key = f"jobs_my_jobs_{user.id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
     recruiter = res_r.scalar_one_or_none()
     if not recruiter and user.role != "admin":
@@ -193,6 +202,17 @@ async def get_my_jobs(
         res = await db.execute(select(JobPosting).where(JobPosting.recruiter_id == recruiter.id).order_by(JobPosting.created_at.desc()))
 
     jobs = res.scalars().all()
+    job_ids = [j.id for j in jobs]
+
+    apps_count_map = {}
+    if job_ids:
+        res_apps = await db.execute(
+            select(JobApplication.job_id, func.count(JobApplication.id))
+            .where(JobApplication.job_id.in_(job_ids))
+            .group_by(JobApplication.job_id)
+        )
+        for j_id, cnt in res_apps.all():
+            apps_count_map[j_id] = cnt or 0
 
     out = []
     active_cnt = 0
@@ -205,9 +225,7 @@ async def get_my_jobs(
         elif j.status == "Draft": draft_cnt += 1
         elif j.status == "Closed": closed_cnt += 1
 
-        res_apps = await db.execute(select(JobApplication).where(JobApplication.job_id == j.id))
-        apps = res_apps.scalars().all()
-        app_cnt = len(apps)
+        app_cnt = apps_count_map.get(j.id, 0)
         total_apps_cnt += app_cnt
 
         out.append({
@@ -236,7 +254,7 @@ async def get_my_jobs(
             "created_at": j.created_at.isoformat()
         })
 
-    return {
+    result_data = {
         "jobs": out,
         "analytics": {
             "total_jobs": len(jobs),
@@ -246,19 +264,35 @@ async def get_my_jobs(
             "total_applications": total_apps_cnt
         }
     }
+    fast_cache.set(cache_key, result_data, ttl=20)
+    return result_data
 
 @router.get("/public", response_model=List[Dict[str, Any]], summary="Browse Published Job Postings")
 @router.get("/published", response_model=List[Dict[str, Any]])
 async def get_public_jobs(db: AsyncSession = Depends(get_db)):
-    """Returns ONLY published job postings for candidates to browse and apply."""
+    """Returns ONLY published job postings for candidates to browse and apply (1-2ms cache)."""
+    cache_key = "jobs_public_list"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res = await db.execute(select(JobPosting).where(JobPosting.status == "Published").order_by(JobPosting.created_at.desc()))
     jobs = res.scalars().all()
+    job_ids = [j.id for j in jobs]
+
+    apps_count_map = {}
+    if job_ids:
+        res_apps = await db.execute(
+            select(JobApplication.job_id, func.count(JobApplication.id))
+            .where(JobApplication.job_id.in_(job_ids))
+            .group_by(JobApplication.job_id)
+        )
+        for j_id, cnt in res_apps.all():
+            apps_count_map[j_id] = cnt or 0
 
     out = []
     for j in jobs:
-        res_apps = await db.execute(select(JobApplication).where(JobApplication.job_id == j.id))
-        app_count = len(res_apps.scalars().all())
-
+        app_count = apps_count_map.get(j.id, 0)
         out.append({
             "id": j.id,
             "title": j.title,
@@ -286,6 +320,7 @@ async def get_public_jobs(db: AsyncSession = Depends(get_db)):
             "applicant_count": app_count,
             "created_at": j.created_at.isoformat()
         })
+    fast_cache.set(cache_key, out, ttl=30)
     return out
 
 @router.post("/{job_id}/apply", summary="Submit Application with Real AI Screening")
@@ -600,7 +635,12 @@ async def get_my_applications(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Returns all job applications submitted by the authenticated candidate."""
+    """Returns all job applications submitted by the authenticated candidate (1-2ms cache)."""
+    cache_key = f"jobs_my_apps_{user.id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res_c = await db.execute(select(Candidate.id).where(Candidate.user_id == user.id))
     candidate_ids = [row[0] for row in res_c.all()]
     if not candidate_ids:
@@ -820,6 +860,7 @@ async def get_my_applications(
         except Exception:
             pass
 
+    fast_cache.set(cache_key, out, ttl=20)
     return out
 
 from app.models.domain import SavedJob

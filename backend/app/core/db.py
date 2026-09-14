@@ -41,12 +41,15 @@ def get_engine() -> AsyncEngine:
                 "connect_args": connect_args
             }
         else:
+            connect_args["server_settings"] = {"jit": "off"}
+            connect_args["statement_cache_size"] = 100
+            connect_args["command_timeout"] = 30.0
             engine_kwargs = {
                 "echo": False,
                 "future": True,
                 "pool_pre_ping": True,
-                "pool_size": 25,
-                "max_overflow": 15,
+                "pool_size": 35,
+                "max_overflow": 20,
                 "pool_recycle": 1800,
                 "pool_timeout": 30,
                 "connect_args": connect_args

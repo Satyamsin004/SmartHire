@@ -3,10 +3,12 @@ import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, case
+from sqlalchemy.orm import defer
+from app.core.cache import fast_cache
 
 from app.models.domain import (
-    JobPosting, JobApplication, Candidate, Recruiter, User, ScheduledInterview
+    JobPosting, JobApplication, Candidate, Recruiter, User, ScheduledInterview, Resume
 )
 
 logger = logging.getLogger("smarthire.recruitment_pipeline")
@@ -43,7 +45,13 @@ class RecruitmentPipelineService:
     async def get_posted_jobs(db: AsyncSession, recruiter_user_id: str, is_admin: bool = False) -> List[Dict[str, Any]]:
         """Returns ONLY jobs created by the logged-in recruiter (or all for admin),
         with real-time aggregated counts from PostgreSQL for Applications, Shortlisted Candidates, and Scheduled Interviews.
+        Fast in-memory cache enabled.
         """
+        cache_key = f"pipeline_posted_jobs_{recruiter_user_id}_{is_admin}"
+        cached = fast_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         logger.info("[RecruitmentPipelineService] Fetching Posted Jobs for Recruiter User ID: %s (is_admin=%s)", recruiter_user_id, is_admin)
 
         if is_admin:
@@ -67,29 +75,41 @@ class RecruitmentPipelineService:
         jobs = res_jobs.scalars().all()
         logger.info("Job Retrieved ✅ Recruiter Ownership Verified ✅ Recruiter Posted Jobs refreshed ✅ Count: %d jobs", len(jobs))
 
+        job_ids = [j.id for j in jobs]
+        apps_count_map = {}
+        shortlisted_count_map = {}
+        interview_count_map = {}
+
+        if job_ids:
+            res_apps_agg = await db.execute(
+                select(
+                    JobApplication.job_id,
+                    func.count(JobApplication.id).label("total_apps"),
+                    func.count(case(((JobApplication.ats_score >= RecruitmentPipelineService.MINIMUM_ATS_SCORE) & (JobApplication.status.not_in(RecruitmentPipelineService.REJECTED_STATUSES)), 1))).label("shortlisted_apps")
+                )
+                .where(JobApplication.job_id.in_(job_ids))
+                .group_by(JobApplication.job_id)
+            )
+            for row in res_apps_agg.all():
+                apps_count_map[row.job_id] = row.total_apps or 0
+                shortlisted_count_map[row.job_id] = row.shortlisted_apps or 0
+
+            res_int_agg = await db.execute(
+                select(
+                    ScheduledInterview.job_id,
+                    func.count(ScheduledInterview.id).label("total_ints")
+                )
+                .where(ScheduledInterview.job_id.in_(job_ids))
+                .group_by(ScheduledInterview.job_id)
+            )
+            for row in res_int_agg.all():
+                interview_count_map[row.job_id] = row.total_ints or 0
+
         out = []
         for j in jobs:
-            # 1. Total Applications Count
-            res_app_cnt = await db.execute(
-                select(func.count(JobApplication.id)).where(JobApplication.job_id == j.id)
-            )
-            apps_count = res_app_cnt.scalar() or 0
-
-            # 2. Shortlisted Candidates Count (ATS >= 80% AND Not Rejected Status)
-            res_short_cnt = await db.execute(
-                select(func.count(JobApplication.id)).where(
-                    JobApplication.job_id == j.id,
-                    JobApplication.ats_score >= RecruitmentPipelineService.MINIMUM_ATS_SCORE,
-                    JobApplication.status.not_in(RecruitmentPipelineService.REJECTED_STATUSES)
-                )
-            )
-            shortlisted_count = res_short_cnt.scalar() or 0
-
-            # 3. Scheduled Interviews Count
-            res_int_cnt = await db.execute(
-                select(func.count(ScheduledInterview.id)).where(ScheduledInterview.job_id == j.id)
-            )
-            interview_count = res_int_cnt.scalar() or 0
+            apps_count = apps_count_map.get(j.id, 0)
+            shortlisted_count = shortlisted_count_map.get(j.id, 0)
+            interview_count = interview_count_map.get(j.id, 0)
 
             out.append({
                 "id": j.id,
@@ -120,6 +140,11 @@ class RecruitmentPipelineService:
     @staticmethod
     async def get_applications(db: AsyncSession, recruiter_user_id: str, job_id: Optional[str] = None, is_admin: bool = False) -> List[Dict[str, Any]]:
         """Returns applications for jobs owned by recruiter (or filtered by specific job_id), with strictly linked evaluation metrics."""
+        cache_key = f"pipeline_apps_{recruiter_user_id}_{job_id}_{is_admin}"
+        cached = fast_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         logger.info("[RecruitmentPipelineService] Fetching Applications for recruiter=%s, job_id=%s", recruiter_user_id, job_id)
         from app.models.domain import InterviewSession, ScoringReport, AssessmentSession, AssessmentResult
 
@@ -167,10 +192,10 @@ class RecruitmentPipelineService:
             for j in res_j.scalars().all():
                 jobs_map[j.id] = j
 
-        # 3. Batch fetch Resumes
+        # 3. Batch fetch Resumes (defer raw binary file_content)
         resumes_map = {}
         if resume_ids:
-            res_r = await db.execute(select(Resume).where(Resume.id.in_(resume_ids)))
+            res_r = await db.execute(select(Resume).options(defer(Resume.file_content)).where(Resume.id.in_(resume_ids)))
             for r in res_r.scalars().all():
                 resumes_map[r.id] = r
 
@@ -428,6 +453,7 @@ class RecruitmentPipelineService:
             })
 
         logger.info("Applications Loaded ✅ Count: %d", len(out))
+        fast_cache.set(cache_key, out, ttl=20)
         return out
 
     @staticmethod
@@ -443,6 +469,7 @@ class RecruitmentPipelineService:
         ]
 
         logger.info("ATS Loaded ✅ Shortlisted Candidates Loaded ✅ Count: %d", len(shortlisted))
+        fast_cache.set(f"pipeline_shortlisted_{recruiter_user_id}_{job_id}_{is_admin}", shortlisted, ttl=20)
         return shortlisted
 
     @staticmethod

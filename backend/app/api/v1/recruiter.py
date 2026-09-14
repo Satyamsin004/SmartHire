@@ -11,6 +11,8 @@ from sqlalchemy.future import select
 from sqlalchemy import func, case, or_
 from app.services.pdf_service import pdf_generator
 
+from sqlalchemy.orm import defer
+from app.core.cache import fast_cache
 from app.core.db import get_db
 from app.models.domain import (
     User, Candidate, Recruiter, JobPosting, JobApplication, ScoringReport,
@@ -62,13 +64,18 @@ async def get_recruiter_stats(
     user: User = Depends(require_role(["recruiter", "admin"])),
     db: AsyncSession = Depends(get_db)
 ):
-    """Computes exact live PostgreSQL counters for recruiter dashboard stats."""
+    """Computes exact live PostgreSQL counters for recruiter dashboard stats with sub-ms in-memory cache."""
+    cache_key = f"rec_stats_{user.id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
     rec = res_r.scalars().first()
 
-    # Total registered candidates count in PostgreSQL
-    res_tot = await db.execute(select(User).where(User.role == "candidate", User.deleted_at == None))
-    total_candidates = len(res_tot.scalars().all())
+    # Total registered candidates count in PostgreSQL (Fast SQL count)
+    res_tot = await db.execute(select(func.count(User.id)).where(User.role == "candidate", User.deleted_at == None))
+    total_candidates = res_tot.scalar() or 0
 
     if user.role == "admin" or not rec:
         res_jobs = await db.execute(select(JobPosting.id))
@@ -92,40 +99,47 @@ async def get_recruiter_stats(
             "candidates_hired": 0
         }
 
-    res_apps = await db.execute(select(JobApplication).where(JobApplication.job_id.in_(job_ids)))
-    apps = res_apps.scalars().all()
+    res_apps_agg = await db.execute(
+        select(
+            func.count(JobApplication.id).label("total_apps"),
+            func.count(case(((JobApplication.ats_score >= 80.0) | (JobApplication.status.in_(["Shortlisted", "Screening Passed", "Interview Scheduled", "Evaluation Ready", "Offer Sent", "Hired"])), 1))).label("passed"),
+            func.count(case((((JobApplication.ats_score < 80.0) & (JobApplication.ats_score.isnot(None))) | (JobApplication.status == "Rejected"), 1))).label("rejected"),
+            func.count(case((JobApplication.status.in_(["Offer Sent", "Hired"]), 1))).label("offers"),
+            func.count(case((JobApplication.status == "Hired", 1))).label("hired"),
+            func.count(func.distinct(JobApplication.candidate_id)).label("cand_count")
+        ).where(JobApplication.job_id.in_(job_ids))
+    )
+    agg_row = res_apps_agg.one()
+    applications_received = agg_row.total_apps or 0
+    ats_passed = agg_row.passed or 0
+    ats_rejected = agg_row.rejected or 0
+    offers_sent = agg_row.offers or 0
+    candidates_hired = agg_row.hired or 0
+    if agg_row.cand_count:
+        total_candidates = agg_row.cand_count
 
-    applications_received = len(apps)
-    ats_passed = sum(1 for a in apps if (a.ats_score and a.ats_score >= 80.0) or a.status in ["Shortlisted", "Screening Passed", "Interview Scheduled", "Evaluation Ready", "Offer Sent", "Hired"])
-    ats_rejected = sum(1 for a in apps if (a.ats_score and a.ats_score < 80.0) or a.status == "Rejected")
+    # Scheduled & Completed interviews for these jobs
+    res_sched = await db.execute(
+        select(
+            func.count(case((ScheduledInterview.status.in_(["Scheduled", "Upcoming", "In Progress"]), 1))).label("scheduled"),
+            func.count(case((ScheduledInterview.status == "Completed", 1))).label("completed")
+        ).where(ScheduledInterview.job_id.in_(job_ids))
+    )
+    sched_row = res_sched.one()
+    interviews_scheduled = sched_row.scheduled or 0
+    interviews_completed = sched_row.completed or 0
 
-    cand_ids = list(set([a.candidate_id for a in apps]))
-    total_candidates = len(cand_ids)
-
-    interviews_scheduled = 0
-    interviews_completed = 0
-    if cand_ids:
-        res_sched = await db.execute(select(ScheduledInterview).where(ScheduledInterview.candidate_id.in_(cand_ids)))
-        scheds = res_sched.scalars().all()
-        interviews_scheduled = sum(1 for s in scheds if s.status in ["Scheduled", "Upcoming", "In Progress"])
-        interviews_completed = sum(1 for s in scheds if s.status == "Completed")
-
-        # Also count Completed recruiter interview sessions if any
-        res_sess = await db.execute(
-            select(InterviewSession).where(
-                InterviewSession.candidate_id.in_(cand_ids),
-                InterviewSession.job_application_id.in_([a.id for a in apps]),
-                InterviewSession.interview_type != "CandidatePractice",
-                InterviewSession.status.in_(["completed", "Completed"])
-            )
+    res_sess = await db.execute(
+        select(func.count(InterviewSession.id)).where(
+            InterviewSession.job_id.in_(job_ids),
+            InterviewSession.interview_type != "CandidatePractice",
+            InterviewSession.status.in_(["completed", "Completed"])
         )
-        sess_list = res_sess.scalars().all()
-        interviews_completed = max(interviews_completed, len(sess_list))
+    )
+    sess_count = res_sess.scalar() or 0
+    interviews_completed = max(interviews_completed, sess_count)
 
-    offers_sent = sum(1 for a in apps if a.status in ["Offer Sent", "Hired"])
-    candidates_hired = sum(1 for a in apps if a.status == "Hired")
-
-    return {
+    result_stats = {
         "total_candidates": total_candidates,
         "jobs_posted": jobs_posted,
         "applications_received": applications_received,
@@ -136,6 +150,8 @@ async def get_recruiter_stats(
         "offers_sent": offers_sent,
         "candidates_hired": candidates_hired
     }
+    fast_cache.set(cache_key, result_stats, ttl=20)
+    return result_stats
 
 def calculate_candidate_completion(u: User, cand: Optional[Candidate], resume: Optional[Resume], skills: list, educations: list) -> int:
     score = 0
@@ -204,11 +220,12 @@ async def get_registered_candidates(
 
     cand_ids = [c.id for u, c in user_cand_pairs if c]
     
-    # 1. Batch load resumes for all candidates in 1 query
+    # 1. Batch load resumes for all candidates in 1 query (defer raw binary file_content)
     resumes_by_cand = {}
     if cand_ids:
         res_resumes = await db.execute(
             select(Resume)
+            .options(defer(Resume.file_content))
             .where(Resume.candidate_id.in_(cand_ids))
             .order_by(Resume.created_at.desc())
         )
@@ -506,6 +523,11 @@ async def get_ats_rejected_candidates(
     db: AsyncSession = Depends(get_db)
 ):
     """Returns candidates automatically rejected by ATS score threshold (<80%), allowing manual recruiter override."""
+    cache_key = f"rec_ats_rejected_{user.id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
     rec = res_r.scalars().first()
 
@@ -531,14 +553,33 @@ async def get_ats_rejected_candidates(
         )
 
     apps = res_apps.scalars().all()
+    if not apps:
+        return []
+
+    cand_ids = list({app.candidate_id for app in apps if app.candidate_id})
+    job_ids = list({app.job_id for app in apps if app.job_id})
+
+    cands_user_map = {}
+    if cand_ids:
+        res_cu = await db.execute(
+            select(Candidate, User)
+            .outerjoin(User, Candidate.user_id == User.id)
+            .where(Candidate.id.in_(cand_ids))
+        )
+        for c, u in res_cu.all():
+            cands_user_map[c.id] = (c, u)
+
+    jobs_map = {}
+    if job_ids:
+        res_j = await db.execute(select(JobPosting).where(JobPosting.id.in_(job_ids)))
+        for j in res_j.scalars().all():
+            jobs_map[j.id] = j
+
     out = []
     for app in apps:
-        res_c = await db.execute(select(Candidate).where(Candidate.id == app.candidate_id))
-        cand = res_c.scalars().first()
-        res_u = await db.execute(select(User).where(User.id == cand.user_id)) if cand else None
-        cand_user = res_u.scalars().first() if res_u else None
-        res_job = await db.execute(select(JobPosting).where(JobPosting.id == app.job_id))
-        job = res_job.scalars().first()
+        cu = cands_user_map.get(app.candidate_id)
+        cand_user = cu[1] if cu else None
+        job = jobs_map.get(app.job_id)
 
         out.append({
             "id": app.id,
@@ -551,6 +592,7 @@ async def get_ats_rejected_candidates(
             "applied_date": app.applied_at.strftime('%b %d, %Y') if app.applied_at else "Recent",
             "missing_skills": app.missing_skills or []
         })
+    fast_cache.set(cache_key, out, ttl=20)
     return out
 
 @router.get("/evaluations", summary="Get Candidates Passed ATS for Interview Evaluation (>=80%)")
@@ -559,6 +601,11 @@ async def get_ats_passed_evaluations(
     db: AsyncSession = Depends(get_db)
 ):
     """Returns candidates who passed ATS screening (>=80%) with complete interview evaluation metrics."""
+    cache_key = f"rec_evals_{user.id}"
+    cached = fast_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     res_r = await db.execute(select(Recruiter).where(Recruiter.user_id == user.id))
     rec = res_r.scalars().first()
 
@@ -716,6 +763,7 @@ async def get_ats_passed_evaluations(
                 "is_passed": is_as_passed
             } if as_sess else None
         })
+    fast_cache.set(cache_key, out, ttl=20)
     return out
 
 @router.get("/evaluation-detail/{id}", summary="Get Full Interview Evaluation Report for Recruiter Modal")

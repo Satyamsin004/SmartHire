@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import (
     Column, String, Boolean, DateTime, Integer, Float, BigInteger, ForeignKey, JSON, Enum, Text, Index, UniqueConstraint, LargeBinary
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 from app.core.db import Base
 import enum
 
@@ -123,10 +123,10 @@ class Resume(Base):
     __tablename__ = "resumes"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), index=True, nullable=False)
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=True)
-    file_content = Column(LargeBinary, nullable=True)  # Original uploaded PDF/DOCX binary for ephemeral disk recovery
+    file_content = deferred(Column(LargeBinary, nullable=True))  # Original uploaded PDF/DOCX binary for ephemeral disk recovery (deferred)
     raw_text = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     objective = Column(Text, nullable=True)
@@ -310,8 +310,8 @@ class SavedJob(Base):
     __tablename__ = "saved_jobs"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False)
-    job_id = Column(String(36), ForeignKey("job_postings.id"), nullable=False)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), index=True, nullable=False)
+    job_id = Column(String(36), ForeignKey("job_postings.id"), index=True, nullable=False)
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -891,14 +891,14 @@ class OfferLetter(Base):
     __tablename__ = "offer_letters"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    job_application_id = Column(String(36), ForeignKey("job_applications.id"), nullable=False)
-    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False)
-    recruiter_id = Column(String(36), ForeignKey("recruiters.id"), nullable=False)
+    job_application_id = Column(String(36), ForeignKey("job_applications.id"), index=True, nullable=False)
+    candidate_id = Column(String(36), ForeignKey("candidates.id"), index=True, nullable=False)
+    recruiter_id = Column(String(36), ForeignKey("recruiters.id"), index=True, nullable=False)
     job_title = Column(String(255), nullable=False)
     salary_offered = Column(String(100), nullable=False)
     start_date = Column(DateTime, nullable=False)
     offer_letter_text = Column(Text, nullable=False)
-    status = Column(String(50), default="Pending") # Pending, Accepted, Rejected
+    status = Column(String(50), default="Pending", index=True) # Pending, Accepted, Rejected
     is_test_data = Column(Boolean, default=False, index=True)
     environment = Column(String(50), default="PRODUCTION", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)

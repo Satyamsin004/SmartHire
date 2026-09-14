@@ -79,7 +79,7 @@ async def startup():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             
-        for col_def in [
+        col_defs = [
             "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS recording_status VARCHAR(50) DEFAULT 'PENDING';",
             "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS integrity_status VARCHAR(50) DEFAULT 'CLEAN';",
             "ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS integrity_score FLOAT DEFAULT 100.0;",
@@ -142,6 +142,9 @@ async def startup():
             "CREATE INDEX IF NOT EXISTS ix_scheduled_interviews_job_app_id ON scheduled_interviews (job_application_id);",
             "CREATE INDEX IF NOT EXISTS ix_offer_letters_candidate_id ON offer_letters (candidate_id);",
             "CREATE INDEX IF NOT EXISTS ix_offer_letters_job_app_id ON offer_letters (job_application_id);",
+            "CREATE INDEX IF NOT EXISTS ix_offer_letters_cand_status ON offer_letters (candidate_id, status);",
+            "CREATE INDEX IF NOT EXISTS ix_saved_jobs_candidate_id ON saved_jobs (candidate_id);",
+            "CREATE INDEX IF NOT EXISTS ix_saved_jobs_job_id ON saved_jobs (job_id);",
             "CREATE INDEX IF NOT EXISTS ix_resumes_candidate_id ON resumes (candidate_id);",
             "CREATE INDEX IF NOT EXISTS ix_resume_skills_resume_id ON resume_skills (resume_id);",
             "CREATE INDEX IF NOT EXISTS ix_resume_educations_resume_id ON resume_educations (resume_id);",
@@ -154,6 +157,10 @@ async def startup():
             "CREATE INDEX IF NOT EXISTS ix_assessment_sessions_job_id ON assessment_sessions (job_id);",
             "CREATE INDEX IF NOT EXISTS ix_assessment_results_session_id ON assessment_results (session_id);",
             "CREATE INDEX IF NOT EXISTS ix_job_applications_cand_job ON job_applications (candidate_id, job_id);",
+            "CREATE INDEX IF NOT EXISTS ix_job_applications_cand_status ON job_applications (candidate_id, status);",
+            "CREATE INDEX IF NOT EXISTS ix_job_applications_job_status ON job_applications (job_id, status);",
+            "CREATE INDEX IF NOT EXISTS ix_job_applications_job_ats ON job_applications (job_id, ats_score);",
+            "CREATE INDEX IF NOT EXISTS ix_users_role_deleted ON users (role, deleted_at);",
             "CREATE INDEX IF NOT EXISTS ix_interview_transcript_segments_session_id ON interview_transcript_segments (session_id);",
             "CREATE INDEX IF NOT EXISTS ix_interview_visual_observations_session_id ON interview_visual_observations (session_id);",
             "CREATE INDEX IF NOT EXISTS ix_interview_integrity_events_session_id ON interview_integrity_events (session_id);",
@@ -164,7 +171,8 @@ async def startup():
             "ALTER TABLE emotion_analysis ALTER COLUMN dominant_emotion TYPE VARCHAR(100);",
             "ALTER TABLE resumes ADD COLUMN IF NOT EXISTS file_content BYTEA;",
             "ALTER TABLE resumes ADD COLUMN file_content BLOB;"
-        ]:
+        ]
+        for col_def in col_defs:
             try:
                 async with engine.begin() as conn:
                     await conn.execute(text(col_def))
@@ -190,9 +198,17 @@ async def startup():
     except Exception as cleanup_err:
         logging.getLogger("smarthire.startup").warning("Startup cleanup notice: %s", cleanup_err)
 
-    # Start periodic reminder background worker
+    # Start periodic reminder background worker (skipped during automated tests)
+    import os
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        global _reminder_worker_task
+        _reminder_worker_task = asyncio.create_task(_periodic_reminder_worker())
+
+@app.on_event("shutdown")
+async def shutdown():
     global _reminder_worker_task
-    _reminder_worker_task = asyncio.create_task(_periodic_reminder_worker())
+    if _reminder_worker_task and not _reminder_worker_task.done():
+        _reminder_worker_task.cancel()
 
 async def _run_startup_cleanups():
     """Removes candidate Somesh Singh from DB so they can start fresh, and normalizes job company names."""
